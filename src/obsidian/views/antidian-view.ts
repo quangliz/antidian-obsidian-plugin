@@ -11,6 +11,7 @@ import {
 } from '../../core/types/context';
 import { Agent, AgentStepEvent } from '../../core/agent';
 import { Message } from '../../core/types/model';
+import { ChangeSet } from '../../core/types/changes';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
@@ -276,6 +277,10 @@ export class AntiDianView extends ItemView {
 			if (result.contextUsed && result.contextUsed.length > 0) {
 				this.renderContextUsed(agentMsg, result.contextUsed);
 			}
+
+			if (result.changeSet && result.changeSet.operations.length > 0) {
+				this.renderChangeSet(agentMsg, result.changeSet);
+			}
 		} catch (err) {
 			stepsEl.empty();
 			answerEl.createEl('p', {
@@ -346,6 +351,48 @@ export class AntiDianView extends ItemView {
 						cls: 'anti-dian-context-used-heading',
 					});
 				}
+			}
+		}
+	}
+
+	private renderChangeSet(parent: HTMLElement, changeSet: ChangeSet): void {
+		const card = parent.createDiv({ cls: 'anti-dian-changeset-card' });
+
+		const header = card.createDiv({ cls: 'anti-dian-changeset-header' });
+		header.createSpan({
+			text: `📦 Staged ChangeSet (${changeSet.operations.length} ${changeSet.operations.length === 1 ? 'operation' : 'operations'})`,
+			cls: 'anti-dian-changeset-title',
+		});
+		header.createSpan({
+			text: 'Pending review',
+			cls: 'anti-dian-changeset-badge',
+		});
+
+		const opsList = card.createDiv({ cls: 'anti-dian-changeset-ops' });
+		for (const op of changeSet.operations) {
+			const opItem = opsList.createDiv({
+				cls: 'anti-dian-changeset-op-item',
+			});
+			const noteName = op.path.replace(/\.md$/, '').split('/').pop();
+
+			if (op.type === 'create') {
+				opItem.createSpan({
+					text: '+ create',
+					cls: 'anti-dian-op-tag anti-dian-op-tag-create',
+				});
+				opItem.createSpan({
+					text: `[[${noteName}]]`,
+					cls: 'anti-dian-op-path',
+				});
+			} else if (op.type === 'patch-section') {
+				opItem.createSpan({
+					text: '~ patch',
+					cls: 'anti-dian-op-tag anti-dian-op-tag-patch',
+				});
+				opItem.createSpan({
+					text: `[[${noteName}]] > #${op.heading}`,
+					cls: 'anti-dian-op-path',
+				});
 			}
 		}
 	}

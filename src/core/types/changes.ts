@@ -14,6 +14,6 @@ export type ChangeOperation =
 export interface ChangeSet {
 	id: string;
 	operations: ChangeOperation[];
-	status: 'staged' | 'applied' | 'rejected';
 	createdAt: number;
+	status: 'staged' | 'applied' | 'rejected' | 'rolled_back';
 }

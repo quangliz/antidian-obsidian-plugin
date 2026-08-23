@@ -256,6 +256,75 @@
 	font-family: var(--font-monospace);
 }
 
+.anti-dian-changeset-card {
+	background: var(--background-primary);
+	border: 1px dashed var(--interactive-accent);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-1);
+}
+
+.anti-dian-changeset-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.anti-dian-changeset-title {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-changeset-badge {
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	padding: 1px var(--size-4-1);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-active-hover);
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-changeset-ops {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.anti-dian-changeset-op-item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+}
+
+.anti-dian-op-tag {
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	font-family: var(--font-monospace);
+	padding: 1px var(--size-4-1);
+	border-radius: var(--radius-s);
+	font-weight: var(--font-semibold);
+}
+
+.anti-dian-op-tag-create {
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+}
+
+.anti-dian-op-tag-patch {
+	background: rgba(var(--color-yellow-rgb), 0.15);
+	color: var(--color-yellow);
+}
+
+.anti-dian-op-path {
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
+}
+
 .anti-dian-error-text {
 	color: var(--text-error);
 	font-size: var(--font-ui-small);

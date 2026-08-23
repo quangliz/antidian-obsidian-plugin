@@ -51,6 +51,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.agent = new Agent({
 			provider: this.geminiProvider,
 			tools: this.toolRegistry,
+			stagingManager: this.stagingManager,
 		});
 
 		this.registerView(

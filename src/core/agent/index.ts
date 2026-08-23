@@ -1,10 +1,13 @@
 import { ActiveContext, ContextReference } from '../types/context';
 import { ModelProvider, Message, ToolResult } from '../types/model';
+import { ChangeSet } from '../types/changes';
 import { Tool, ToolRegistry } from '../tools';
+import { ChangeStagingManager } from '../transactions';
 
 export interface AgentOptions {
 	provider: ModelProvider;
 	tools?: ToolRegistry | Tool[];
+	stagingManager?: ChangeStagingManager;
 	maxTurns?: number;
 	systemPrompt?: string;
 }
@@ -13,23 +16,32 @@ export type AgentStepEvent =
 	| { type: 'thinking' }
 	| { type: 'tool_start'; toolName: string; toolArgs: Record<string, unknown> }
 	| { type: 'tool_end'; toolName: string; toolOutput: unknown }
-	| { type: 'answer'; text: string; contextUsed?: ContextReference[] }
+	| {
+			type: 'answer';
+			text: string;
+			contextUsed?: ContextReference[];
+			changeSet?: ChangeSet;
+	  }
 	| { type: 'error'; message: string };
 
 export interface AgentRunResult {
 	answer: string;
 	updatedHistory: Message[];
 	contextUsed: ContextReference[];
+	changeSet?: ChangeSet;
 }
 
 export class Agent {
 	private provider: ModelProvider;
 	private registry: ToolRegistry;
+	private stagingManager?: ChangeStagingManager;
 	private maxTurns: number;
 	private systemPrompt: string;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
+		this.stagingManager = options.stagingManager;
+
 		if (options.tools instanceof ToolRegistry) {
 			this.registry = options.tools;
 		} else {
@@ -46,11 +58,16 @@ export class Agent {
 			options.systemPrompt ??
 			`You are Anti-dian, an intelligent note-taking companion inside Obsidian.
 Use your tools to search and read notes in the vault to provide accurate, grounded answers.
+When modifying or creating notes, use create_note or patch_note to stage changes safely.
 When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and concise.`;
 	}
 
 	getRegistry(): ToolRegistry {
 		return this.registry;
+	}
+
+	getStagingManager(): ChangeStagingManager | undefined {
+		return this.stagingManager;
 	}
 
 	async run(
@@ -60,6 +77,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		onStep?: (event: AgentStepEvent) => void,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
+		const activeTurnChangeSet = this.stagingManager?.startTurn();
 
 		let contextPrefix = '';
 		if (context?.activeFile) {
@@ -179,19 +197,53 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 				const answerText =
 					response.text || '(No response text generated)';
 				const contextUsed = this.deduplicateContext(rawContextUsed);
-				onStep?.({ type: 'answer', text: answerText, contextUsed });
+				const finalChangeSet =
+					activeTurnChangeSet &&
+					activeTurnChangeSet.operations.length > 0
+						? activeTurnChangeSet
+						: undefined;
+
+				onStep?.({
+					type: 'answer',
+					text: answerText,
+					contextUsed,
+					changeSet: finalChangeSet,
+				});
+
 				currentMessages.push({
 					role: 'assistant',
 					text: answerText,
 				});
-				return { answer: answerText, updatedHistory: currentMessages, contextUsed };
+
+				return {
+					answer: answerText,
+					updatedHistory: currentMessages,
+					contextUsed,
+					changeSet: finalChangeSet,
+				};
 			}
 		}
 
 		const fallback = 'Agent reached maximum tool turns limit.';
 		const contextUsed = this.deduplicateContext(rawContextUsed);
-		onStep?.({ type: 'answer', text: fallback, contextUsed });
-		return { answer: fallback, updatedHistory: currentMessages, contextUsed };
+		const finalChangeSet =
+			activeTurnChangeSet && activeTurnChangeSet.operations.length > 0
+				? activeTurnChangeSet
+				: undefined;
+
+		onStep?.({
+			type: 'answer',
+			text: fallback,
+			contextUsed,
+			changeSet: finalChangeSet,
+		});
+
+		return {
+			answer: fallback,
+			updatedHistory: currentMessages,
+			contextUsed,
+			changeSet: finalChangeSet,
+		};
 	}
 
 	private deduplicateContext(
