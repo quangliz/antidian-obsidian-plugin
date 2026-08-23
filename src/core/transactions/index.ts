@@ -1,6 +1,7 @@
 import { ChangeOperation, ChangeSet } from '../types/changes';
 
 export * from './validator';
+export * from './diff';
 
 export class ChangeStagingManager {
 	private changeSets: Map<string, ChangeSet> = new Map();

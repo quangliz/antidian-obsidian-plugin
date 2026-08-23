@@ -14,6 +14,7 @@ import { GeminiProvider } from './core/models/gemini-provider';
 import {
 	ChangeStagingManager,
 	ChangeSetValidator,
+	ChangeSetDiffGenerator,
 } from './core/transactions';
 import {
 	ToolRegistry,
@@ -31,6 +32,7 @@ export default class AntiDianPlugin extends Plugin {
 	vaultAdapter!: ObsidianVaultAdapter;
 	stagingManager!: ChangeStagingManager;
 	validator!: ChangeSetValidator;
+	diffGenerator!: ChangeSetDiffGenerator;
 	geminiProvider!: GeminiProvider;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
@@ -42,6 +44,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
 		this.stagingManager = new ChangeStagingManager();
 		this.validator = new ChangeSetValidator(this.vaultAdapter);
+		this.diffGenerator = new ChangeSetDiffGenerator(this.vaultAdapter);
 
 		this.geminiProvider = new GeminiProvider({
 			model: this.settings.model,

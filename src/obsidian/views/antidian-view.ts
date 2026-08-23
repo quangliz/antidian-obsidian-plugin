@@ -844,6 +844,114 @@ export class AntiDianView extends ItemView {
 				});
 			}
 		}
+
+		if (this.plugin.diffGenerator) {
+			const diff = await this.plugin.diffGenerator.generate(changeSet);
+			this.renderDiffPreview(card, diff);
+		}
+	}
+
+	private renderDiffPreview(
+		parent: HTMLElement,
+		diff: {
+			changeSetId: string;
+			files: {
+				path: string;
+				heading?: string;
+				additions: number;
+				deletions: number;
+				hunks: {
+					header?: string;
+					lines: {
+						type: 'context' | 'added' | 'removed';
+						content: string;
+					}[];
+				}[];
+			}[];
+			totalAdditions: number;
+			totalDeletions: number;
+		},
+	): void {
+		if (diff.files.length === 0) return;
+
+		const details = parent.createEl('details', {
+			cls: 'anti-dian-diff-container',
+		});
+		details.open = true;
+
+		const summary = details.createEl('summary', {
+			cls: 'anti-dian-diff-summary',
+		});
+		summary.createSpan({
+			text: `Unified Diff (+${diff.totalAdditions} -${diff.totalDeletions})`,
+			cls: 'anti-dian-diff-summary-title',
+		});
+
+		const filesList = details.createDiv({ cls: 'anti-dian-diff-files' });
+
+		for (const file of diff.files) {
+			const fileCard = filesList.createDiv({
+				cls: 'anti-dian-diff-file-card',
+			});
+
+			const fileHeader = fileCard.createDiv({
+				cls: 'anti-dian-diff-file-header',
+			});
+			const noteName = file.path.replace(/\.md$/, '').split('/').pop();
+			const fileTitle = file.heading
+				? `[[${noteName}]] > #${file.heading}`
+				: `[[${noteName}]]`;
+
+			fileHeader.createSpan({
+				text: fileTitle,
+				cls: 'anti-dian-diff-file-title',
+			});
+
+			const countsSpan = fileHeader.createSpan({
+				cls: 'anti-dian-diff-counts',
+			});
+			if (file.additions > 0) {
+				countsSpan.createSpan({
+					text: `+${file.additions}`,
+					cls: 'anti-dian-diff-count-add',
+				});
+			}
+			if (file.deletions > 0) {
+				countsSpan.createSpan({
+					text: `-${file.deletions}`,
+					cls: 'anti-dian-diff-count-del',
+				});
+			}
+
+			const codeBlock = fileCard.createDiv({
+				cls: 'anti-dian-diff-code-block',
+			});
+
+			for (const hunk of file.hunks) {
+				if (hunk.header) {
+					codeBlock.createDiv({
+						text: hunk.header,
+						cls: 'anti-dian-diff-hunk-header',
+					});
+				}
+
+				for (const line of hunk.lines) {
+					const lineEl = codeBlock.createDiv({
+						cls: `anti-dian-diff-line anti-dian-diff-line-${line.type}`,
+					});
+					const prefix =
+						line.type === 'added'
+							? '+ '
+							: line.type === 'removed'
+								? '- '
+								: '  ';
+					lineEl.createSpan({
+						text: `${prefix}${line.content}`,
+						cls: 'anti-dian-diff-line-content',
+					});
+				}
+			}
+		}
 	}
 
 	private getLogoUrl(): string {

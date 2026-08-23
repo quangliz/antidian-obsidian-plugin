@@ -40,3 +40,35 @@ export interface ValidationResult {
 	valid: boolean;
 	errors: ValidationError[];
 }
+
+export type DiffLineType = 'context' | 'added' | 'removed';
+
+export interface DiffLine {
+	type: DiffLineType;
+	content: string;
+	oldLineNumber?: number;
+	newLineNumber?: number;
+}
+
+export interface DiffHunk {
+	header?: string;
+	lines: DiffLine[];
+}
+
+export interface FileDiff {
+	path: string;
+	operationType: 'create' | 'patch-section';
+	heading?: string;
+	oldContent: string;
+	newContent: string;
+	hunks: DiffHunk[];
+	additions: number;
+	deletions: number;
+}
+
+export interface ChangeSetDiff {
+	changeSetId: string;
+	files: FileDiff[];
+	totalAdditions: number;
+	totalDeletions: number;
+}

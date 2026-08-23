@@ -528,6 +528,107 @@
 	color: var(--text-normal);
 }
 
+.anti-dian-diff-container {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 4px 8px;
+	margin-top: var(--size-4-1);
+}
+
+.anti-dian-diff-summary {
+	font-size: calc(var(--font-ui-smaller) * 0.95);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+}
+
+.anti-dian-diff-files {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px dashed var(--background-modifier-border);
+}
+
+.anti-dian-diff-file-card {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+}
+
+.anti-dian-diff-file-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 8px;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+}
+
+.anti-dian-diff-file-title {
+	font-weight: var(--font-medium);
+	color: var(--text-accent);
+}
+
+.anti-dian-diff-counts {
+	display: flex;
+	gap: 4px;
+	font-family: var(--font-monospace);
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	font-weight: var(--font-semibold);
+}
+
+.anti-dian-diff-count-add {
+	color: var(--color-green);
+}
+
+.anti-dian-diff-count-del {
+	color: var(--color-red);
+}
+
+.anti-dian-diff-code-block {
+	font-family: var(--font-monospace);
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	line-height: 1.4;
+	padding: 4px 0;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.anti-dian-diff-hunk-header {
+	padding: 2px 8px;
+	background: rgba(var(--interactive-accent-rgb), 0.08);
+	color: var(--text-muted);
+	font-weight: var(--font-semibold);
+	font-size: calc(var(--font-ui-smaller) * 0.8);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.anti-dian-diff-line {
+	padding: 1px 8px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.anti-dian-diff-line-added {
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+}
+
+.anti-dian-diff-line-removed {
+	background: rgba(var(--color-red-rgb), 0.15);
+	color: var(--color-red);
+}
+
+.anti-dian-diff-line-context {
+	color: var(--text-muted);
+}
+
 .anti-dian-error-text {
 	color: var(--text-error);
 	font-size: var(--font-ui-small);
