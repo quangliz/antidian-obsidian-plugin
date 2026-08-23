@@ -20,6 +20,7 @@ import {
 	AvailableModel,
 	ModelGroup,
 } from '../../core/models/antigravity-oauth';
+import { PermissionMode } from '../../settings';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
@@ -42,6 +43,7 @@ export class AntiDianView extends ItemView {
 	private modelInfoEl: HTMLElement | null = null;
 	private modelSelectEl: HTMLSelectElement | null = null;
 	private effortSelectEl: HTMLSelectElement | null = null;
+	private permissionSelectEl: HTMLSelectElement | null = null;
 	private availableModels: AvailableModel[] = [];
 	private modelGroups: ModelGroup[] = [];
 	private inputEl: HTMLTextAreaElement | null = null;
@@ -128,6 +130,24 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-effort-picker-select anti-dian-hidden',
 		});
 
+		this.permissionSelectEl = rightGroup.createEl('select', {
+			cls: 'anti-dian-permission-picker-select',
+		});
+		this.permissionSelectEl.createEl('option', {
+			text: 'Ask',
+			value: 'ask',
+		});
+		this.permissionSelectEl.createEl('option', {
+			text: 'Plan',
+			value: 'plan',
+		});
+		this.permissionSelectEl.createEl('option', {
+			text: 'Auto',
+			value: 'auto',
+		});
+		this.permissionSelectEl.value =
+			this.plugin.settings.permissionMode ?? 'ask';
+
 		const opt = this.modelSelectEl.createEl('option', {
 			text: this.plugin.settings.model ?? 'Loading models...',
 			value: this.plugin.settings.model ?? '',
@@ -140,6 +160,15 @@ export class AntiDianView extends ItemView {
 
 		this.effortSelectEl.onchange = () => {
 			this.onEffortChange();
+		};
+
+		this.permissionSelectEl.onchange = () => {
+			const val = this.permissionSelectEl?.value as PermissionMode;
+			if (val) {
+				this.plugin.settings.permissionMode = val;
+				void this.plugin.saveSettings();
+				this.updateModelInfoDisplay(this.plugin.settings.model);
+			}
 		};
 
 		this.modelInfoEl = headerEl.createDiv({
@@ -323,6 +352,18 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-model-chip anti-dian-chip-auth',
 		});
 		authChip.setText('🔑 Connected');
+
+		const mode = this.plugin.settings.permissionMode ?? 'ask';
+		const modeChip = chipContainer.createSpan({
+			cls: `anti-dian-model-chip anti-dian-chip-mode anti-dian-mode-${mode}`,
+		});
+		modeChip.setText(
+			mode === 'auto'
+				? '⚡ Auto'
+				: mode === 'plan'
+					? '📋 Plan'
+					: '🛡️ Ask',
+		);
 	}
 
 	private renderContextBox(parent: HTMLElement): void {
@@ -911,54 +952,26 @@ export class AntiDianView extends ItemView {
 			}
 		};
 
-		const actionsRow = card.createDiv({
-			cls: 'anti-dian-changeset-actions-row',
-		});
+		const mode = this.plugin.settings.permissionMode ?? 'ask';
 
-		const rejectBtn = actionsRow.createEl('button', {
-			text: 'Reject',
-			cls: 'anti-dian-btn-reject',
-		});
-
-		const applyBtn = actionsRow.createEl('button', {
-			text: 'Apply',
-			cls: 'anti-dian-btn-apply mod-cta',
-		});
-
-		const resultNotice = card.createDiv({
-			cls: 'anti-dian-changeset-result-notice anti-dian-hidden',
-		});
-
-		rejectBtn.onclick = () => {
-			this.plugin.stagingManager.setStatus(changeSet.id, 'rejected');
-			badge.setText('Rejected');
-			badge.className =
-				'anti-dian-changeset-badge anti-dian-badge-invalid';
-			actionsRow.addClass('anti-dian-hidden');
-			reviewBtnRow.addClass('anti-dian-hidden');
-			resultNotice.removeClass('anti-dian-hidden');
-			resultNotice.setText('Changes rejected');
-			resultNotice.className =
-				'anti-dian-changeset-result-notice anti-dian-notice-rejected';
-		};
-
-		applyBtn.onclick = async () => {
-			applyBtn.disabled = true;
-			rejectBtn.disabled = true;
-			applyBtn.setText('Applying...');
-
+		if (mode === 'plan') {
+			badge.setText('Plan only');
+			badge.className = 'anti-dian-changeset-badge anti-dian-badge-valid';
+			const planNotice = card.createDiv({
+				cls: 'anti-dian-changeset-result-notice anti-dian-notice-plan',
+			});
+			planNotice.setText('Plan mode: mutations are not applied to vault');
+		} else if (mode === 'auto' && validation.valid) {
 			try {
 				const applied = await this.plugin.applicator.apply(changeSet);
-				badge.setText('Applied ✓');
+				badge.setText('Auto-applied ✓');
 				badge.className =
 					'anti-dian-changeset-badge anti-dian-badge-valid';
-				actionsRow.addClass('anti-dian-hidden');
-				reviewBtnRow.addClass('anti-dian-hidden');
-				resultNotice.removeClass('anti-dian-hidden');
-				resultNotice.empty();
-
+				const resultNotice = card.createDiv({
+					cls: 'anti-dian-changeset-result-notice anti-dian-notice-applied',
+				});
 				resultNotice.createSpan({
-					text: `✓ Applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'}`,
+					text: `⚡ Auto-applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'}`,
 					cls: 'anti-dian-notice-msg',
 				});
 
@@ -994,22 +1007,119 @@ export class AntiDianView extends ItemView {
 						});
 					}
 				};
-
-				resultNotice.className =
-					'anti-dian-changeset-result-notice anti-dian-notice-applied';
-			} catch (err) {
-				applyBtn.disabled = false;
-				rejectBtn.disabled = false;
-				applyBtn.setText('Apply');
+			} catch (autoErr) {
 				const errEl = card.createDiv({
 					cls: 'anti-dian-changeset-errors',
 				});
 				errEl.createDiv({
-					text: `⚠️ ${err instanceof Error ? err.message : String(err)}`,
+					text: `⚠️ Auto-apply failed: ${autoErr instanceof Error ? autoErr.message : String(autoErr)}`,
 					cls: 'anti-dian-changeset-error-item',
 				});
 			}
-		};
+		} else {
+			const actionsRow = card.createDiv({
+				cls: 'anti-dian-changeset-actions-row',
+			});
+
+			const rejectBtn = actionsRow.createEl('button', {
+				text: 'Reject',
+				cls: 'anti-dian-btn-reject',
+			});
+
+			const applyBtn = actionsRow.createEl('button', {
+				text: 'Apply',
+				cls: 'anti-dian-btn-apply mod-cta',
+			});
+
+			const resultNotice = card.createDiv({
+				cls: 'anti-dian-changeset-result-notice anti-dian-hidden',
+			});
+
+			rejectBtn.onclick = () => {
+				this.plugin.stagingManager.setStatus(changeSet.id, 'rejected');
+				badge.setText('Rejected');
+				badge.className =
+					'anti-dian-changeset-badge anti-dian-badge-invalid';
+				actionsRow.addClass('anti-dian-hidden');
+				reviewBtnRow.addClass('anti-dian-hidden');
+				resultNotice.removeClass('anti-dian-hidden');
+				resultNotice.setText('Changes rejected');
+				resultNotice.className =
+					'anti-dian-changeset-result-notice anti-dian-notice-rejected';
+			};
+
+			applyBtn.onclick = async () => {
+				applyBtn.disabled = true;
+				rejectBtn.disabled = true;
+				applyBtn.setText('Applying...');
+
+				try {
+					const applied =
+						await this.plugin.applicator.apply(changeSet);
+					badge.setText('Applied ✓');
+					badge.className =
+						'anti-dian-changeset-badge anti-dian-badge-valid';
+					actionsRow.addClass('anti-dian-hidden');
+					reviewBtnRow.addClass('anti-dian-hidden');
+					resultNotice.removeClass('anti-dian-hidden');
+					resultNotice.empty();
+
+					resultNotice.createSpan({
+						text: `✓ Applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'}`,
+						cls: 'anti-dian-notice-msg',
+					});
+
+					const undoBtn = resultNotice.createEl('button', {
+						text: 'Undo',
+						cls: 'anti-dian-btn-undo',
+					});
+
+					undoBtn.onclick = async () => {
+						undoBtn.disabled = true;
+						undoBtn.setText('Undoing...');
+						try {
+							const rollbackRes =
+								await this.plugin.applicator.rollback(
+									changeSet.id,
+								);
+							badge.setText('Rolled back');
+							badge.className =
+								'anti-dian-changeset-badge anti-dian-badge-invalid';
+							resultNotice.className =
+								'anti-dian-changeset-result-notice anti-dian-notice-rejected';
+							resultNotice.empty();
+							resultNotice.setText(
+								`↺ Undid ${rollbackRes.restoredCount} ${rollbackRes.restoredCount === 1 ? 'change' : 'changes'}`,
+							);
+						} catch (undoErr) {
+							undoBtn.disabled = false;
+							undoBtn.setText('Undo');
+							const errEl = card.createDiv({
+								cls: 'anti-dian-changeset-errors',
+							});
+							errEl.createDiv({
+								text: `⚠️ ${undoErr instanceof Error ? undoErr.message : String(undoErr)}`,
+								cls: 'anti-dian-changeset-error-item',
+							});
+						}
+					};
+
+					resultNotice.className =
+						'anti-dian-changeset-result-notice anti-dian-notice-applied';
+				} catch (err) {
+					applyBtn.disabled = false;
+					rejectBtn.disabled = false;
+					applyBtn.setText('Apply');
+					const errEl = card.createDiv({
+						cls: 'anti-dian-changeset-errors',
+					});
+					errEl.createDiv({
+						text: `⚠️ ${err instanceof Error ? err.message : String(err)}`,
+						cls: 'anti-dian-changeset-error-item',
+					});
+				}
+			};
+		}
 	}
 
 	private renderFileDiffContent(

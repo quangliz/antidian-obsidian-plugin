@@ -47,7 +47,8 @@
 }
 
 .anti-dian-model-picker-select,
-.anti-dian-effort-picker-select {
+.anti-dian-effort-picker-select,
+.anti-dian-permission-picker-select {
 	font-size: calc(var(--font-ui-smaller) * 0.9);
 	padding: 2px var(--size-4-1);
 	border-radius: var(--radius-s);
@@ -58,11 +59,29 @@
 }
 
 .anti-dian-model-picker-select {
-	max-width: 140px;
+	max-width: 125px;
 }
 
 .anti-dian-effort-picker-select {
-	max-width: 90px;
+	max-width: 80px;
+}
+
+.anti-dian-permission-picker-select {
+	max-width: 80px;
+}
+
+.anti-dian-mode-ask {
+	color: var(--text-accent);
+}
+
+.anti-dian-mode-plan {
+	color: var(--color-blue);
+	border-color: rgba(var(--color-blue-rgb), 0.3);
+}
+
+.anti-dian-mode-auto {
+	color: var(--color-yellow);
+	border-color: rgba(var(--color-yellow-rgb), 0.3);
 }
 
 .anti-dian-hidden {
@@ -658,6 +677,11 @@
 .anti-dian-notice-rejected {
 	background: rgba(var(--color-red-rgb), 0.15);
 	color: var(--color-red);
+}
+
+.anti-dian-notice-plan {
+	background: rgba(var(--color-blue-rgb), 0.15);
+	color: var(--color-blue);
 }
 
 .anti-dian-diff-container {

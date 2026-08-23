@@ -7,12 +7,16 @@ import {
 	formatTokens,
 } from './core/models/antigravity-oauth';
 
+export type PermissionMode = 'ask' | 'plan' | 'auto';
+
 export interface AntiDianSettings {
 	model?: string;
+	permissionMode?: PermissionMode;
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {
 	model: 'gemini-3.7-flash-high',
+	permissionMode: 'ask',
 };
 
 export class AntiDianSettingTab extends PluginSettingTab {
@@ -56,6 +60,24 @@ export class AntiDianSettingTab extends PluginSettingTab {
 							button.setDisabled(false);
 							button.setButtonText('Connect with Google');
 						}
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Permission mode')
+			.setDesc(
+				'Ask: Free read, writes require approval. Plan: Read-only proposals. Auto: Auto-apply valid mutations.',
+			)
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('ask', 'Ask (approval required)')
+					.addOption('plan', 'Plan (read-only proposals)')
+					.addOption('auto', 'Auto (auto-apply valid writes)')
+					.setValue(this.plugin.settings.permissionMode ?? 'ask')
+					.onChange(async (val) => {
+						this.plugin.settings.permissionMode =
+							val as PermissionMode;
+						await this.plugin.saveSettings();
 					});
 			});
 
