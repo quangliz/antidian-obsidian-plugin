@@ -15,6 +15,7 @@ import {
 	ChangeStagingManager,
 	ChangeSetValidator,
 	ChangeSetDiffGenerator,
+	ChangeSetApplicator,
 } from './core/transactions';
 import {
 	ToolRegistry,
@@ -33,6 +34,7 @@ export default class AntiDianPlugin extends Plugin {
 	stagingManager!: ChangeStagingManager;
 	validator!: ChangeSetValidator;
 	diffGenerator!: ChangeSetDiffGenerator;
+	applicator!: ChangeSetApplicator;
 	geminiProvider!: GeminiProvider;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
@@ -45,6 +47,10 @@ export default class AntiDianPlugin extends Plugin {
 		this.stagingManager = new ChangeStagingManager();
 		this.validator = new ChangeSetValidator(this.vaultAdapter);
 		this.diffGenerator = new ChangeSetDiffGenerator(this.vaultAdapter);
+		this.applicator = new ChangeSetApplicator(
+			this.vaultAdapter,
+			this.validator,
+		);
 
 		this.geminiProvider = new GeminiProvider({
 			model: this.settings.model,

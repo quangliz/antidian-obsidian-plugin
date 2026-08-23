@@ -332,6 +332,74 @@ export class ObsidianVaultAdapter implements VaultService {
 		};
 	}
 
+	async createNote(path: string, content: string): Promise<void> {
+		const norm = this.normalizePath(path);
+		const parts = norm.split('/');
+		if (parts.length > 1) {
+			const folderPath = parts.slice(0, -1).join('/');
+			if (!this.app.vault.getAbstractFileByPath(folderPath)) {
+				await this.app.vault.createFolder(folderPath);
+			}
+		}
+		await this.app.vault.create(norm, content);
+	}
+
+	async patchSection(
+		path: string,
+		heading: string,
+		newContent: string,
+	): Promise<void> {
+		const norm = this.normalizePath(path);
+		let file = this.app.vault.getAbstractFileByPath(norm);
+		if (!(file instanceof TFile)) {
+			file = this.metadataAdapter.getFirstLinkpathDest(path, '');
+		}
+		if (!(file instanceof TFile)) {
+			throw new Error(`File not found in vault: ${path}`);
+		}
+
+		const fullContent = await this.app.vault.read(file);
+		const cache = this.metadataAdapter.getFileCache(file);
+		const cleanTarget = heading.trim().toLowerCase().replace(/^#+\s*/, '');
+
+		const targetItem = cache?.headings?.find(
+			(h) => h.heading.trim().toLowerCase() === cleanTarget,
+		);
+
+		if (targetItem && cache?.headings) {
+			const startOffset = targetItem.position.start.offset;
+			const currentLevel = targetItem.level;
+			let endOffset = fullContent.length;
+
+			const targetIdx = cache.headings.indexOf(targetItem);
+			for (let j = targetIdx + 1; j < cache.headings.length; j++) {
+				const nextItem = cache.headings[j];
+				if (nextItem && nextItem.level <= currentLevel) {
+					endOffset = nextItem.position.start.offset;
+					break;
+				}
+			}
+
+			let replacement = newContent;
+			if (!newContent.trim().startsWith('#')) {
+				const hashes = '#'.repeat(targetItem.level);
+				replacement = `${hashes} ${targetItem.heading}\n\n${newContent.trim()}\n\n`;
+			} else {
+				replacement = `${newContent.trim()}\n\n`;
+			}
+
+			const updated =
+				fullContent.slice(0, startOffset) +
+				replacement +
+				fullContent.slice(endOffset).trimStart();
+
+			await this.app.vault.modify(file, updated);
+		} else {
+			const toAppend = `\n\n## ${heading}\n\n${newContent.trim()}\n`;
+			await this.app.vault.append(file, toAppend);
+		}
+	}
+
 	private findHeadingForOffset(
 		headings:
 			| { heading: string; position: { start: { offset: number } } }[]

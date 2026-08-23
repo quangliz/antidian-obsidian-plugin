@@ -817,37 +817,210 @@ export class AntiDianView extends ItemView {
 			}
 		}
 
-		const opsList = card.createDiv({ cls: 'anti-dian-changeset-ops' });
-		for (const op of changeSet.operations) {
-			const opItem = opsList.createDiv({
-				cls: 'anti-dian-changeset-op-item',
-			});
-			const noteName = op.path.replace(/\.md$/, '').split('/').pop();
+		const diff = this.plugin.diffGenerator
+			? await this.plugin.diffGenerator.generate(changeSet)
+			: null;
 
-			if (op.type === 'create') {
-				opItem.createSpan({
-					text: '+ create',
-					cls: 'anti-dian-op-tag anti-dian-op-tag-create',
+		const filesList = card.createDiv({ cls: 'anti-dian-proposed-files' });
+
+		for (const op of changeSet.operations) {
+			const isCreate = op.type === 'create';
+			const opItem = filesList.createDiv({
+				cls: 'anti-dian-proposed-file-row',
+			});
+
+			opItem.createSpan({
+				text: isCreate ? '+' : '~',
+				cls: `anti-dian-file-tag ${isCreate ? 'tag-create' : 'tag-patch'}`,
+			});
+
+			const pathText =
+				op.type === 'patch-section'
+					? `${op.path} > #${op.heading}`
+					: op.path;
+
+			opItem.createSpan({
+				text: pathText,
+				cls: 'anti-dian-proposed-file-path',
+			});
+
+			const fileDiff = diff?.files.find(
+				(f) =>
+					f.path === op.path &&
+					(op.type !== 'patch-section' || f.heading === op.heading),
+			);
+
+			if (fileDiff) {
+				const counts = opItem.createSpan({
+					cls: 'anti-dian-file-row-counts',
 				});
-				opItem.createSpan({
-					text: `[[${noteName}]]`,
-					cls: 'anti-dian-op-path',
-				});
-			} else if (op.type === 'patch-section') {
-				opItem.createSpan({
-					text: '~ patch',
-					cls: 'anti-dian-op-tag anti-dian-op-tag-patch',
-				});
-				opItem.createSpan({
-					text: `[[${noteName}]] > #${op.heading}`,
-					cls: 'anti-dian-op-path',
-				});
+				if (fileDiff.additions > 0) {
+					counts.createSpan({
+						text: `+${fileDiff.additions}`,
+						cls: 'anti-dian-diff-count-add',
+					});
+				}
+				if (fileDiff.deletions > 0) {
+					counts.createSpan({
+						text: `-${fileDiff.deletions}`,
+						cls: 'anti-dian-diff-count-del',
+					});
+				}
 			}
+
+			const singleDiffBox = card.createDiv({
+				cls: 'anti-dian-single-file-diff anti-dian-hidden',
+			});
+			if (fileDiff) {
+				this.renderFileDiffContent(singleDiffBox, fileDiff);
+			}
+
+			opItem.onclick = () => {
+				const isHidden = singleDiffBox.hasClass('anti-dian-hidden');
+				if (isHidden) {
+					singleDiffBox.removeClass('anti-dian-hidden');
+					opItem.addClass('is-selected');
+				} else {
+					singleDiffBox.addClass('anti-dian-hidden');
+					opItem.removeClass('is-selected');
+				}
+			};
 		}
 
-		if (this.plugin.diffGenerator) {
-			const diff = await this.plugin.diffGenerator.generate(changeSet);
-			this.renderDiffPreview(card, diff);
+		const diffContainer = card.createDiv({
+			cls: 'anti-dian-full-diff-container anti-dian-hidden',
+		});
+		if (diff) {
+			this.renderDiffPreview(diffContainer, diff);
+		}
+
+		const reviewBtnRow = card.createDiv({
+			cls: 'anti-dian-review-btn-row',
+		});
+		const reviewBtn = reviewBtnRow.createEl('button', {
+			text: 'Review changes',
+			cls: 'anti-dian-btn-review',
+		});
+		reviewBtn.onclick = () => {
+			if (diffContainer.hasClass('anti-dian-hidden')) {
+				diffContainer.removeClass('anti-dian-hidden');
+				reviewBtn.setText('Hide review');
+			} else {
+				diffContainer.addClass('anti-dian-hidden');
+				reviewBtn.setText('Review changes');
+			}
+		};
+
+		const actionsRow = card.createDiv({
+			cls: 'anti-dian-changeset-actions-row',
+		});
+
+		const rejectBtn = actionsRow.createEl('button', {
+			text: 'Reject',
+			cls: 'anti-dian-btn-reject',
+		});
+
+		const applyBtn = actionsRow.createEl('button', {
+			text: 'Apply',
+			cls: 'anti-dian-btn-apply mod-cta',
+		});
+
+		const resultNotice = card.createDiv({
+			cls: 'anti-dian-changeset-result-notice anti-dian-hidden',
+		});
+
+		rejectBtn.onclick = () => {
+			this.plugin.stagingManager.setStatus(changeSet.id, 'rejected');
+			badge.setText('Rejected');
+			badge.className =
+				'anti-dian-changeset-badge anti-dian-badge-invalid';
+			actionsRow.addClass('anti-dian-hidden');
+			reviewBtnRow.addClass('anti-dian-hidden');
+			resultNotice.removeClass('anti-dian-hidden');
+			resultNotice.setText('Changes rejected');
+			resultNotice.className =
+				'anti-dian-changeset-result-notice anti-dian-notice-rejected';
+		};
+
+		applyBtn.onclick = async () => {
+			applyBtn.disabled = true;
+			rejectBtn.disabled = true;
+			applyBtn.setText('Applying...');
+
+			const applyRes = await this.plugin.applicator.apply(changeSet);
+
+			if (applyRes.success) {
+				badge.setText('Applied ✓');
+				badge.className =
+					'anti-dian-changeset-badge anti-dian-badge-valid';
+				actionsRow.addClass('anti-dian-hidden');
+				reviewBtnRow.addClass('anti-dian-hidden');
+				resultNotice.removeClass('anti-dian-hidden');
+				resultNotice.setText(
+					`✓ Applied ${applyRes.appliedCount} ${applyRes.appliedCount === 1 ? 'change' : 'changes'} to vault`,
+				);
+				resultNotice.className =
+					'anti-dian-changeset-result-notice anti-dian-notice-applied';
+			} else {
+				applyBtn.disabled = false;
+				rejectBtn.disabled = false;
+				applyBtn.setText('Apply');
+				const errEl = card.createDiv({
+					cls: 'anti-dian-changeset-errors',
+				});
+				for (const msg of applyRes.errors) {
+					errEl.createDiv({
+						text: `⚠️ ${msg}`,
+						cls: 'anti-dian-changeset-error-item',
+					});
+				}
+			}
+		};
+	}
+
+	private renderFileDiffContent(
+		container: HTMLElement,
+		file: {
+			path: string;
+			heading?: string;
+			additions: number;
+			deletions: number;
+			hunks: {
+				header?: string;
+				lines: {
+					type: 'context' | 'added' | 'removed';
+					content: string;
+				}[];
+			}[];
+		},
+	): void {
+		const codeBlock = container.createDiv({
+			cls: 'anti-dian-diff-code-block',
+		});
+
+		for (const hunk of file.hunks) {
+			if (hunk.header) {
+				codeBlock.createDiv({
+					text: hunk.header,
+					cls: 'anti-dian-diff-hunk-header',
+				});
+			}
+
+			for (const line of hunk.lines) {
+				const lineEl = codeBlock.createDiv({
+					cls: `anti-dian-diff-line anti-dian-diff-line-${line.type}`,
+				});
+				const prefix =
+					line.type === 'added'
+						? '+ '
+						: line.type === 'removed'
+							? '- '
+							: '  ';
+				lineEl.createSpan({
+					text: `${prefix}${line.content}`,
+					cls: 'anti-dian-diff-line-content',
+				});
+			}
 		}
 	}
 
@@ -874,20 +1047,7 @@ export class AntiDianView extends ItemView {
 	): void {
 		if (diff.files.length === 0) return;
 
-		const details = parent.createEl('details', {
-			cls: 'anti-dian-diff-container',
-		});
-		details.open = true;
-
-		const summary = details.createEl('summary', {
-			cls: 'anti-dian-diff-summary',
-		});
-		summary.createSpan({
-			text: `Unified Diff (+${diff.totalAdditions} -${diff.totalDeletions})`,
-			cls: 'anti-dian-diff-summary-title',
-		});
-
-		const filesList = details.createDiv({ cls: 'anti-dian-diff-files' });
+		const filesList = parent.createDiv({ cls: 'anti-dian-diff-files' });
 
 		for (const file of diff.files) {
 			const fileCard = filesList.createDiv({
@@ -923,34 +1083,7 @@ export class AntiDianView extends ItemView {
 				});
 			}
 
-			const codeBlock = fileCard.createDiv({
-				cls: 'anti-dian-diff-code-block',
-			});
-
-			for (const hunk of file.hunks) {
-				if (hunk.header) {
-					codeBlock.createDiv({
-						text: hunk.header,
-						cls: 'anti-dian-diff-hunk-header',
-					});
-				}
-
-				for (const line of hunk.lines) {
-					const lineEl = codeBlock.createDiv({
-						cls: `anti-dian-diff-line anti-dian-diff-line-${line.type}`,
-					});
-					const prefix =
-						line.type === 'added'
-							? '+ '
-							: line.type === 'removed'
-								? '- '
-								: '  ';
-					lineEl.createSpan({
-						text: `${prefix}${line.content}`,
-						cls: 'anti-dian-diff-line-content',
-					});
-				}
-			}
+			this.renderFileDiffContent(fileCard, file);
 		}
 	}
 

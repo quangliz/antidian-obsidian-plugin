@@ -38,7 +38,14 @@ export interface VaultInspectionService {
 	headingExists(path: string, heading: string): Promise<boolean>;
 }
 
-export interface VaultService extends VaultInspectionService {
+export interface VaultMutationService {
+	createNote(path: string, content: string): Promise<void>;
+	patchSection(path: string, heading: string, content: string): Promise<void>;
+}
+
+export interface VaultService
+	extends VaultInspectionService,
+		VaultMutationService {
 	searchNotes(params: SearchNotesParams): Promise<SearchResult[]>;
 	readNote(params: ReadNoteParams): Promise<NoteContent | null>;
 }
