@@ -3,8 +3,7 @@ import {
 	VaultService,
 	SearchNotesParams,
 	ReadNoteParams,
-	VaultSearchResult,
-	VaultSearchMatch,
+	SearchResult,
 	NoteContent,
 } from '../../core/types/vault';
 import { ObsidianMetadataAdapter } from './metadata';
@@ -18,9 +17,7 @@ export class ObsidianVaultAdapter implements VaultService {
 		this.metadataAdapter = new ObsidianMetadataAdapter(app.metadataCache);
 	}
 
-	async searchNotes(
-		params: SearchNotesParams,
-	): Promise<VaultSearchResult[]> {
+	async searchNotes(params: SearchNotesParams): Promise<SearchResult[]> {
 		const query = params.query.trim().toLowerCase();
 		if (!query) {
 			return [];
@@ -29,41 +26,79 @@ export class ObsidianVaultAdapter implements VaultService {
 		const terms = query.split(/\s+/).filter(Boolean);
 		const limit = params.limit ?? 10;
 		const files = this.app.vault.getMarkdownFiles();
-		const results: VaultSearchResult[] = [];
+		const allResults: SearchResult[] = [];
 
 		for (const file of files) {
-			let score = 0;
-			const matches: VaultSearchMatch[] = [];
 			const baseLower = file.basename.toLowerCase();
 			const pathLower = file.path.toLowerCase();
+			const cache = this.metadataAdapter.getFileCache(file);
 
+			// 1. Title / Path Match
 			if (baseLower === query) {
-				score += 25;
+				allResults.push({
+					path: file.path,
+					score: 30,
+					matchType: 'title',
+					snippet: file.basename,
+				});
 			} else if (baseLower.includes(query)) {
-				score += 15;
+				allResults.push({
+					path: file.path,
+					score: 20,
+					matchType: 'title',
+					snippet: file.basename,
+				});
 			} else {
-				for (const term of terms) {
-					if (baseLower.includes(term)) {
-						score += 5;
-					} else if (pathLower.includes(term)) {
-						score += 2;
-					}
+				const titleMatches = terms.filter((t) =>
+					baseLower.includes(t),
+				).length;
+				if (titleMatches > 0) {
+					allResults.push({
+						path: file.path,
+						score: 10 + titleMatches * 3,
+						matchType: 'title',
+						snippet: file.basename,
+					});
+				} else if (terms.some((t) => pathLower.includes(t))) {
+					allResults.push({
+						path: file.path,
+						score: 8,
+						matchType: 'title',
+						snippet: file.path,
+					});
 				}
 			}
 
-			const cache = this.metadataAdapter.getFileCache(file);
-
+			// 2. Headings Match
 			if (cache?.headings) {
 				for (const h of cache.headings) {
 					const hLower = h.heading.toLowerCase();
-					if (
-						hLower.includes(query) ||
-						terms.some((t) => hLower.includes(t))
-					) {
-						score += 6;
-						if (matches.length < 5) {
-							matches.push({
+					if (hLower === query) {
+						allResults.push({
+							path: file.path,
+							heading: h.heading,
+							score: 25,
+							matchType: 'heading',
+							snippet: h.heading,
+						});
+					} else if (hLower.includes(query)) {
+						allResults.push({
+							path: file.path,
+							heading: h.heading,
+							score: 18,
+							matchType: 'heading',
+							snippet: h.heading,
+						});
+					} else {
+						const hMatches = terms.filter((t) =>
+							hLower.includes(t),
+						).length;
+						if (hMatches > 0) {
+							allResults.push({
+								path: file.path,
 								heading: h.heading,
+								score: 12 + hMatches * 2,
+								matchType: 'heading',
 								snippet: h.heading,
 							});
 						}
@@ -71,15 +106,70 @@ export class ObsidianVaultAdapter implements VaultService {
 				}
 			}
 
-			if (cache?.links) {
-				for (const link of cache.links) {
-					const lLower = link.link.toLowerCase();
-					if (terms.some((t) => lLower.includes(t))) {
-						score += 3;
+			// 3. Properties / Tags / Frontmatter Match
+			if (cache?.tags) {
+				for (const t of cache.tags) {
+					const tLower = t.tag.toLowerCase();
+					if (
+						tLower.includes(query) ||
+						terms.some((term) => tLower.includes(term))
+					) {
+						allResults.push({
+							path: file.path,
+							score: 14,
+							matchType: 'property',
+							snippet: `tag: ${t.tag}`,
+						});
 					}
 				}
 			}
 
+			if (cache?.frontmatter) {
+				for (const [k, v] of Object.entries(cache.frontmatter)) {
+					if (k === 'position') continue;
+					const strVal = String(v ?? '');
+					const strValLower = strVal.toLowerCase();
+					const kLower = k.toLowerCase();
+
+					if (
+						kLower.includes(query) ||
+						strValLower.includes(query) ||
+						terms.some((term) => strValLower.includes(term))
+					) {
+						allResults.push({
+							path: file.path,
+							score: 12,
+							matchType: 'property',
+							snippet: `${k}: ${strVal}`,
+						});
+					}
+				}
+			}
+
+			// 4. Links Match
+			if (cache?.links) {
+				for (const link of cache.links) {
+					const lLower = link.link.toLowerCase();
+					if (
+						lLower.includes(query) ||
+						terms.some((t) => lLower.includes(t))
+					) {
+						const enclosingHeading = this.findHeadingForOffset(
+							cache?.headings,
+							link.position.start.offset,
+						);
+						allResults.push({
+							path: file.path,
+							heading: enclosingHeading,
+							score: 10,
+							matchType: 'link',
+							snippet: `[[${link.link}]]`,
+						});
+					}
+				}
+			}
+
+			// 5. Body text search
 			const content = await this.app.vault.cachedRead(file);
 			const contentLower = content.toLowerCase();
 
@@ -87,49 +177,41 @@ export class ObsidianVaultAdapter implements VaultService {
 				let index = contentLower.indexOf(term);
 				let count = 0;
 
-				while (index !== -1 && count < 3) {
-					score += 1;
+				while (index !== -1 && count < 2) {
 					count++;
 
-					if (matches.length < 5) {
-						const start = Math.max(0, index - 40);
-						const end = Math.min(
-							content.length,
-							index + term.length + 60,
-						);
-						let snippet = content
-							.slice(start, end)
-							.replace(/\n+/g, ' ')
-							.trim();
-						if (start > 0) snippet = '...' + snippet;
-						if (end < content.length) snippet = snippet + '...';
+					const start = Math.max(0, index - 40);
+					const end = Math.min(
+						content.length,
+						index + term.length + 60,
+					);
+					let snippet = content
+						.slice(start, end)
+						.replace(/\n+/g, ' ')
+						.trim();
+					if (start > 0) snippet = '...' + snippet;
+					if (end < content.length) snippet = snippet + '...';
 
-						const enclosingHeading = this.findHeadingForOffset(
-							cache?.headings,
-							index,
-						);
+					const enclosingHeading = this.findHeadingForOffset(
+						cache?.headings,
+						index,
+					);
 
-						matches.push({
-							heading: enclosingHeading,
-							snippet,
-						});
-					}
+					allResults.push({
+						path: file.path,
+						heading: enclosingHeading,
+						score: 8,
+						matchType: 'text',
+						snippet,
+					});
 
 					index = contentLower.indexOf(term, index + term.length);
 				}
 			}
-
-			if (score > 0 || matches.length > 0) {
-				results.push({
-					path: file.path,
-					score,
-					matches,
-				});
-			}
 		}
 
-		results.sort((a, b) => b.score - a.score);
-		return results.slice(0, limit);
+		allResults.sort((a, b) => b.score - a.score);
+		return allResults.slice(0, limit);
 	}
 
 	async readNote(params: ReadNoteParams): Promise<NoteContent | null> {

@@ -1,12 +1,16 @@
-export interface VaultSearchMatch {
+export type SearchMatchType =
+	| 'title'
+	| 'text'
+	| 'heading'
+	| 'property'
+	| 'link';
+
+export interface SearchResult {
+	path: string;
 	heading?: string;
 	snippet: string;
-}
-
-export interface VaultSearchResult {
-	path: string;
 	score: number;
-	matches: VaultSearchMatch[];
+	matchType: SearchMatchType;
 }
 
 export interface SearchNotesParams {
@@ -26,6 +30,6 @@ export interface NoteContent {
 }
 
 export interface VaultService {
-	searchNotes(params: SearchNotesParams): Promise<VaultSearchResult[]>;
+	searchNotes(params: SearchNotesParams): Promise<SearchResult[]>;
 	readNote(params: ReadNoteParams): Promise<NoteContent | null>;
 }

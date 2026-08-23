@@ -1,6 +1,6 @@
 import {
 	VaultService,
-	VaultSearchResult,
+	SearchResult,
 	SearchNotesParams,
 	ReadNoteParams,
 	NoteContent,
@@ -57,11 +57,11 @@ export class ToolRegistry {
 
 export function createSearchNotesTool(
 	vaultService: VaultService,
-): Tool<SearchNotesParams, VaultSearchResult[]> {
+): Tool<SearchNotesParams, SearchResult[]> {
 	return {
 		name: 'search_notes',
 		description:
-			'Search vault notes by keywords matching titles, headings, wikilinks, and content.',
+			'Search vault notes and sections. Returns structured matches with path, heading, matchType (title|heading|text|property|link), and snippet to pinpoint relevant sections before reading.',
 		schema: {
 			type: 'object',
 			properties: {
@@ -79,7 +79,7 @@ export function createSearchNotesTool(
 		execute: async (
 			input: SearchNotesParams,
 			ctx?: ToolContext,
-		): Promise<VaultSearchResult[]> => {
+		): Promise<SearchResult[]> => {
 			const query =
 				typeof input?.query === 'string' ? input.query : '';
 			const limit =
@@ -88,20 +88,11 @@ export function createSearchNotesTool(
 
 			if (ctx?.recordContext) {
 				for (const res of results) {
-					if (res.matches && res.matches.length > 0) {
-						for (const m of res.matches) {
-							ctx.recordContext({
-								path: res.path,
-								heading: m.heading,
-								reason: 'Search match',
-							});
-						}
-					} else {
-						ctx.recordContext({
-							path: res.path,
-							reason: 'Search match',
-						});
-					}
+					ctx.recordContext({
+						path: res.path,
+						heading: res.heading,
+						reason: `Search (${res.matchType})`,
+					});
 				}
 			}
 
