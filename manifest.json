@@ -1,0 +1,10 @@
+{
+	"id": "anti-dian",
+	"name": "Anti-dian",
+	"version": "1.0.0",
+	"minAppVersion": "1.7.2",
+	"description": "Noting harness using Gemini models and Google Antigravity OAuth.",
+	"author": "Quang",
+	"authorUrl": "https://github.com/quangliz",
+	"isDesktopOnly": true
+}
