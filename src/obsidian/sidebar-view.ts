@@ -1,13 +1,18 @@
 import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ActiveContext, ContextService } from '../core/context';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
 export class AntiDianSidebarView extends ItemView {
+	private contextService: ContextService;
+	private unsubscribeContext: (() => void) | null = null;
+	private contextBoxEl: HTMLElement | null = null;
 	private inputEl: HTMLTextAreaElement | null = null;
 	private messagesEl: HTMLElement | null = null;
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(leaf: WorkspaceLeaf, contextService: ContextService) {
 		super(leaf);
+		this.contextService = contextService;
 	}
 
 	getViewType(): string {
@@ -28,11 +33,22 @@ export class AntiDianSidebarView extends ItemView {
 		container.addClass('anti-dian-sidebar-container');
 
 		this.renderHeader(container);
+		this.renderContextBox(container);
 		this.renderBody(container);
 		this.renderInputArea(container);
+
+		this.unsubscribeContext = this.contextService.onContextChange(
+			(context) => {
+				this.updateContextUI(context);
+			},
+		);
 	}
 
 	async onClose(): Promise<void> {
+		if (this.unsubscribeContext) {
+			this.unsubscribeContext();
+			this.unsubscribeContext = null;
+		}
 		this.contentEl.empty();
 	}
 
@@ -47,6 +63,51 @@ export class AntiDianSidebarView extends ItemView {
 			text: 'Anti-dian',
 			cls: 'anti-dian-title',
 		});
+	}
+
+	private renderContextBox(parent: HTMLElement): void {
+		this.contextBoxEl = parent.createDiv({ cls: 'anti-dian-context-box' });
+		this.updateContextUI(this.contextService.getActiveContext());
+	}
+
+	private updateContextUI(context: ActiveContext): void {
+		if (!this.contextBoxEl) {
+			return;
+		}
+		this.contextBoxEl.empty();
+
+		const titleRow = this.contextBoxEl.createDiv({
+			cls: 'anti-dian-context-header',
+		});
+		titleRow.createSpan({ text: 'Context' });
+
+		const bodyRow = this.contextBoxEl.createDiv({
+			cls: 'anti-dian-context-body',
+		});
+
+		if (context.activeFile) {
+			const noteName = context.activeFile
+				.replace(/\.md$/, '')
+				.split('/')
+				.pop();
+			bodyRow.createDiv({
+				text: `[[${noteName}]]`,
+				cls: 'anti-dian-context-file',
+			});
+
+			if (context.selection) {
+				const charCount = context.selection.length;
+				bodyRow.createDiv({
+					text: `Selection: ${charCount} ${charCount === 1 ? 'char' : 'chars'}`,
+					cls: 'anti-dian-context-selection',
+				});
+			}
+		} else {
+			bodyRow.createDiv({
+				text: 'No active note',
+				cls: 'anti-dian-context-empty',
+			});
+		}
 	}
 
 	private renderBody(parent: HTMLElement): void {
@@ -138,7 +199,6 @@ export class AntiDianSidebarView extends ItemView {
 			return;
 		}
 
-		// Remove empty state if present
 		const emptyState = this.messagesEl.querySelector(
 			'.anti-dian-empty-state',
 		);

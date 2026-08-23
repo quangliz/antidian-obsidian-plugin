@@ -8,16 +8,21 @@ import {
 	ANTI_DIAN_VIEW_TYPE,
 	AntiDianSidebarView,
 } from './obsidian/sidebar-view';
+import { ObsidianContextService } from './obsidian/context-service';
 
 export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
+	contextService!: ObsidianContextService;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
+		this.contextService = new ObsidianContextService(this.app);
+
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
-			(leaf: WorkspaceLeaf) => new AntiDianSidebarView(leaf),
+			(leaf: WorkspaceLeaf) =>
+				new AntiDianSidebarView(leaf, this.contextService),
 		);
 
 		this.addRibbonIcon('bot', 'Open anti-dian', () => {
@@ -35,7 +40,9 @@ export default class AntiDianPlugin extends Plugin {
 		this.addSettingTab(new AntiDianSettingTab(this.app, this));
 	}
 
-	onunload(): void {}
+	onunload(): void {
+		this.contextService?.destroy();
+	}
 
 	async activateView(): Promise<void> {
 		const { workspace } = this.app;
