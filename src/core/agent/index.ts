@@ -1,4 +1,4 @@
-import { ActiveContext } from '../types/context';
+import { ActiveContext, ContextReference } from '../types/context';
 import { ModelProvider, Message, ToolResult } from '../types/model';
 import { Tool, ToolRegistry } from '../tools';
 
@@ -13,8 +13,14 @@ export type AgentStepEvent =
 	| { type: 'thinking' }
 	| { type: 'tool_start'; toolName: string; toolArgs: Record<string, unknown> }
 	| { type: 'tool_end'; toolName: string; toolOutput: unknown }
-	| { type: 'answer'; text: string }
+	| { type: 'answer'; text: string; contextUsed?: ContextReference[] }
 	| { type: 'error'; message: string };
+
+export interface AgentRunResult {
+	answer: string;
+	updatedHistory: Message[];
+	contextUsed: ContextReference[];
+}
 
 export class Agent {
 	private provider: ModelProvider;
@@ -52,7 +58,9 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		context?: ActiveContext,
 		history: Message[] = [],
 		onStep?: (event: AgentStepEvent) => void,
-	): Promise<{ answer: string; updatedHistory: Message[] }> {
+	): Promise<AgentRunResult> {
+		const rawContextUsed: ContextReference[] = [];
+
 		let contextPrefix = '';
 		if (context?.activeFile) {
 			const noteName = context.activeFile
@@ -64,6 +72,11 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 				contextPrefix += `\n[Selected Text in Editor:\n${context.selection}\n]`;
 			}
 			contextPrefix += '\n\n';
+
+			rawContextUsed.push({
+				path: context.activeFile,
+				reason: 'Active note',
+			});
 		}
 
 		const fullUserPrompt = contextPrefix
@@ -90,7 +103,10 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 				response = await this.provider.complete({
 					systemPrompt: this.systemPrompt,
 					messages: currentMessages,
-					tools: toolDeclarations.length > 0 ? toolDeclarations : undefined,
+					tools:
+						toolDeclarations.length > 0
+							? toolDeclarations
+							: undefined,
 				});
 			} catch (err) {
 				const errMsg =
@@ -99,6 +115,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 				return {
 					answer: `Error communicating with model: ${errMsg}`,
 					updatedHistory: currentMessages,
+					contextUsed: this.deduplicateContext(rawContextUsed),
 				};
 			}
 
@@ -123,6 +140,9 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 						try {
 							output = await tool.execute(call.args, {
 								context,
+								recordContext: (ref: ContextReference) => {
+									rawContextUsed.push(ref);
+								},
 							});
 						} catch (err) {
 							output = {
@@ -133,7 +153,9 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 							};
 						}
 					} else {
-						output = { error: `Tool ${call.name} not found in registry` };
+						output = {
+							error: `Tool ${call.name} not found in registry`,
+						};
 					}
 
 					onStep?.({
@@ -156,17 +178,36 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 			} else {
 				const answerText =
 					response.text || '(No response text generated)';
-				onStep?.({ type: 'answer', text: answerText });
+				const contextUsed = this.deduplicateContext(rawContextUsed);
+				onStep?.({ type: 'answer', text: answerText, contextUsed });
 				currentMessages.push({
 					role: 'assistant',
 					text: answerText,
 				});
-				return { answer: answerText, updatedHistory: currentMessages };
+				return { answer: answerText, updatedHistory: currentMessages, contextUsed };
 			}
 		}
 
 		const fallback = 'Agent reached maximum tool turns limit.';
-		onStep?.({ type: 'answer', text: fallback });
-		return { answer: fallback, updatedHistory: currentMessages };
+		const contextUsed = this.deduplicateContext(rawContextUsed);
+		onStep?.({ type: 'answer', text: fallback, contextUsed });
+		return { answer: fallback, updatedHistory: currentMessages, contextUsed };
+	}
+
+	private deduplicateContext(
+		refs: ContextReference[],
+	): ContextReference[] {
+		const seen = new Set<string>();
+		const result: ContextReference[] = [];
+
+		for (const ref of refs) {
+			const key = `${ref.path}#${ref.heading ?? ''}`;
+			if (!seen.has(key)) {
+				seen.add(key);
+				result.push(ref);
+			}
+		}
+
+		return result;
 	}
 }

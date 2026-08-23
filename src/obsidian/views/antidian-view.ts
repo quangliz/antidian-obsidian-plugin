@@ -4,7 +4,11 @@ import {
 	WorkspaceLeaf,
 	setIcon,
 } from 'obsidian';
-import { ActiveContext, ContextService } from '../../core/types/context';
+import {
+	ActiveContext,
+	ContextReference,
+	ContextService,
+} from '../../core/types/context';
 import { Agent, AgentStepEvent } from '../../core/agent';
 import { Message } from '../../core/types/model';
 
@@ -268,6 +272,10 @@ export class AntiDianView extends ItemView {
 				activeCtx.activeFile ?? '',
 				this,
 			);
+
+			if (result.contextUsed && result.contextUsed.length > 0) {
+				this.renderContextUsed(agentMsg, result.contextUsed);
+			}
 		} catch (err) {
 			stepsEl.empty();
 			answerEl.createEl('p', {
@@ -280,6 +288,65 @@ export class AntiDianView extends ItemView {
 				this.sendButtonEl.disabled = false;
 			}
 			this.scrollToBottom();
+		}
+	}
+
+	private renderContextUsed(
+		parent: HTMLElement,
+		refs: ContextReference[],
+	): void {
+		if (!refs || refs.length === 0) {
+			return;
+		}
+
+		const container = parent.createDiv({
+			cls: 'anti-dian-context-used',
+		});
+		container.createDiv({
+			text: 'Context used',
+			cls: 'anti-dian-context-used-header',
+		});
+
+		const listEl = container.createDiv({
+			cls: 'anti-dian-context-used-list',
+		});
+
+		const grouped = new Map<string, Set<string>>();
+		for (const ref of refs) {
+			if (!grouped.has(ref.path)) {
+				grouped.set(ref.path, new Set());
+			}
+			if (ref.heading) {
+				grouped.get(ref.path)?.add(ref.heading);
+			}
+		}
+
+		for (const [filePath, headings] of grouped) {
+			const itemEl = listEl.createDiv({
+				cls: 'anti-dian-context-used-item',
+			});
+
+			const noteName = filePath.replace(/\.md$/, '').split('/').pop();
+			const linkEl = itemEl.createEl('a', {
+				text: `[[${noteName}]]`,
+				cls: 'anti-dian-context-used-link internal-link',
+			});
+			linkEl.onclick = (e) => {
+				e.preventDefault();
+				void this.app.workspace.openLinkText(filePath, '');
+			};
+
+			if (headings.size > 0) {
+				const headingsList = itemEl.createDiv({
+					cls: 'anti-dian-context-used-headings',
+				});
+				for (const heading of headings) {
+					headingsList.createDiv({
+						text: `# ${heading}`,
+						cls: 'anti-dian-context-used-heading',
+					});
+				}
+			}
 		}
 	}
 

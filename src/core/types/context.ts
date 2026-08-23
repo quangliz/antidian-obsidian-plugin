@@ -7,6 +7,12 @@ export interface ActiveContext {
 	};
 }
 
+export interface ContextReference {
+	path: string;
+	heading?: string;
+	reason: string;
+}
+
 export interface ContextService {
 	getActiveContext(): ActiveContext;
 	onContextChange(callback: (context: ActiveContext) => void): () => void;

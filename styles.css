@@ -163,7 +163,7 @@
 	max-width: 90%;
 	display: flex;
 	flex-direction: column;
-	gap: var(--size-4-1);
+	gap: var(--size-4-2);
 }
 
 .anti-dian-steps {
@@ -200,6 +200,60 @@
 
 .anti-dian-answer-body p:last-child {
 	margin-bottom: 0;
+}
+
+.anti-dian-context-used {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: var(--size-4-2);
+	margin-top: var(--size-4-1);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.anti-dian-context-used-header {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.anti-dian-context-used-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.anti-dian-context-used-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.anti-dian-context-used-link {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	color: var(--text-accent);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.anti-dian-context-used-link:hover {
+	text-decoration: underline;
+}
+
+.anti-dian-context-used-headings {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding-left: var(--size-4-2);
+}
+
+.anti-dian-context-used-heading {
+	font-size: calc(var(--font-ui-smaller) * 0.95);
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
 }
 
 .anti-dian-error-text {

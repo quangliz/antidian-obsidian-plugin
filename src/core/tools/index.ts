@@ -5,10 +5,11 @@ import {
 	ReadNoteParams,
 	NoteContent,
 } from '../types/vault';
-import { ActiveContext } from '../types/context';
+import { ActiveContext, ContextReference } from '../types/context';
 
 export interface ToolContext {
 	context?: ActiveContext;
+	recordContext?: (ref: ContextReference) => void;
 	[key: string]: unknown;
 }
 
@@ -77,12 +78,34 @@ export function createSearchNotesTool(
 		},
 		execute: async (
 			input: SearchNotesParams,
+			ctx?: ToolContext,
 		): Promise<VaultSearchResult[]> => {
 			const query =
 				typeof input?.query === 'string' ? input.query : '';
 			const limit =
 				typeof input?.limit === 'number' ? input.limit : undefined;
-			return vaultService.searchNotes({ query, limit });
+			const results = await vaultService.searchNotes({ query, limit });
+
+			if (ctx?.recordContext) {
+				for (const res of results) {
+					if (res.matches && res.matches.length > 0) {
+						for (const m of res.matches) {
+							ctx.recordContext({
+								path: res.path,
+								heading: m.heading,
+								reason: 'Search match',
+							});
+						}
+					} else {
+						ctx.recordContext({
+							path: res.path,
+							reason: 'Search match',
+						});
+					}
+				}
+			}
+
+			return results;
 		},
 	};
 }
@@ -110,11 +133,22 @@ export function createReadNoteTool(
 		},
 		execute: async (
 			input: ReadNoteParams,
+			ctx?: ToolContext,
 		): Promise<NoteContent | null> => {
 			const path = typeof input?.path === 'string' ? input.path : '';
 			const heading =
 				typeof input?.heading === 'string' ? input.heading : undefined;
-			return vaultService.readNote({ path, heading });
+			const note = await vaultService.readNote({ path, heading });
+
+			if (note && ctx?.recordContext) {
+				ctx.recordContext({
+					path: note.path,
+					heading: note.heading,
+					reason: 'Read note',
+				});
+			}
+
+			return note;
 		},
 	};
 }
