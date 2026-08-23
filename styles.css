@@ -1,8 +1,162 @@
-/*
+.anti-dian-sidebar-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: var(--size-4-2);
+	gap: var(--size-4-2);
+	box-sizing: border-box;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.anti-dian-header {
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: var(--size-4-2);
+}
 
-If your plugin does not need CSS, delete this file.
+.anti-dian-title-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
 
-*/
+.anti-dian-title {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+}
+
+.anti-dian-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-accent);
+}
+
+.anti-dian-messages {
+	flex: 1;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
+
+.anti-dian-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: var(--size-4-6) var(--size-4-2);
+	margin: auto 0;
+	gap: var(--size-4-2);
+}
+
+.anti-dian-big-icon svg {
+	width: 32px;
+	height: 32px;
+	color: var(--text-muted);
+}
+
+.anti-dian-empty-title {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	color: var(--text-normal);
+}
+
+.anti-dian-empty-desc {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	max-width: 240px;
+}
+
+.anti-dian-suggestions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	width: 100%;
+	max-width: 240px;
+	margin-top: var(--size-4-2);
+}
+
+.anti-dian-suggestion-pill {
+	font-size: var(--font-ui-smaller);
+	text-align: left;
+	padding: var(--size-4-1) var(--size-4-2);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.anti-dian-suggestion-pill:hover {
+	background: var(--background-modifier-hover);
+}
+
+.anti-dian-message {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+}
+
+.anti-dian-message p {
+	margin: 0;
+}
+
+.anti-dian-message-user {
+	align-self: flex-end;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	max-width: 85%;
+}
+
+.anti-dian-message-agent {
+	align-self: flex-start;
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+	max-width: 85%;
+}
+
+.anti-dian-placeholder-reply {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.anti-dian-input-container {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: var(--size-4-2);
+}
+
+.anti-dian-input {
+	width: 100%;
+	resize: none;
+	padding: var(--size-4-2);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	font-family: inherit;
+	font-size: var(--font-ui-small);
+	box-sizing: border-box;
+}
+
+.anti-dian-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.anti-dian-controls-row {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.anti-dian-send-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--size-4-1) var(--size-4-2);
+	cursor: pointer;
+}

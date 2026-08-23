@@ -1,36 +1,33 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import MyPlugin from './main';
+import type AntiDianPlugin from './main';
 
-export interface MyPluginSettings {
-	mySetting: string;
+export interface AntiDianSettings {
+	apiKey?: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default',
-};
+export const DEFAULT_SETTINGS: AntiDianSettings = {};
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class AntiDianSettingTab extends PluginSettingTab {
+	plugin: AntiDianPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: AntiDianPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
 		const { containerEl } = this;
-
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc("It's a secret")
+			.setName('API key')
+			.setDesc('Gemini or model provider API key')
 			.addText((text) =>
 				text
-					.setPlaceholder('Enter your secret')
-					.setValue(this.plugin.settings.mySetting)
+					.setPlaceholder('Enter API key')
+					.setValue(this.plugin.settings.apiKey ?? '')
 					.onChange(async (value) => {
-						this.plugin.settings.mySetting = value;
+						this.plugin.settings.apiKey = value.trim();
 						await this.plugin.saveSettings();
 					}),
 			);
