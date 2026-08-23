@@ -61,13 +61,7 @@ export default class AntiDianPlugin extends Plugin {
 
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
-			(leaf: WorkspaceLeaf) =>
-				new AntiDianView(
-					leaf,
-					this.workspaceAdapter,
-					this.agent,
-					this.validator,
-				),
+			(leaf: WorkspaceLeaf) => new AntiDianView(leaf, this),
 		);
 
 		this.addRibbonIcon('bot', 'Open anti-dian', () => {

@@ -4,6 +4,7 @@ import {
 	WorkspaceLeaf,
 	setIcon,
 } from 'obsidian';
+import type AntiDianPlugin from '../../main';
 import {
 	ActiveContext,
 	ContextReference,
@@ -13,15 +14,36 @@ import { Agent, AgentStepEvent } from '../../core/agent';
 import { Message } from '../../core/types/model';
 import { ChangeSet } from '../../core/types/changes';
 import { ChangeSetValidator } from '../../core/transactions';
+import {
+	fetchAvailableModels,
+	formatTokens,
+	AvailableModel,
+	ModelGroup,
+} from '../../core/models/antigravity-oauth';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
+interface ActionItem {
+	id: string;
+	name: string;
+	args: Record<string, unknown>;
+	output?: unknown;
+	status: 'running' | 'done' | 'error';
+	error?: string;
+}
+
 export class AntiDianView extends ItemView {
+	private plugin: AntiDianPlugin;
 	private contextService: ContextService;
 	private agent: Agent;
 	private validator?: ChangeSetValidator;
 	private unsubscribeContext: (() => void) | null = null;
 	private contextBoxEl: HTMLElement | null = null;
+	private modelInfoEl: HTMLElement | null = null;
+	private modelSelectEl: HTMLSelectElement | null = null;
+	private effortSelectEl: HTMLSelectElement | null = null;
+	private availableModels: AvailableModel[] = [];
+	private modelGroups: ModelGroup[] = [];
 	private inputEl: HTMLTextAreaElement | null = null;
 	private sendButtonEl: HTMLButtonElement | null = null;
 	private messagesEl: HTMLElement | null = null;
@@ -30,14 +52,13 @@ export class AntiDianView extends ItemView {
 
 	constructor(
 		leaf: WorkspaceLeaf,
-		contextService: ContextService,
-		agent: Agent,
-		validator?: ChangeSetValidator,
+		plugin: AntiDianPlugin,
 	) {
 		super(leaf);
-		this.contextService = contextService;
-		this.agent = agent;
-		this.validator = validator;
+		this.plugin = plugin;
+		this.contextService = plugin.workspaceAdapter;
+		this.agent = plugin.agent;
+		this.validator = plugin.validator;
 	}
 
 	getViewType(): string {
@@ -67,6 +88,8 @@ export class AntiDianView extends ItemView {
 				this.updateContextUI(context);
 			},
 		);
+
+		void this.loadModels();
 	}
 
 	async onClose(): Promise<void> {
@@ -79,15 +102,227 @@ export class AntiDianView extends ItemView {
 
 	private renderHeader(parent: HTMLElement): void {
 		const headerEl = parent.createDiv({ cls: 'anti-dian-header' });
+
 		const titleRow = headerEl.createDiv({ cls: 'anti-dian-title-row' });
+		const leftGroup = titleRow.createDiv({ cls: 'anti-dian-title-left' });
 
-		const iconSpan = titleRow.createSpan({ cls: 'anti-dian-icon' });
-		setIcon(iconSpan, 'bot');
+		leftGroup.createEl('img', {
+			cls: 'anti-dian-logo-img',
+			attr: {
+				src: this.getLogoUrl(),
+				alt: 'Anti-dian',
+			},
+		});
 
-		titleRow.createSpan({
+		leftGroup.createSpan({
 			text: 'Anti-dian',
 			cls: 'anti-dian-title',
 		});
+
+		const rightGroup = titleRow.createDiv({ cls: 'anti-dian-title-right' });
+		this.modelSelectEl = rightGroup.createEl('select', {
+			cls: 'anti-dian-model-picker-select',
+		});
+
+		this.effortSelectEl = rightGroup.createEl('select', {
+			cls: 'anti-dian-effort-picker-select anti-dian-hidden',
+		});
+
+		const opt = this.modelSelectEl.createEl('option', {
+			text: this.plugin.settings.model ?? 'Loading models...',
+			value: this.plugin.settings.model ?? '',
+		});
+		opt.selected = true;
+
+		this.modelSelectEl.onchange = () => {
+			this.onModelGroupChange();
+		};
+
+		this.effortSelectEl.onchange = () => {
+			this.onEffortChange();
+		};
+
+		this.modelInfoEl = headerEl.createDiv({
+			cls: 'anti-dian-model-info-bar',
+		});
+		this.updateModelInfoDisplay(this.plugin.settings.model);
+	}
+
+	private onModelGroupChange(): void {
+		const selectedBase = this.modelSelectEl?.value;
+		const group = this.modelGroups.find((g) => g.baseName === selectedBase);
+		if (!group) return;
+
+		this.populateEffortOptions(group);
+
+		const firstVariant =
+			group.variants.find(
+				(v) => v.thinkingEffort.toLowerCase() === 'high',
+			) ?? group.variants[0];
+
+		if (firstVariant) {
+			if (this.effortSelectEl) {
+				this.effortSelectEl.value = firstVariant.thinkingEffort;
+			}
+			this.setActiveModel(
+				firstVariant.id,
+				group,
+				firstVariant.thinkingEffort,
+			);
+		}
+	}
+
+	private onEffortChange(): void {
+		const selectedBase = this.modelSelectEl?.value;
+		const selectedEffort = this.effortSelectEl?.value;
+		const group = this.modelGroups.find((g) => g.baseName === selectedBase);
+		if (!group) return;
+
+		const variant =
+			group.variants.find((v) => v.thinkingEffort === selectedEffort) ??
+			group.variants[0];
+
+		if (variant) {
+			this.setActiveModel(variant.id, group, variant.thinkingEffort);
+		}
+	}
+
+	private populateEffortOptions(
+		group: ModelGroup,
+		currentEffort?: string,
+	): void {
+		if (!this.effortSelectEl) return;
+		this.effortSelectEl.empty();
+
+		if (group.variants.length > 1) {
+			this.effortSelectEl.removeClass('anti-dian-hidden');
+			for (const v of group.variants) {
+				const opt = this.effortSelectEl.createEl('option', {
+					text: `🧠 ${v.thinkingEffort}`,
+					value: v.thinkingEffort,
+				});
+				if (
+					currentEffort &&
+					v.thinkingEffort.toLowerCase() ===
+						currentEffort.toLowerCase()
+				) {
+					opt.selected = true;
+				}
+			}
+		} else {
+			this.effortSelectEl.addClass('anti-dian-hidden');
+		}
+	}
+
+	private setActiveModel(
+		modelId: string,
+		group?: ModelGroup,
+		effort?: string,
+	): void {
+		this.plugin.settings.model = modelId;
+		this.plugin.geminiProvider.setModel(modelId);
+		void this.plugin.saveSettings();
+		this.updateModelInfoDisplay(modelId, group, effort);
+	}
+
+	private async loadModels(): Promise<void> {
+		try {
+			const { models, groups, defaultModelId } =
+				await fetchAvailableModels();
+			this.availableModels = models;
+			this.modelGroups = groups;
+
+			const currentModelId =
+				this.plugin.settings.model ||
+				defaultModelId ||
+				'gemini-3.7-flash-high';
+
+			let activeGroup = groups.find((g) =>
+				g.variants.some((v) => v.id === currentModelId),
+			);
+			if (!activeGroup && groups.length > 0) {
+				activeGroup = groups[0];
+			}
+
+			if (this.modelSelectEl) {
+				this.modelSelectEl.empty();
+				for (const g of groups) {
+					const ctxLabel = g.maxTokens
+						? ` (${formatTokens(g.maxTokens)})`
+						: '';
+					const option = this.modelSelectEl.createEl('option', {
+						text: `${g.baseName}${ctxLabel}`,
+						value: g.baseName,
+					});
+					if (activeGroup && g.baseName === activeGroup.baseName) {
+						option.selected = true;
+					}
+				}
+			}
+
+			if (activeGroup) {
+				const activeVariant =
+					activeGroup.variants.find((v) => v.id === currentModelId) ??
+					activeGroup.variants[0];
+				const currentEffort = activeVariant?.thinkingEffort;
+				this.populateEffortOptions(activeGroup, currentEffort);
+				this.updateModelInfoDisplay(
+					currentModelId,
+					activeGroup,
+					currentEffort,
+				);
+			}
+		} catch {
+			if (this.modelInfoEl) {
+				this.modelInfoEl.empty();
+				const badge = this.modelInfoEl.createSpan({
+					cls: 'anti-dian-model-chip',
+				});
+				badge.setText(
+					this.plugin.settings.model ?? 'gemini-3.7-flash-high',
+				);
+			}
+		}
+	}
+
+	private updateModelInfoDisplay(
+		modelId?: string,
+		group?: ModelGroup,
+		effort?: string,
+	): void {
+		if (!this.modelInfoEl) return;
+		this.modelInfoEl.empty();
+
+		const modelInfo = this.availableModels.find((m) => m.id === modelId);
+		const maxTokens = group?.maxTokens ?? modelInfo?.maxTokens;
+
+		const chipContainer = this.modelInfoEl.createDiv({
+			cls: 'anti-dian-model-chips',
+		});
+
+		if (maxTokens) {
+			const tokenChip = chipContainer.createSpan({
+				cls: 'anti-dian-model-chip anti-dian-chip-ctx',
+			});
+			tokenChip.setText(`⚡ ${formatTokens(maxTokens)} context`);
+		}
+
+		if (effort && effort !== 'Default') {
+			const thinkChip = chipContainer.createSpan({
+				cls: 'anti-dian-model-chip anti-dian-chip-think',
+			});
+			thinkChip.setText(`🧠 Effort: ${effort}`);
+		} else if (group?.supportsThinking || modelInfo?.supportsThinking) {
+			const thinkChip = chipContainer.createSpan({
+				cls: 'anti-dian-model-chip anti-dian-chip-think',
+			});
+			thinkChip.setText('🧠 Thinking');
+		}
+
+		const authChip = chipContainer.createSpan({
+			cls: 'anti-dian-model-chip anti-dian-chip-auth',
+		});
+		authChip.setText('🔑 Connected');
 	}
 
 	private renderContextBox(parent: HTMLElement): void {
@@ -142,8 +377,13 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-empty-state',
 		});
 
-		const bigIcon = emptyState.createDiv({ cls: 'anti-dian-big-icon' });
-		setIcon(bigIcon, 'bot');
+		emptyState.createEl('img', {
+			cls: 'anti-dian-empty-logo-img',
+			attr: {
+				src: this.getLogoUrl(),
+				alt: 'Anti-dian',
+			},
+		});
 
 		emptyState.createEl('h4', {
 			text: 'Anti-dian assistant',
@@ -248,13 +488,20 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const stepsEl = agentMsg.createDiv({ cls: 'anti-dian-steps' });
+		const actionsContainer = agentMsg.createDiv({
+			cls: 'anti-dian-actions-container',
+		});
+		const liveStatusEl = agentMsg.createDiv({
+			cls: 'anti-dian-live-status',
+		});
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 
-		const stepItem = stepsEl.createDiv({
-			cls: 'anti-dian-step anti-dian-step-thinking',
+		liveStatusEl.createSpan({
+			text: 'Thinking...',
+			cls: 'anti-dian-status-text',
 		});
-		stepItem.createSpan({ text: 'Thinking...' });
+
+		const actions: ActionItem[] = [];
 
 		try {
 			const activeCtx = this.contextService.getActiveContext();
@@ -263,12 +510,17 @@ export class AntiDianView extends ItemView {
 				activeCtx,
 				this.history,
 				(step: AgentStepEvent) => {
-					this.handleAgentStep(step, stepsEl);
+					this.handleAgentStep(
+						step,
+						actions,
+						actionsContainer,
+						liveStatusEl,
+					);
 				},
 			);
 
 			this.history = result.updatedHistory;
-			stepsEl.empty();
+			liveStatusEl.remove();
 
 			await MarkdownRenderer.render(
 				this.app,
@@ -286,7 +538,7 @@ export class AntiDianView extends ItemView {
 				await this.renderChangeSet(agentMsg, result.changeSet);
 			}
 		} catch (err) {
-			stepsEl.empty();
+			liveStatusEl.remove();
 			answerEl.createEl('p', {
 				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
 				cls: 'anti-dian-error-text',
@@ -298,6 +550,171 @@ export class AntiDianView extends ItemView {
 			}
 			this.scrollToBottom();
 		}
+	}
+
+	private handleAgentStep(
+		step: AgentStepEvent,
+		actions: ActionItem[],
+		actionsContainer: HTMLElement,
+		liveStatusEl: HTMLElement,
+	): void {
+		if (step.type === 'thinking') {
+			liveStatusEl.empty();
+			liveStatusEl.createSpan({
+				text: 'Thinking...',
+				cls: 'anti-dian-status-text',
+			});
+		} else if (step.type === 'tool_start') {
+			const action: ActionItem = {
+				id: `act_${Date.now()}_${actions.length}`,
+				name: step.toolName,
+				args: step.toolArgs,
+				status: 'running',
+			};
+			actions.push(action);
+
+			liveStatusEl.empty();
+			liveStatusEl.createSpan({
+				text: `Running ${step.toolName}...`,
+				cls: 'anti-dian-status-text',
+			});
+
+			this.renderActions(actionsContainer, actions);
+		} else if (step.type === 'tool_end') {
+			const current = actions.find(
+				(a) => a.name === step.toolName && a.status === 'running',
+			);
+			if (current) {
+				current.output = step.toolOutput;
+				current.status = 'done';
+			}
+
+			liveStatusEl.empty();
+			liveStatusEl.createSpan({
+				text: `Synthesizing...`,
+				cls: 'anti-dian-status-text',
+			});
+
+			this.renderActions(actionsContainer, actions);
+		}
+		this.scrollToBottom();
+	}
+
+	private renderActions(
+		container: HTMLElement,
+		actions: ActionItem[],
+	): void {
+		container.empty();
+		if (actions.length === 0) return;
+
+		const details = container.createEl('details', {
+			cls: 'anti-dian-actions-details',
+		});
+		details.open = true;
+
+		const summary = details.createEl('summary', {
+			cls: 'anti-dian-actions-summary',
+		});
+		summary.createSpan({
+			text: `🛠️ Actions (${actions.length} ${actions.length === 1 ? 'tool call' : 'tool calls'})`,
+			cls: 'anti-dian-actions-summary-title',
+		});
+
+		const list = details.createDiv({ cls: 'anti-dian-actions-list' });
+
+		for (const act of actions) {
+			const item = list.createDiv({ cls: 'anti-dian-action-item' });
+
+			const header = item.createDiv({ cls: 'anti-dian-action-header' });
+			const toolIcon = this.getToolIcon(act.name);
+			header.createSpan({
+				text: `${toolIcon} ${act.name}`,
+				cls: 'anti-dian-action-name',
+			});
+
+			const argSummary = this.formatArgSummary(act.args);
+			if (argSummary) {
+				header.createSpan({
+					text: argSummary,
+					cls: 'anti-dian-action-args-summary',
+				});
+			}
+
+			const statusBadge = header.createSpan({
+				cls: `anti-dian-action-status anti-dian-status-${act.status}`,
+			});
+			statusBadge.setText(
+				act.status === 'running'
+					? 'running...'
+					: act.status === 'done'
+						? 'done ✓'
+						: 'error',
+			);
+
+			if (act.output !== undefined) {
+				const outputBox = item.createEl('details', {
+					cls: 'anti-dian-action-output-details',
+				});
+				const outSummary = outputBox.createEl('summary', {
+					text: this.formatOutputSummary(act.output),
+					cls: 'anti-dian-action-out-summary',
+				});
+				outSummary.addClass('text-muted');
+
+				const pre = outputBox.createEl('pre', {
+					cls: 'anti-dian-action-raw-output',
+				});
+				pre.setText(
+					typeof act.output === 'string'
+						? act.output
+						: JSON.stringify(act.output, null, 2),
+				);
+			}
+		}
+	}
+
+	private getToolIcon(name: string): string {
+		switch (name) {
+			case 'search_notes':
+				return '🔍';
+			case 'read_note':
+				return '📖';
+			case 'create_note':
+				return '📝';
+			case 'patch_note':
+				return '✏️';
+			default:
+				return '⚙️';
+		}
+	}
+
+	private formatArgSummary(args: Record<string, unknown>): string {
+		if (typeof args.query === 'string') {
+			return `"${args.query}"`;
+		}
+		if (typeof args.path === 'string') {
+			const note = args.path.replace(/\.md$/, '').split('/').pop();
+			const h =
+				typeof args.heading === 'string' ? ` > #${args.heading}` : '';
+			return `[[${note}]]${h}`;
+		}
+		return '';
+	}
+
+	private formatOutputSummary(output: unknown): string {
+		if (Array.isArray(output)) {
+			return `Result: ${output.length} items`;
+		}
+		if (typeof output === 'object' && output !== null) {
+			const rec = output as Record<string, unknown>;
+			if (typeof rec.content === 'string') {
+				return `Result: ${rec.content.length} characters`;
+			}
+			if (rec.staged) {
+				return `Result: staged for review`;
+			}
+		}
+		return 'Result preview';
 	}
 
 	private renderContextUsed(
@@ -429,35 +846,11 @@ export class AntiDianView extends ItemView {
 		}
 	}
 
-	private handleAgentStep(step: AgentStepEvent, stepsEl: HTMLElement): void {
-		if (step.type === 'thinking') {
-			stepsEl.empty();
-			const s = stepsEl.createDiv({
-				cls: 'anti-dian-step anti-dian-step-thinking',
-			});
-			s.createSpan({ text: 'Thinking...' });
-		} else if (step.type === 'tool_start') {
-			stepsEl.empty();
-			const s = stepsEl.createDiv({
-				cls: 'anti-dian-step anti-dian-step-tool',
-			});
-			const query =
-				typeof step.toolArgs.query === 'string'
-					? step.toolArgs.query
-					: typeof step.toolArgs.path === 'string'
-						? step.toolArgs.path
-						: '';
-			s.createSpan({
-				text: `Calling ${step.toolName}${query ? ` ("${query}")` : ''}...`,
-			});
-		} else if (step.type === 'tool_end') {
-			stepsEl.empty();
-			const s = stepsEl.createDiv({
-				cls: 'anti-dian-step anti-dian-step-tool-done',
-			});
-			s.createSpan({ text: `Processing ${step.toolName} results...` });
-		}
-		this.scrollToBottom();
+	private getLogoUrl(): string {
+		const dir =
+			this.plugin.manifest.dir ??
+			`.obsidian/plugins/${this.plugin.manifest.id}`;
+		return this.app.vault.adapter.getResourcePath(`${dir}/assets/logo.png`);
 	}
 
 	private scrollToBottom(): void {
