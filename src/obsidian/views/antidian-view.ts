@@ -947,9 +947,8 @@ export class AntiDianView extends ItemView {
 			rejectBtn.disabled = true;
 			applyBtn.setText('Applying...');
 
-			const applyRes = await this.plugin.applicator.apply(changeSet);
-
-			if (applyRes.success) {
+			try {
+				const applied = await this.plugin.applicator.apply(changeSet);
 				badge.setText('Applied ✓');
 				badge.className =
 					'anti-dian-changeset-badge anti-dian-badge-valid';
@@ -957,23 +956,21 @@ export class AntiDianView extends ItemView {
 				reviewBtnRow.addClass('anti-dian-hidden');
 				resultNotice.removeClass('anti-dian-hidden');
 				resultNotice.setText(
-					`✓ Applied ${applyRes.appliedCount} ${applyRes.appliedCount === 1 ? 'change' : 'changes'} to vault`,
+					`✓ Applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'} to vault`,
 				);
 				resultNotice.className =
 					'anti-dian-changeset-result-notice anti-dian-notice-applied';
-			} else {
+			} catch (err) {
 				applyBtn.disabled = false;
 				rejectBtn.disabled = false;
 				applyBtn.setText('Apply');
 				const errEl = card.createDiv({
 					cls: 'anti-dian-changeset-errors',
 				});
-				for (const msg of applyRes.errors) {
-					errEl.createDiv({
-						text: `⚠️ ${msg}`,
-						cls: 'anti-dian-changeset-error-item',
-					});
-				}
+				errEl.createDiv({
+					text: `⚠️ ${err instanceof Error ? err.message : String(err)}`,
+					cls: 'anti-dian-changeset-error-item',
+				});
 			}
 		};
 	}

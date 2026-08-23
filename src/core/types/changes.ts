@@ -72,3 +72,19 @@ export interface ChangeSetDiff {
 	totalAdditions: number;
 	totalDeletions: number;
 }
+
+export interface AppliedOperation {
+	operation: ChangeOperation;
+	appliedAt: number;
+	previousContent?: string;
+}
+
+export interface AppliedChangeSet {
+	id: string;
+	appliedAt: number;
+	operations: AppliedOperation[];
+}
+
+export interface MutationService {
+	apply(changeSet: ChangeSet): Promise<AppliedChangeSet>;
+}

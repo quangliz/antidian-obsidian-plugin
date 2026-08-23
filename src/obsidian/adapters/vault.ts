@@ -6,9 +6,15 @@ import {
 	SearchResult,
 	NoteContent,
 } from '../../core/types/vault';
+import {
+	AppliedChangeSet,
+	AppliedOperation,
+	ChangeSet,
+	MutationService,
+} from '../../core/types/changes';
 import { ObsidianMetadataAdapter } from './metadata';
 
-export class ObsidianVaultAdapter implements VaultService {
+export class ObsidianVaultAdapter implements VaultService, MutationService {
 	private app: App;
 	private metadataAdapter: ObsidianMetadataAdapter;
 
@@ -419,5 +425,42 @@ export class ObsidianVaultAdapter implements VaultService {
 			}
 		}
 		return current;
+	}
+
+	async apply(changeSet: ChangeSet): Promise<AppliedChangeSet> {
+		const appliedOps: AppliedOperation[] = [];
+
+		for (const op of changeSet.operations) {
+			let previousContent: string | undefined;
+
+			if (op.type === 'create') {
+				await this.createNote(op.path, op.content);
+				appliedOps.push({
+					operation: op,
+					appliedAt: Date.now(),
+					previousContent: undefined,
+				});
+			} else if (op.type === 'patch-section') {
+				const existing = await this.readNote({
+					path: op.path,
+					heading: op.heading,
+				});
+				previousContent = existing?.content;
+				await this.patchSection(op.path, op.heading, op.content);
+				appliedOps.push({
+					operation: op,
+					appliedAt: Date.now(),
+					previousContent,
+				});
+			}
+		}
+
+		changeSet.status = 'applied';
+
+		return {
+			id: changeSet.id,
+			appliedAt: Date.now(),
+			operations: appliedOps,
+		};
 	}
 }

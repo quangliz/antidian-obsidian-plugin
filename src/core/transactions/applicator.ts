@@ -1,66 +1,33 @@
-import { ChangeSet } from '../types/changes';
-import { VaultService } from '../types/vault';
+import {
+	AppliedChangeSet,
+	ChangeSet,
+	MutationService,
+} from '../types/changes';
 import { ChangeSetValidator } from './validator';
 
-export interface ApplyResult {
-	success: boolean;
-	appliedCount: number;
-	errors: string[];
-}
-
 export class ChangeSetApplicator {
-	private vaultService: VaultService;
+	private mutationService: MutationService;
 	private validator?: ChangeSetValidator;
 
-	constructor(vaultService: VaultService, validator?: ChangeSetValidator) {
-		this.vaultService = vaultService;
+	constructor(
+		mutationService: MutationService,
+		validator?: ChangeSetValidator,
+	) {
+		this.mutationService = mutationService;
 		this.validator = validator;
 	}
 
-	async apply(changeSet: ChangeSet): Promise<ApplyResult> {
+	async apply(changeSet: ChangeSet): Promise<AppliedChangeSet> {
 		if (this.validator) {
 			const validation = await this.validator.validate(changeSet);
 			if (!validation.valid) {
-				return {
-					success: false,
-					appliedCount: 0,
-					errors: validation.errors.map(
-						(e) => `[${e.code}] ${e.message}`,
-					),
-				};
+				const msgs = validation.errors
+					.map((e) => `[${e.code}] ${e.message}`)
+					.join(', ');
+				throw new Error(`ChangeSet validation failed: ${msgs}`);
 			}
 		}
 
-		const errors: string[] = [];
-		let appliedCount = 0;
-
-		for (const op of changeSet.operations) {
-			try {
-				if (op.type === 'create') {
-					await this.vaultService.createNote(op.path, op.content);
-					appliedCount++;
-				} else if (op.type === 'patch-section') {
-					await this.vaultService.patchSection(
-						op.path,
-						op.heading,
-						op.content,
-					);
-					appliedCount++;
-				}
-			} catch (err) {
-				errors.push(
-					`Failed on ${op.path}: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			}
-		}
-
-		const success = errors.length === 0;
-		changeSet.status = success ? 'applied' : 'staged';
-
-		return {
-			success,
-			appliedCount,
-			errors,
-		};
+		return await this.mutationService.apply(changeSet);
 	}
 }
