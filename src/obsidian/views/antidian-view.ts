@@ -50,6 +50,9 @@ export class AntiDianView extends ItemView {
 	private inputEl: HTMLTextAreaElement | null = null;
 	private sendButtonEl: HTMLButtonElement | null = null;
 	private modelPillLabelEl: HTMLElement | null = null;
+	private activeNotePillEl: HTMLElement | null = null;
+	private activeNoteLabelEl: HTMLElement | null = null;
+	private includeActiveNote = true;
 	private modelMenuEl: HTMLElement | null = null;
 	private effortSubmenuEl: HTMLElement | null = null;
 	private usageSubmenuEl: HTMLElement | null = null;
@@ -184,19 +187,7 @@ export class AntiDianView extends ItemView {
 	}
 
 	private updateContextNav(context: ActiveContext): void {
-		if (!this.topNavEl) return;
-		const navTitle = this.topNavEl.querySelector('.anti-dian-nav-title');
-		if (navTitle) {
-			if (context.activeFile) {
-				const noteName = context.activeFile
-					.replace(/\.md$/, '')
-					.split('/')
-					.pop();
-				navTitle.setText(noteName || 'anti-dian');
-			} else {
-				navTitle.setText(this.app.vault.getName() || 'anti-dian');
-			}
-		}
+		this.updateActiveNotePill(context);
 	}
 
 	private renderMessagesContainer(): void {
@@ -267,6 +258,28 @@ export class AntiDianView extends ItemView {
 			this.toggleModelMenu(modelPill);
 		};
 
+		// Active note toggle pill
+		this.activeNotePillEl = leftControls.createDiv({
+			cls: 'anti-dian-active-note-pill',
+			attr: { 'aria-label': 'Toggle active note context' },
+		});
+		const noteIcon = this.activeNotePillEl.createSpan({
+			cls: 'anti-dian-active-note-icon',
+		});
+		setIcon(noteIcon, 'file-text');
+
+		this.activeNoteLabelEl = this.activeNotePillEl.createSpan({
+			cls: 'anti-dian-active-note-label',
+			text: this.getCurrentActiveNoteName(),
+		});
+
+		this.activeNotePillEl.onclick = (e) => {
+			e.stopPropagation();
+			this.toggleActiveNoteContext();
+		};
+
+		this.updateActiveNotePill();
+
 		// Send button
 		this.sendButtonEl = toolbar.createEl('button', {
 			cls: 'anti-dian-btn-send',
@@ -276,6 +289,61 @@ export class AntiDianView extends ItemView {
 		this.sendButtonEl.onclick = () => {
 			void this.handleSend();
 		};
+	}
+
+	private getCurrentActiveNoteName(): string {
+		const ctx = this.contextService.getActiveContext();
+		if (!ctx.activeFile) return 'No note';
+		return (
+			ctx.activeFile.replace(/\.md$/, '').split('/').pop() || 'No note'
+		);
+	}
+
+	private toggleActiveNoteContext(): void {
+		const ctx = this.contextService.getActiveContext();
+		if (!ctx.activeFile) return;
+		this.includeActiveNote = !this.includeActiveNote;
+		this.updateActiveNotePill(ctx);
+	}
+
+	private updateActiveNotePill(context?: ActiveContext): void {
+		if (!this.activeNotePillEl || !this.activeNoteLabelEl) return;
+		const ctx = context ?? this.contextService.getActiveContext();
+		const hasNote = Boolean(ctx.activeFile);
+		const noteName = hasNote
+			? ctx.activeFile?.replace(/\.md$/, '').split('/').pop() || 'Untitled'
+			: 'No note';
+
+		this.activeNoteLabelEl.setText(noteName);
+
+		if (!hasNote) {
+			this.activeNotePillEl.addClass('is-empty');
+			this.activeNotePillEl.removeClass('is-active');
+			this.activeNotePillEl.removeClass('is-inactive');
+			this.activeNotePillEl.setAttribute(
+				'aria-label',
+				'No active note opened',
+			);
+			return;
+		}
+
+		this.activeNotePillEl.removeClass('is-empty');
+
+		if (this.includeActiveNote) {
+			this.activeNotePillEl.addClass('is-active');
+			this.activeNotePillEl.removeClass('is-inactive');
+			this.activeNotePillEl.setAttribute(
+				'aria-label',
+				'Active note included in context (click to exclude)',
+			);
+		} else {
+			this.activeNotePillEl.addClass('is-inactive');
+			this.activeNotePillEl.removeClass('is-active');
+			this.activeNotePillEl.setAttribute(
+				'aria-label',
+				'Active note excluded from context (click to include)',
+			);
+		}
 	}
 
 	private formatCurrentModelPillLabel(): string {
@@ -868,7 +936,9 @@ export class AntiDianView extends ItemView {
 		const actions: ActionItem[] = [];
 
 		try {
-			const activeCtx = this.contextService.getActiveContext();
+			const activeCtx: ActiveContext = this.includeActiveNote
+				? this.contextService.getActiveContext()
+				: {};
 			const result = await this.agent.run(
 				text,
 				activeCtx,
