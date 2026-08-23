@@ -1,18 +1,34 @@
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import {
+	ItemView,
+	MarkdownRenderer,
+	WorkspaceLeaf,
+	setIcon,
+} from 'obsidian';
 import { ActiveContext, ContextService } from '../core/context';
+import { Agent, AgentStepEvent } from '../core/agent';
+import { Message } from '../core/model';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
 export class AntiDianSidebarView extends ItemView {
 	private contextService: ContextService;
+	private agent: Agent;
 	private unsubscribeContext: (() => void) | null = null;
 	private contextBoxEl: HTMLElement | null = null;
 	private inputEl: HTMLTextAreaElement | null = null;
+	private sendButtonEl: HTMLButtonElement | null = null;
 	private messagesEl: HTMLElement | null = null;
+	private history: Message[] = [];
+	private isRunning = false;
 
-	constructor(leaf: WorkspaceLeaf, contextService: ContextService) {
+	constructor(
+		leaf: WorkspaceLeaf,
+		contextService: ContextService,
+		agent: Agent,
+	) {
 		super(leaf);
 		this.contextService = contextService;
+		this.agent = agent;
 	}
 
 	getViewType(): string {
@@ -148,7 +164,7 @@ export class AntiDianSidebarView extends ItemView {
 			pill.onclick = () => {
 				if (this.inputEl) {
 					this.inputEl.value = prompt;
-					this.inputEl.focus();
+					void this.handleSend();
 				}
 			};
 		}
@@ -171,32 +187,37 @@ export class AntiDianSidebarView extends ItemView {
 			cls: 'anti-dian-controls-row',
 		});
 
-		const sendButton = controlsRow.createEl('button', {
+		this.sendButtonEl = controlsRow.createEl('button', {
 			cls: 'anti-dian-send-button mod-cta',
 			attr: { 'aria-label': 'Send message' },
 		});
-		setIcon(sendButton, 'send');
+		setIcon(this.sendButtonEl, 'send');
 
 		this.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
-				this.handleSend();
+				void this.handleSend();
 			}
 		});
 
-		sendButton.onclick = () => {
-			this.handleSend();
+		this.sendButtonEl.onclick = () => {
+			void this.handleSend();
 		};
 	}
 
-	private handleSend(): void {
-		if (!this.inputEl || !this.messagesEl) {
+	private async handleSend(): Promise<void> {
+		if (!this.inputEl || !this.messagesEl || this.isRunning) {
 			return;
 		}
 
 		const text = this.inputEl.value.trim();
 		if (!text) {
 			return;
+		}
+
+		this.isRunning = true;
+		if (this.sendButtonEl) {
+			this.sendButtonEl.disabled = true;
 		}
 
 		const emptyState = this.messagesEl.querySelector(
@@ -211,15 +232,91 @@ export class AntiDianSidebarView extends ItemView {
 		});
 		userMsg.createEl('p', { text });
 
+		this.inputEl.value = '';
+		this.scrollToBottom();
+
 		const agentMsg = this.messagesEl.createDiv({
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
-		agentMsg.createEl('p', {
-			text: 'Agent loop not connected yet. Vertical slice in progress.',
-			cls: 'anti-dian-placeholder-reply',
-		});
 
-		this.inputEl.value = '';
-		this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+		const stepsEl = agentMsg.createDiv({ cls: 'anti-dian-steps' });
+		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
+
+		const stepItem = stepsEl.createDiv({
+			cls: 'anti-dian-step anti-dian-step-thinking',
+		});
+		stepItem.createSpan({ text: 'Thinking...' });
+
+		try {
+			const activeCtx = this.contextService.getActiveContext();
+			const result = await this.agent.run(
+				text,
+				activeCtx,
+				this.history,
+				(step: AgentStepEvent) => {
+					this.handleAgentStep(step, stepsEl);
+				},
+			);
+
+			this.history = result.updatedHistory;
+			stepsEl.empty();
+
+			await MarkdownRenderer.render(
+				this.app,
+				result.answer,
+				answerEl,
+				activeCtx.activeFile ?? '',
+				this,
+			);
+		} catch (err) {
+			stepsEl.empty();
+			answerEl.createEl('p', {
+				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+				cls: 'anti-dian-error-text',
+			});
+		} finally {
+			this.isRunning = false;
+			if (this.sendButtonEl) {
+				this.sendButtonEl.disabled = false;
+			}
+			this.scrollToBottom();
+		}
+	}
+
+	private handleAgentStep(step: AgentStepEvent, stepsEl: HTMLElement): void {
+		if (step.type === 'thinking') {
+			stepsEl.empty();
+			const s = stepsEl.createDiv({
+				cls: 'anti-dian-step anti-dian-step-thinking',
+			});
+			s.createSpan({ text: 'Thinking...' });
+		} else if (step.type === 'tool_start') {
+			stepsEl.empty();
+			const s = stepsEl.createDiv({
+				cls: 'anti-dian-step anti-dian-step-tool',
+			});
+			const query =
+				typeof step.toolArgs.query === 'string'
+					? step.toolArgs.query
+					: typeof step.toolArgs.path === 'string'
+						? step.toolArgs.path
+						: '';
+			s.createSpan({
+				text: `Calling ${step.toolName}${query ? ` ("${query}")` : ''}...`,
+			});
+		} else if (step.type === 'tool_end') {
+			stepsEl.empty();
+			const s = stepsEl.createDiv({
+				cls: 'anti-dian-step anti-dian-step-tool-done',
+			});
+			s.createSpan({ text: `Processing ${step.toolName} results...` });
+		}
+		this.scrollToBottom();
+	}
+
+	private scrollToBottom(): void {
+		if (this.messagesEl) {
+			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+		}
 	}
 }

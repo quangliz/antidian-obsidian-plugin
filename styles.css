@@ -152,6 +152,7 @@
 	background-color: var(--interactive-accent);
 	color: var(--text-on-accent);
 	max-width: 85%;
+	word-break: break-word;
 }
 
 .anti-dian-message-agent {
@@ -159,12 +160,51 @@
 	background-color: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-normal);
-	max-width: 85%;
+	max-width: 90%;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
 }
 
-.anti-dian-placeholder-reply {
+.anti-dian-steps {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.anti-dian-step {
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+.anti-dian-step-thinking {
 	font-style: italic;
+}
+
+.anti-dian-step-tool {
+	color: var(--text-accent);
+	font-family: var(--font-monospace);
+}
+
+.anti-dian-answer-body {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+}
+
+.anti-dian-answer-body p {
+	margin-bottom: var(--size-4-2);
+}
+
+.anti-dian-answer-body p:last-child {
+	margin-bottom: 0;
+}
+
+.anti-dian-error-text {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
 }
 
 .anti-dian-input-container {

@@ -9,20 +9,37 @@ import {
 	AntiDianSidebarView,
 } from './obsidian/sidebar-view';
 import { ObsidianContextService } from './obsidian/context-service';
+import { ObsidianVaultService } from './obsidian/vault-service';
+import { GeminiProvider } from './core/gemini-provider';
+import { createVaultTools } from './core/tools';
+import { Agent } from './core/agent';
 
 export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
 	contextService!: ObsidianContextService;
+	vaultService!: ObsidianVaultService;
+	geminiProvider!: GeminiProvider;
+	agent!: Agent;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
 		this.contextService = new ObsidianContextService(this.app);
+		this.vaultService = new ObsidianVaultService(this.app);
+		this.geminiProvider = new GeminiProvider({
+			model: this.settings.model,
+		});
+
+		const tools = createVaultTools(this.vaultService);
+		this.agent = new Agent({
+			provider: this.geminiProvider,
+			tools,
+		});
 
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
 			(leaf: WorkspaceLeaf) =>
-				new AntiDianSidebarView(leaf, this.contextService),
+				new AntiDianSidebarView(leaf, this.contextService, this.agent),
 		);
 
 		this.addRibbonIcon('bot', 'Open anti-dian', () => {
@@ -70,9 +87,15 @@ export default class AntiDianPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<AntiDianSettings>,
 		);
+		if (this.geminiProvider && this.settings.model) {
+			this.geminiProvider.setModel(this.settings.model);
+		}
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+		if (this.geminiProvider && this.settings.model) {
+			this.geminiProvider.setModel(this.settings.model);
+		}
 	}
 }
