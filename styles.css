@@ -625,8 +625,29 @@
 	border-radius: var(--radius-s);
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
-	text-align: center;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 	margin-top: 6px;
+}
+
+.anti-dian-notice-msg {
+	flex: 1;
+}
+
+.anti-dian-btn-undo {
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	padding: 2px 8px;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.anti-dian-btn-undo:hover {
+	background: var(--background-modifier-hover);
 }
 
 .anti-dian-notice-applied {

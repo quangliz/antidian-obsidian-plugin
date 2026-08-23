@@ -955,9 +955,46 @@ export class AntiDianView extends ItemView {
 				actionsRow.addClass('anti-dian-hidden');
 				reviewBtnRow.addClass('anti-dian-hidden');
 				resultNotice.removeClass('anti-dian-hidden');
-				resultNotice.setText(
-					`✓ Applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'} to vault`,
-				);
+				resultNotice.empty();
+
+				resultNotice.createSpan({
+					text: `✓ Applied ${applied.operations.length} ${applied.operations.length === 1 ? 'change' : 'changes'}`,
+					cls: 'anti-dian-notice-msg',
+				});
+
+				const undoBtn = resultNotice.createEl('button', {
+					text: 'Undo',
+					cls: 'anti-dian-btn-undo',
+				});
+
+				undoBtn.onclick = async () => {
+					undoBtn.disabled = true;
+					undoBtn.setText('Undoing...');
+					try {
+						const rollbackRes =
+							await this.plugin.applicator.rollback(changeSet.id);
+						badge.setText('Rolled back');
+						badge.className =
+							'anti-dian-changeset-badge anti-dian-badge-invalid';
+						resultNotice.className =
+							'anti-dian-changeset-result-notice anti-dian-notice-rejected';
+						resultNotice.empty();
+						resultNotice.setText(
+							`↺ Undid ${rollbackRes.restoredCount} ${rollbackRes.restoredCount === 1 ? 'change' : 'changes'}`,
+						);
+					} catch (undoErr) {
+						undoBtn.disabled = false;
+						undoBtn.setText('Undo');
+						const errEl = card.createDiv({
+							cls: 'anti-dian-changeset-errors',
+						});
+						errEl.createDiv({
+							text: `⚠️ ${undoErr instanceof Error ? undoErr.message : String(undoErr)}`,
+							cls: 'anti-dian-changeset-error-item',
+						});
+					}
+				};
+
 				resultNotice.className =
 					'anti-dian-changeset-result-notice anti-dian-notice-applied';
 			} catch (err) {

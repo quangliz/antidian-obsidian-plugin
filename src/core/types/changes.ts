@@ -85,6 +85,26 @@ export interface AppliedChangeSet {
 	operations: AppliedOperation[];
 }
 
+export interface FileSnapshot {
+	path: string;
+	content?: string;
+	existed: boolean;
+}
+
+export interface ChangeSetSnapshot {
+	changeSetId: string;
+	createdAt: number;
+	files: FileSnapshot[];
+}
+
+export interface RollbackResult {
+	success: boolean;
+	restoredCount: number;
+	errors: string[];
+}
+
 export interface MutationService {
 	apply(changeSet: ChangeSet): Promise<AppliedChangeSet>;
+	captureSnapshot(changeSet: ChangeSet): Promise<ChangeSetSnapshot>;
+	rollback(snapshot: ChangeSetSnapshot): Promise<RollbackResult>;
 }

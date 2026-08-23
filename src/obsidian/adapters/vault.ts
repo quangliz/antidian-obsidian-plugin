@@ -10,7 +10,10 @@ import {
 	AppliedChangeSet,
 	AppliedOperation,
 	ChangeSet,
+	ChangeSetSnapshot,
+	FileSnapshot,
 	MutationService,
+	RollbackResult,
 } from '../../core/types/changes';
 import { ObsidianMetadataAdapter } from './metadata';
 
@@ -461,6 +464,82 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 			id: changeSet.id,
 			appliedAt: Date.now(),
 			operations: appliedOps,
+		};
+	}
+
+	async captureSnapshot(changeSet: ChangeSet): Promise<ChangeSetSnapshot> {
+		const files: FileSnapshot[] = [];
+		const seenPaths = new Set<string>();
+
+		for (const op of changeSet.operations) {
+			const norm = this.normalizePath(op.path);
+			if (seenPaths.has(norm)) continue;
+			seenPaths.add(norm);
+
+			let file = this.app.vault.getAbstractFileByPath(norm);
+			if (!(file instanceof TFile)) {
+				file = this.metadataAdapter.getFirstLinkpathDest(op.path, '');
+			}
+
+			if (file instanceof TFile) {
+				const content = await this.app.vault.read(file);
+				files.push({
+					path: file.path,
+					content,
+					existed: true,
+				});
+			} else {
+				files.push({
+					path: norm,
+					content: undefined,
+					existed: false,
+				});
+			}
+		}
+
+		return {
+			changeSetId: changeSet.id,
+			createdAt: Date.now(),
+			files,
+		};
+	}
+
+	async rollback(snapshot: ChangeSetSnapshot): Promise<RollbackResult> {
+		const errors: string[] = [];
+		let restoredCount = 0;
+
+		for (const fileSnap of snapshot.files) {
+			try {
+				let file = this.app.vault.getAbstractFileByPath(fileSnap.path);
+				if (!(file instanceof TFile)) {
+					file = this.metadataAdapter.getFirstLinkpathDest(
+						fileSnap.path,
+						'',
+					);
+				}
+
+				if (fileSnap.existed && fileSnap.content !== undefined) {
+					if (file instanceof TFile) {
+						await this.app.vault.modify(file, fileSnap.content);
+					} else {
+						await this.createNote(fileSnap.path, fileSnap.content);
+					}
+					restoredCount++;
+				} else if (!fileSnap.existed && file instanceof TFile) {
+					await this.app.fileManager.trashFile(file);
+					restoredCount++;
+				}
+			} catch (err) {
+				errors.push(
+					`Failed to restore ${fileSnap.path}: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
+
+		return {
+			success: errors.length === 0,
+			restoredCount,
+			errors,
 		};
 	}
 }

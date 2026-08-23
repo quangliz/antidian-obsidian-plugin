@@ -1,13 +1,16 @@
 import {
 	AppliedChangeSet,
 	ChangeSet,
+	ChangeSetSnapshot,
 	MutationService,
+	RollbackResult,
 } from '../types/changes';
 import { ChangeSetValidator } from './validator';
 
 export class ChangeSetApplicator {
 	private mutationService: MutationService;
 	private validator?: ChangeSetValidator;
+	private snapshots: Map<string, ChangeSetSnapshot> = new Map();
 
 	constructor(
 		mutationService: MutationService,
@@ -28,6 +31,24 @@ export class ChangeSetApplicator {
 			}
 		}
 
+		// 1. Capture before-state snapshot before any file modification
+		const snapshot = await this.mutationService.captureSnapshot(changeSet);
+		this.snapshots.set(changeSet.id, snapshot);
+
+		// 2. Apply the operations to vault
 		return await this.mutationService.apply(changeSet);
+	}
+
+	async rollback(changeSetId: string): Promise<RollbackResult> {
+		const snapshot = this.snapshots.get(changeSetId);
+		if (!snapshot) {
+			throw new Error(`No before-state snapshot found for ChangeSet ${changeSetId}`);
+		}
+
+		return await this.mutationService.rollback(snapshot);
+	}
+
+	getSnapshot(changeSetId: string): ChangeSetSnapshot | undefined {
+		return this.snapshots.get(changeSetId);
 	}
 }
