@@ -1,4 +1,9 @@
-import { AgentRequest, AgentResponse, ModelProvider, ToolCall } from './model';
+import {
+	AgentRequest,
+	AgentResponse,
+	ModelProvider,
+	ToolCall,
+} from '../types/model';
 import {
 	getAccessToken,
 	discoverProject,

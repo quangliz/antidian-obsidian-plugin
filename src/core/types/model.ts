@@ -1,4 +1,4 @@
-import { ToolDefinition } from './tools';
+import { ToolDefinition } from '../tools';
 
 export interface ToolCall {
 	id: string;

@@ -5,7 +5,7 @@ import {
 	startOAuthLogin,
 	fetchAvailableModels,
 	formatTokens,
-} from './core/antigravity-oauth';
+} from './core/models/antigravity-oauth';
 
 export interface AntiDianSettings {
 	model?: string;
@@ -66,7 +66,9 @@ export class AntiDianSettingTab extends PluginSettingTab {
 
 			void fetchAvailableModels()
 				.then(({ models, defaultModelId }) => {
-					modelSetting.setDesc('Select active model for reasoning and tool use.');
+					modelSetting.setDesc(
+						'Select active model for reasoning and tool use.',
+					);
 					modelSetting.addDropdown((dropdown) => {
 						for (const m of models) {
 							const ctxLabel = m.maxTokens

@@ -2,7 +2,7 @@ import {
 	VaultService,
 	VaultSearchResult,
 	NoteContent,
-} from './vault';
+} from '../types/vault';
 
 export interface ToolDefinition {
 	name: string;

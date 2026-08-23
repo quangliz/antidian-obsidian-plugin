@@ -1,6 +1,6 @@
-import { ActiveContext } from './context';
-import { ModelProvider, Message, ToolResult } from './model';
-import { ToolDefinition } from './tools';
+import { ActiveContext } from '../types/context';
+import { ModelProvider, Message, ToolResult } from '../types/model';
+import { ToolDefinition } from '../tools';
 
 export interface AgentOptions {
 	provider: ModelProvider;

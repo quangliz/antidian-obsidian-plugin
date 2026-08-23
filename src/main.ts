@@ -6,31 +6,32 @@ import {
 } from './settings';
 import {
 	ANTI_DIAN_VIEW_TYPE,
-	AntiDianSidebarView,
-} from './obsidian/sidebar-view';
-import { ObsidianContextService } from './obsidian/context-service';
-import { ObsidianVaultService } from './obsidian/vault-service';
-import { GeminiProvider } from './core/gemini-provider';
+	AntiDianView,
+} from './obsidian/views/antidian-view';
+import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
+import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
+import { GeminiProvider } from './core/models/gemini-provider';
 import { createVaultTools } from './core/tools';
 import { Agent } from './core/agent';
+import { registerCommands } from './obsidian/commands';
 
 export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
-	contextService!: ObsidianContextService;
-	vaultService!: ObsidianVaultService;
+	workspaceAdapter!: ObsidianWorkspaceAdapter;
+	vaultAdapter!: ObsidianVaultAdapter;
 	geminiProvider!: GeminiProvider;
 	agent!: Agent;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.contextService = new ObsidianContextService(this.app);
-		this.vaultService = new ObsidianVaultService(this.app);
+		this.workspaceAdapter = new ObsidianWorkspaceAdapter(this.app);
+		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
 		this.geminiProvider = new GeminiProvider({
 			model: this.settings.model,
 		});
 
-		const tools = createVaultTools(this.vaultService);
+		const tools = createVaultTools(this.vaultAdapter);
 		this.agent = new Agent({
 			provider: this.geminiProvider,
 			tools,
@@ -39,26 +40,20 @@ export default class AntiDianPlugin extends Plugin {
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
 			(leaf: WorkspaceLeaf) =>
-				new AntiDianSidebarView(leaf, this.contextService, this.agent),
+				new AntiDianView(leaf, this.workspaceAdapter, this.agent),
 		);
 
 		this.addRibbonIcon('bot', 'Open anti-dian', () => {
 			void this.activateView();
 		});
 
-		this.addCommand({
-			id: 'open-sidebar',
-			name: 'Open sidebar',
-			callback: () => {
-				void this.activateView();
-			},
-		});
+		registerCommands(this);
 
 		this.addSettingTab(new AntiDianSettingTab(this.app, this));
 	}
 
 	onunload(): void {
-		this.contextService?.destroy();
+		this.workspaceAdapter?.destroy();
 	}
 
 	async activateView(): Promise<void> {

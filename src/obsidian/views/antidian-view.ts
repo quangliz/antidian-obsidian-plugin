@@ -4,13 +4,13 @@ import {
 	WorkspaceLeaf,
 	setIcon,
 } from 'obsidian';
-import { ActiveContext, ContextService } from '../core/context';
-import { Agent, AgentStepEvent } from '../core/agent';
-import { Message } from '../core/model';
+import { ActiveContext, ContextService } from '../../core/types/context';
+import { Agent, AgentStepEvent } from '../../core/agent';
+import { Message } from '../../core/types/model';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
-export class AntiDianSidebarView extends ItemView {
+export class AntiDianView extends ItemView {
 	private contextService: ContextService;
 	private agent: Agent;
 	private unsubscribeContext: (() => void) | null = null;

@@ -6,13 +6,16 @@ import {
 	VaultSearchResult,
 	VaultSearchMatch,
 	NoteContent,
-} from '../core/vault';
+} from '../../core/types/vault';
+import { ObsidianMetadataAdapter } from './metadata';
 
-export class ObsidianVaultService implements VaultService {
+export class ObsidianVaultAdapter implements VaultService {
 	private app: App;
+	private metadataAdapter: ObsidianMetadataAdapter;
 
 	constructor(app: App) {
 		this.app = app;
+		this.metadataAdapter = new ObsidianMetadataAdapter(app.metadataCache);
 	}
 
 	async searchNotes(
@@ -48,7 +51,7 @@ export class ObsidianVaultService implements VaultService {
 				}
 			}
 
-			const cache = this.app.metadataCache.getFileCache(file);
+			const cache = this.metadataAdapter.getFileCache(file);
 
 			if (cache?.headings) {
 				for (const h of cache.headings) {
@@ -94,7 +97,10 @@ export class ObsidianVaultService implements VaultService {
 							content.length,
 							index + term.length + 60,
 						);
-						let snippet = content.slice(start, end).replace(/\n+/g, ' ').trim();
+						let snippet = content
+							.slice(start, end)
+							.replace(/\n+/g, ' ')
+							.trim();
 						if (start > 0) snippet = '...' + snippet;
 						if (end < content.length) snippet = snippet + '...';
 
@@ -134,7 +140,7 @@ export class ObsidianVaultService implements VaultService {
 
 		let file = this.app.vault.getAbstractFileByPath(targetPath);
 		if (!(file instanceof TFile)) {
-			file = this.app.metadataCache.getFirstLinkpathDest(targetPath, '');
+			file = this.metadataAdapter.getFirstLinkpathDest(targetPath, '');
 		}
 
 		if (!(file instanceof TFile)) {
@@ -154,7 +160,7 @@ export class ObsidianVaultService implements VaultService {
 			.trim()
 			.toLowerCase()
 			.replace(/^#+\s*/, '');
-		const cache = this.app.metadataCache.getFileCache(file);
+		const cache = this.metadataAdapter.getFileCache(file);
 
 		if (cache?.headings && cache.headings.length > 0) {
 			const targetItem = cache.headings.find(
@@ -191,7 +197,9 @@ export class ObsidianVaultService implements VaultService {
 	}
 
 	private findHeadingForOffset(
-		headings: { heading: string; position: { start: { offset: number } } }[] | undefined,
+		headings:
+			| { heading: string; position: { start: { offset: number } } }[]
+			| undefined,
 		offset: number,
 	): string | undefined {
 		if (!headings || headings.length === 0) {

@@ -1,7 +1,8 @@
 import { App, MarkdownView } from 'obsidian';
-import { ActiveContext, ContextService } from '../core/context';
+import { ActiveContext, ContextService } from '../../core/types/context';
+import { ObsidianEditorAdapter } from './editor';
 
-export class ObsidianContextService implements ContextService {
+export class ObsidianWorkspaceAdapter implements ContextService {
 	private app: App;
 	private listeners: Set<(context: ActiveContext) => void> = new Set();
 	private cleanups: (() => void)[] = [];
@@ -17,24 +18,10 @@ export class ObsidianContextService implements ContextService {
 			this.app.workspace.getActiveViewOfType(MarkdownView);
 		const editor = markdownView?.editor;
 
-		let selection: string | undefined;
-		let cursor: { line: number; ch: number } | undefined;
-
-		if (editor) {
-			const selectedText = editor.getSelection();
-			if (selectedText && selectedText.length > 0) {
-				selection = selectedText;
-			}
-			const cur = editor.getCursor();
-			if (cur) {
-				cursor = { line: cur.line, ch: cur.ch };
-			}
-		}
-
 		return {
 			activeFile: activeFile ? activeFile.path : undefined,
-			selection,
-			cursor,
+			selection: ObsidianEditorAdapter.getSelection(editor),
+			cursor: ObsidianEditorAdapter.getCursor(editor),
 		};
 	}
 
