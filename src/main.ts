@@ -11,7 +11,10 @@ import {
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
 import { GeminiProvider } from './core/models/gemini-provider';
-import { ChangeStagingManager } from './core/transactions';
+import {
+	ChangeStagingManager,
+	ChangeSetValidator,
+} from './core/transactions';
 import {
 	ToolRegistry,
 	createSearchNotesTool,
@@ -27,6 +30,7 @@ export default class AntiDianPlugin extends Plugin {
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
 	stagingManager!: ChangeStagingManager;
+	validator!: ChangeSetValidator;
 	geminiProvider!: GeminiProvider;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
@@ -37,6 +41,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.workspaceAdapter = new ObsidianWorkspaceAdapter(this.app);
 		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
 		this.stagingManager = new ChangeStagingManager();
+		this.validator = new ChangeSetValidator(this.vaultAdapter);
 
 		this.geminiProvider = new GeminiProvider({
 			model: this.settings.model,
@@ -57,7 +62,12 @@ export default class AntiDianPlugin extends Plugin {
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
 			(leaf: WorkspaceLeaf) =>
-				new AntiDianView(leaf, this.workspaceAdapter, this.agent),
+				new AntiDianView(
+					leaf,
+					this.workspaceAdapter,
+					this.agent,
+					this.validator,
+				),
 		);
 
 		this.addRibbonIcon('bot', 'Open anti-dian', () => {

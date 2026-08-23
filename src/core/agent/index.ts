@@ -77,6 +77,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		onStep?: (event: AgentStepEvent) => void,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
+		const readMtimes: Map<string, number> = new Map();
 		const activeTurnChangeSet = this.stagingManager?.startTurn();
 
 		let contextPrefix = '';
@@ -160,6 +161,12 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 								context,
 								recordContext: (ref: ContextReference) => {
 									rawContextUsed.push(ref);
+								},
+								recordReadMtime: (path: string, mtime: number) => {
+									readMtimes.set(path, mtime);
+								},
+								getReadMtime: (path: string) => {
+									return readMtimes.get(path);
 								},
 							});
 						} catch (err) {

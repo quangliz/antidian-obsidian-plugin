@@ -1,5 +1,7 @@
 import { ChangeOperation, ChangeSet } from '../types/changes';
 
+export * from './validator';
+
 export class ChangeStagingManager {
 	private changeSets: Map<string, ChangeSet> = new Map();
 	private activeChangeSetId: string | null = null;

@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, normalizePath as obsNormalizePath } from 'obsidian';
 import {
 	VaultService,
 	SearchNotesParams,
@@ -15,6 +15,56 @@ export class ObsidianVaultAdapter implements VaultService {
 	constructor(app: App) {
 		this.app = app;
 		this.metadataAdapter = new ObsidianMetadataAdapter(app.metadataCache);
+	}
+
+	normalizePath(rawPath: string): string {
+		let p = rawPath.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+		if (!p.endsWith('.md')) {
+			p += '.md';
+		}
+		return obsNormalizePath(p);
+	}
+
+	isPathWithinVault(rawPath: string): boolean {
+		const p = rawPath.trim().replace(/\\/g, '/');
+		if (p.includes('..') || p.startsWith('/') || p.includes('://')) {
+			return false;
+		}
+		return true;
+	}
+
+	async fileExists(path: string): Promise<boolean> {
+		const norm = this.normalizePath(path);
+		const file = this.app.vault.getAbstractFileByPath(norm);
+		if (file instanceof TFile) return true;
+		const fallback = this.metadataAdapter.getFirstLinkpathDest(path, '');
+		return fallback instanceof TFile;
+	}
+
+	async getFileMtime(path: string): Promise<number | null> {
+		const norm = this.normalizePath(path);
+		let file = this.app.vault.getAbstractFileByPath(norm);
+		if (!(file instanceof TFile)) {
+			file = this.metadataAdapter.getFirstLinkpathDest(path, '');
+		}
+		return file instanceof TFile ? file.stat.mtime : null;
+	}
+
+	async headingExists(path: string, heading: string): Promise<boolean> {
+		const norm = this.normalizePath(path);
+		let file = this.app.vault.getAbstractFileByPath(norm);
+		if (!(file instanceof TFile)) {
+			file = this.metadataAdapter.getFirstLinkpathDest(path, '');
+		}
+		if (!(file instanceof TFile)) return false;
+
+		const cache = this.metadataAdapter.getFileCache(file);
+		if (!cache?.headings || cache.headings.length === 0) return false;
+
+		const cleanTarget = heading.trim().toLowerCase().replace(/^#+\s*/, '');
+		return cache.headings.some(
+			(h) => h.heading.trim().toLowerCase() === cleanTarget,
+		);
 	}
 
 	async searchNotes(params: SearchNotesParams): Promise<SearchResult[]> {
@@ -230,11 +280,13 @@ export class ObsidianVaultAdapter implements VaultService {
 		}
 
 		const content = await this.app.vault.cachedRead(file);
+		const mtime = file.stat.mtime;
 
 		if (!params.heading) {
 			return {
 				path: file.path,
 				content,
+				mtime,
 			};
 		}
 
@@ -267,6 +319,7 @@ export class ObsidianVaultAdapter implements VaultService {
 					path: file.path,
 					heading: targetItem.heading,
 					content: content.slice(startOffset, endOffset).trim(),
+					mtime,
 				};
 			}
 		}
@@ -275,6 +328,7 @@ export class ObsidianVaultAdapter implements VaultService {
 			path: file.path,
 			heading: params.heading,
 			content,
+			mtime,
 		};
 	}
 

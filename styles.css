@@ -282,11 +282,37 @@
 
 .anti-dian-changeset-badge {
 	font-size: calc(var(--font-ui-smaller) * 0.85);
-	padding: 1px var(--size-4-1);
+	padding: 2px var(--size-4-1);
 	border-radius: var(--radius-s);
 	background: var(--background-modifier-active-hover);
 	color: var(--text-accent);
 	font-weight: var(--font-medium);
+}
+
+.anti-dian-badge-valid {
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+}
+
+.anti-dian-badge-invalid {
+	background: rgba(var(--color-red-rgb), 0.15);
+	color: var(--color-red);
+}
+
+.anti-dian-changeset-errors {
+	background: var(--background-secondary);
+	border: 1px solid var(--text-error);
+	border-radius: var(--radius-s);
+	padding: var(--size-4-1) var(--size-4-2);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.anti-dian-changeset-error-item {
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	color: var(--text-error);
+	font-family: var(--font-monospace);
 }
 
 .anti-dian-changeset-ops {

@@ -11,6 +11,8 @@ import { ChangeStagingManager } from '../transactions';
 export interface ToolContext {
 	context?: ActiveContext;
 	recordContext?: (ref: ContextReference) => void;
+	recordReadMtime?: (path: string, mtime: number) => void;
+	getReadMtime?: (path: string) => number | undefined;
 	[key: string]: unknown;
 }
 
@@ -132,12 +134,17 @@ export function createReadNoteTool(
 				typeof input?.heading === 'string' ? input.heading : undefined;
 			const note = await vaultService.readNote({ path, heading });
 
-			if (note && ctx?.recordContext) {
-				ctx.recordContext({
-					path: note.path,
-					heading: note.heading,
-					reason: 'Read note',
-				});
+			if (note) {
+				if (ctx?.recordContext) {
+					ctx.recordContext({
+						path: note.path,
+						heading: note.heading,
+						reason: 'Read note',
+					});
+				}
+				if (note.mtime && ctx?.recordReadMtime) {
+					ctx.recordReadMtime(note.path, note.mtime);
+				}
 			}
 
 			return note;
@@ -178,11 +185,13 @@ export function createCreateNoteTool(
 			const path = typeof input?.path === 'string' ? input.path : '';
 			const content =
 				typeof input?.content === 'string' ? input.content : '';
+			const baseMtime = ctx?.getReadMtime?.(path);
 
 			const changeSet = staging.stage({
 				type: 'create',
 				path,
 				content,
+				baseMtime,
 			});
 
 			if (ctx?.recordContext) {
@@ -245,12 +254,14 @@ export function createPatchNoteTool(
 				typeof input?.heading === 'string' ? input.heading : '';
 			const content =
 				typeof input?.content === 'string' ? input.content : '';
+			const baseMtime = ctx?.getReadMtime?.(path);
 
 			const changeSet = staging.stage({
 				type: 'patch-section',
 				path,
 				heading,
 				content,
+				baseMtime,
 			});
 
 			if (ctx?.recordContext) {

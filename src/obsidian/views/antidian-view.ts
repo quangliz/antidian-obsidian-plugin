@@ -12,12 +12,14 @@ import {
 import { Agent, AgentStepEvent } from '../../core/agent';
 import { Message } from '../../core/types/model';
 import { ChangeSet } from '../../core/types/changes';
+import { ChangeSetValidator } from '../../core/transactions';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
 export class AntiDianView extends ItemView {
 	private contextService: ContextService;
 	private agent: Agent;
+	private validator?: ChangeSetValidator;
 	private unsubscribeContext: (() => void) | null = null;
 	private contextBoxEl: HTMLElement | null = null;
 	private inputEl: HTMLTextAreaElement | null = null;
@@ -30,10 +32,12 @@ export class AntiDianView extends ItemView {
 		leaf: WorkspaceLeaf,
 		contextService: ContextService,
 		agent: Agent,
+		validator?: ChangeSetValidator,
 	) {
 		super(leaf);
 		this.contextService = contextService;
 		this.agent = agent;
+		this.validator = validator;
 	}
 
 	getViewType(): string {
@@ -279,7 +283,7 @@ export class AntiDianView extends ItemView {
 			}
 
 			if (result.changeSet && result.changeSet.operations.length > 0) {
-				this.renderChangeSet(agentMsg, result.changeSet);
+				await this.renderChangeSet(agentMsg, result.changeSet);
 			}
 		} catch (err) {
 			stepsEl.empty();
@@ -355,7 +359,10 @@ export class AntiDianView extends ItemView {
 		}
 	}
 
-	private renderChangeSet(parent: HTMLElement, changeSet: ChangeSet): void {
+	private async renderChangeSet(
+		parent: HTMLElement,
+		changeSet: ChangeSet,
+	): Promise<void> {
 		const card = parent.createDiv({ cls: 'anti-dian-changeset-card' });
 
 		const header = card.createDiv({ cls: 'anti-dian-changeset-header' });
@@ -363,10 +370,35 @@ export class AntiDianView extends ItemView {
 			text: `📦 Staged ChangeSet (${changeSet.operations.length} ${changeSet.operations.length === 1 ? 'operation' : 'operations'})`,
 			cls: 'anti-dian-changeset-title',
 		});
-		header.createSpan({
-			text: 'Pending review',
+
+		const badge = header.createSpan({
+			text: 'Validating...',
 			cls: 'anti-dian-changeset-badge',
 		});
+
+		const validation = this.validator
+			? await this.validator.validate(changeSet)
+			: { valid: true, errors: [] };
+
+		if (validation.valid) {
+			badge.setText('Validated ✓');
+			badge.addClass('anti-dian-badge-valid');
+		} else {
+			badge.setText('Validation issues');
+			badge.addClass('anti-dian-badge-invalid');
+		}
+
+		if (validation.errors.length > 0) {
+			const errorBox = card.createDiv({
+				cls: 'anti-dian-changeset-errors',
+			});
+			for (const err of validation.errors) {
+				errorBox.createDiv({
+					text: `⚠️ [${err.code}] ${err.message}`,
+					cls: 'anti-dian-changeset-error-item',
+				});
+			}
+		}
 
 		const opsList = card.createDiv({ cls: 'anti-dian-changeset-ops' });
 		for (const op of changeSet.operations) {
