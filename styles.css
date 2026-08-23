@@ -452,6 +452,29 @@
 	font-family: var(--font-monospace);
 }
 
+.anti-dian-turn-usage-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 4px;
+	margin-top: 4px;
+	border-top: 1px dashed var(--background-modifier-border);
+	font-size: calc(var(--font-ui-smaller) * 0.8);
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+}
+
+.anti-dian-usage-item {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.anti-dian-usage-ctx {
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+
 .anti-dian-changeset-card {
 	background: var(--background-primary);
 	border: 1px dashed var(--interactive-accent);

@@ -29,6 +29,11 @@ export interface AgentRunResult {
 	updatedHistory: Message[];
 	contextUsed: ContextReference[];
 	changeSet?: ChangeSet;
+	usage?: {
+		promptTokens: number;
+		candidatesTokens: number;
+		totalTokens: number;
+	};
 }
 
 export class Agent {
@@ -112,6 +117,10 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 
 		const toolDeclarations = this.registry.getDeclarations();
 
+		let totalPromptTokens = 0;
+		let totalCandidatesTokens = 0;
+		let lastPromptTokens = 0;
+
 		let turn = 0;
 		while (turn < this.maxTurns) {
 			turn++;
@@ -136,6 +145,13 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 					updatedHistory: currentMessages,
 					contextUsed: this.deduplicateContext(rawContextUsed),
 				};
+			}
+
+			if (response.usage) {
+				totalPromptTokens += response.usage.promptTokens ?? 0;
+				totalCandidatesTokens += response.usage.candidatesTokens ?? 0;
+				lastPromptTokens =
+					response.usage.promptTokens ?? lastPromptTokens;
 			}
 
 			if (response.toolCalls && response.toolCalls.length > 0) {
@@ -222,11 +238,22 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 					text: answerText,
 				});
 
+				const usage =
+					totalPromptTokens > 0 || totalCandidatesTokens > 0
+						? {
+								promptTokens: lastPromptTokens,
+								candidatesTokens: totalCandidatesTokens,
+								totalTokens:
+									lastPromptTokens + totalCandidatesTokens,
+						  }
+						: undefined;
+
 				return {
 					answer: answerText,
 					updatedHistory: currentMessages,
 					contextUsed,
 					changeSet: finalChangeSet,
+					usage,
 				};
 			}
 		}
@@ -245,11 +272,21 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 			changeSet: finalChangeSet,
 		});
 
+		const fallbackUsage =
+			totalPromptTokens > 0 || totalCandidatesTokens > 0
+				? {
+						promptTokens: lastPromptTokens,
+						candidatesTokens: totalCandidatesTokens,
+						totalTokens: lastPromptTokens + totalCandidatesTokens,
+				  }
+				: undefined;
+
 		return {
 			answer: fallback,
 			updatedHistory: currentMessages,
 			contextUsed,
 			changeSet: finalChangeSet,
+			usage: fallbackUsage,
 		};
 	}
 

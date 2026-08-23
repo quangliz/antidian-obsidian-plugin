@@ -578,6 +578,10 @@ export class AntiDianView extends ItemView {
 			if (result.changeSet && result.changeSet.operations.length > 0) {
 				await this.renderChangeSet(agentMsg, result.changeSet);
 			}
+
+			if (result.usage) {
+				this.renderUsageFooter(agentMsg, result.usage);
+			}
 		} catch (err) {
 			liveStatusEl.remove();
 			answerEl.createEl('p', {
@@ -1229,6 +1233,28 @@ export class AntiDianView extends ItemView {
 
 			this.renderFileDiffContent(fileCard, file);
 		}
+	}
+
+	private renderUsageFooter(
+		parent: HTMLElement,
+		usage: {
+			promptTokens: number;
+			candidatesTokens: number;
+			totalTokens: number;
+		},
+	): void {
+		const footer = parent.createDiv({ cls: 'anti-dian-turn-usage-footer' });
+
+		const inSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
+		inSpan.setText(`📥 ${usage.promptTokens.toLocaleString()} in`);
+
+		const outSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
+		outSpan.setText(`📤 ${usage.candidatesTokens.toLocaleString()} out`);
+
+		const ctxSpan = footer.createSpan({
+			cls: 'anti-dian-usage-item anti-dian-usage-ctx',
+		});
+		ctxSpan.setText(`⚡ ${formatTokens(usage.promptTokens)} ctx`);
 	}
 
 	private getLogoUrl(): string {

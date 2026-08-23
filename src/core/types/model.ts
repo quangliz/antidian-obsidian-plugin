@@ -27,10 +27,17 @@ export interface AgentRequest {
 	model?: string;
 }
 
+export interface TokenUsage {
+	promptTokens?: number;
+	candidatesTokens?: number;
+	totalTokens?: number;
+}
+
 export interface AgentResponse {
 	text?: string;
 	toolCalls?: ToolCall[];
 	stopReason?: 'end_turn' | 'tool_use' | 'max_tokens' | 'error';
+	usage?: TokenUsage;
 }
 
 export interface ModelProvider {

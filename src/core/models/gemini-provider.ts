@@ -158,6 +158,7 @@ export class GeminiProvider implements ModelProvider {
 		let text = '';
 		const toolCalls: ToolCall[] = [];
 		let stopReason: AgentResponse['stopReason'] = 'end_turn';
+		let usage: AgentResponse['usage'];
 
 		for (const line of sseText.split('\n')) {
 			if (!line.startsWith('data:')) continue;
@@ -181,8 +182,28 @@ export class GeminiProvider implements ModelProvider {
 							};
 							finishReason?: string;
 						}[];
+						usageMetadata?: {
+							promptTokenCount?: number;
+							candidatesTokenCount?: number;
+							totalTokenCount?: number;
+						};
+					};
+					usageMetadata?: {
+						promptTokenCount?: number;
+						candidatesTokenCount?: number;
+						totalTokenCount?: number;
 					};
 				};
+
+				const u = event.response?.usageMetadata ?? event.usageMetadata;
+				if (u) {
+					usage = {
+						promptTokens: u.promptTokenCount ?? usage?.promptTokens,
+						candidatesTokens:
+							u.candidatesTokenCount ?? usage?.candidatesTokens,
+						totalTokens: u.totalTokenCount ?? usage?.totalTokens,
+					};
+				}
 
 				const candidates = event.response?.candidates ?? [];
 				for (const cand of candidates) {
@@ -216,6 +237,7 @@ export class GeminiProvider implements ModelProvider {
 			text: text.trim() || undefined,
 			toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
 			stopReason,
+			usage,
 		};
 	}
 }
