@@ -1,4 +1,4 @@
-import { ToolDefinition } from '../tools';
+import { ToolDeclaration } from '../tools';
 
 export interface ToolCall {
 	id: string;
@@ -23,7 +23,7 @@ export interface Message {
 export interface AgentRequest {
 	systemPrompt?: string;
 	messages: Message[];
-	tools?: ToolDefinition[];
+	tools?: ToolDeclaration[];
 	model?: string;
 }
 

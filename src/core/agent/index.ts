@@ -1,10 +1,10 @@
 import { ActiveContext } from '../types/context';
 import { ModelProvider, Message, ToolResult } from '../types/model';
-import { ToolDefinition } from '../tools';
+import { Tool, ToolRegistry } from '../tools';
 
 export interface AgentOptions {
 	provider: ModelProvider;
-	tools: ToolDefinition[];
+	tools?: ToolRegistry | Tool[];
 	maxTurns?: number;
 	systemPrompt?: string;
 }
@@ -18,19 +18,33 @@ export type AgentStepEvent =
 
 export class Agent {
 	private provider: ModelProvider;
-	private tools: ToolDefinition[];
+	private registry: ToolRegistry;
 	private maxTurns: number;
 	private systemPrompt: string;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
-		this.tools = options.tools;
+		if (options.tools instanceof ToolRegistry) {
+			this.registry = options.tools;
+		} else {
+			this.registry = new ToolRegistry();
+			if (Array.isArray(options.tools)) {
+				for (const tool of options.tools) {
+					this.registry.register(tool);
+				}
+			}
+		}
+
 		this.maxTurns = options.maxTurns ?? 6;
 		this.systemPrompt =
 			options.systemPrompt ??
 			`You are Anti-dian, an intelligent note-taking companion inside Obsidian.
 Use your tools to search and read notes in the vault to provide accurate, grounded answers.
 When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and concise.`;
+	}
+
+	getRegistry(): ToolRegistry {
+		return this.registry;
 	}
 
 	async run(
@@ -64,6 +78,8 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 			},
 		];
 
+		const toolDeclarations = this.registry.getDeclarations();
+
 		let turn = 0;
 		while (turn < this.maxTurns) {
 			turn++;
@@ -74,7 +90,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 				response = await this.provider.complete({
 					systemPrompt: this.systemPrompt,
 					messages: currentMessages,
-					tools: this.tools,
+					tools: toolDeclarations.length > 0 ? toolDeclarations : undefined,
 				});
 			} catch (err) {
 				const errMsg =
@@ -101,11 +117,13 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 						toolArgs: call.args,
 					});
 
-					const tool = this.tools.find((t) => t.name === call.name);
+					const tool = this.registry.get(call.name);
 					let output: unknown;
 					if (tool) {
 						try {
-							output = await tool.execute(call.args);
+							output = await tool.execute(call.args, {
+								context,
+							});
 						} catch (err) {
 							output = {
 								error:
@@ -115,7 +133,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 							};
 						}
 					} else {
-						output = { error: `Tool ${call.name} not found` };
+						output = { error: `Tool ${call.name} not found in registry` };
 					}
 
 					onStep?.({

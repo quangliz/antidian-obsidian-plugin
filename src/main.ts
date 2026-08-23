@@ -11,7 +11,11 @@ import {
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
 import { GeminiProvider } from './core/models/gemini-provider';
-import { createVaultTools } from './core/tools';
+import {
+	ToolRegistry,
+	createSearchNotesTool,
+	createReadNoteTool,
+} from './core/tools';
 import { Agent } from './core/agent';
 import { registerCommands } from './obsidian/commands';
 
@@ -20,6 +24,7 @@ export default class AntiDianPlugin extends Plugin {
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
 	geminiProvider!: GeminiProvider;
+	toolRegistry!: ToolRegistry;
 	agent!: Agent;
 
 	async onload(): Promise<void> {
@@ -31,10 +36,13 @@ export default class AntiDianPlugin extends Plugin {
 			model: this.settings.model,
 		});
 
-		const tools = createVaultTools(this.vaultAdapter);
+		this.toolRegistry = new ToolRegistry();
+		this.toolRegistry.register(createSearchNotesTool(this.vaultAdapter));
+		this.toolRegistry.register(createReadNoteTool(this.vaultAdapter));
+
 		this.agent = new Agent({
 			provider: this.geminiProvider,
-			tools,
+			tools: this.toolRegistry,
 		});
 
 		this.registerView(
