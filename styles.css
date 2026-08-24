@@ -456,6 +456,40 @@
 	gap: 6px;
 }
 
+.anti-dian-usage-account-section {
+	padding-bottom: 2px;
+}
+
+.anti-dian-usage-user-email {
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	color: var(--text-muted);
+	word-break: break-all;
+	margin-bottom: 3px;
+}
+
+.anti-dian-usage-tier-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.anti-dian-usage-tier-badge {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-usage-tier-tag {
+	font-size: calc(var(--font-ui-smaller) * 0.75);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: rgba(var(--interactive-accent-rgb), 0.15);
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
+}
+
 .anti-dian-usage-sec-title {
 	font-size: calc(var(--font-ui-smaller) * 0.9);
 	font-weight: var(--font-semibold);

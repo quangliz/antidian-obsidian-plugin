@@ -325,6 +325,39 @@ export class ModelMenuController {
 		if (!this.usageSubmenuEl || !this.isUsageSubmenuOpen) return;
 		this.usageSubmenuEl.empty();
 
+		// 0. Account & Tier Section
+		const tier = quotaData?.accountTier;
+		const accountSec = this.usageSubmenuEl.createDiv({
+			cls: 'anti-dian-usage-section anti-dian-usage-account-section',
+		});
+		const accountHeader = accountSec.createDiv({
+			cls: 'anti-dian-usage-account-header',
+		});
+		const userCol = accountHeader.createDiv({
+			cls: 'anti-dian-usage-user-col',
+		});
+		if (tier?.userEmail) {
+			userCol.createDiv({
+				text: tier.userEmail,
+				cls: 'anti-dian-usage-user-email',
+			});
+		}
+		const tierRow = userCol.createDiv({
+			cls: 'anti-dian-usage-tier-row',
+		});
+		tierRow.createSpan({
+			text: tier?.tierName || 'Antigravity Free Tier',
+			cls: 'anti-dian-usage-tier-badge',
+		});
+		if (tier?.tierId) {
+			tierRow.createSpan({
+				text: tier.tierId === 'free-tier' ? 'Free' : tier.tierId,
+				cls: 'anti-dian-usage-tier-tag',
+			});
+		}
+
+		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
+
 		const buckets = quotaData?.buckets || [];
 		const geminiBucket =
 			buckets.find((b) => b.modelId.startsWith('gemini-3.7-flash')) ||
