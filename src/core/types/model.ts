@@ -49,5 +49,8 @@ export interface AgentResponse {
 }
 
 export interface ModelProvider {
-	complete(request: AgentRequest): Promise<AgentResponse>;
+	complete(
+		request: AgentRequest,
+		onText?: (text: string, thought: boolean) => void,
+	): Promise<AgentResponse>;
 }

@@ -177,13 +177,13 @@ export function createCreateNoteTool(
 	return {
 		name: 'create_note',
 		description:
-			'Stage the creation of a new note in the vault. Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
+			'Stage the creation of a new file in the vault (supports .md, .canvas, .json, .css, etc.). Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
 		schema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Target note path (e.g. "Research/KV Cache.md")',
+					description: 'Target file path with extension (e.g. "Research/KV Cache.md", "Untitled.canvas"). Defaults to .md if no extension given.',
 				},
 				content: {
 					type: 'string',
@@ -311,17 +311,17 @@ export function createEditNoteTool(
 	return {
 		name: 'edit_note',
 		description:
-			'Stage an update/replacement of an entire existing note in the vault. Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
+			'Stage an update/replacement of an entire existing file in the vault (supports .md, .canvas, .json, .css, etc.). Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
 		schema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Vault path to the existing note (e.g. "llama.cpp.md")',
+					description: 'Vault path to the existing file with extension (e.g. "llama.cpp.md", "Untitled.canvas")',
 				},
 				content: {
 					type: 'string',
-					description: 'Updated markdown content for the note',
+					description: 'Updated content for the file',
 				},
 			},
 			required: ['path', 'content'],

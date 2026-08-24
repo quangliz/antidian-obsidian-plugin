@@ -7,6 +7,7 @@ export interface HttpRequestOptions {
 	headers?: Record<string, string>;
 	body?: string;
 	timeout?: number;
+	onData?: (chunk: string, statusCode: number) => void;
 }
 
 export interface HttpResponse {
@@ -35,7 +36,9 @@ export function httpRequest(
 			let data = '';
 			res.setEncoding('utf-8');
 			res.on('data', (chunk) => {
-				data += chunk;
+				const textChunk = String(chunk);
+				data += textChunk;
+				options.onData?.(textChunk, res.statusCode ?? 0);
 			});
 			res.on('end', () => {
 				resolve({

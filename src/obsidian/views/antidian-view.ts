@@ -291,25 +291,150 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const thinkingState = new ThinkingStateView(agentMsg, this.app);
+		const thinkingState = new ThinkingStateView(agentMsg, this.app, this);
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
+		let receivedMarkdown = '';
+		let streamedMarkdown = '';
+		let streamAnimationFrame: number | null = null;
+		let streamLastFrame = 0;
+		let streamSourceEnded = false;
+		let resolveStreamComplete: (() => void) | null = null;
+		let answerWaitingForThought = false;
+		let streamRenderVersion = 0;
+		let streamRenderScheduled = false;
+		let streamingFinished = false;
+		let renderSourcePath = '';
+		const streamSpeed = 60;
+		const streamChunkSize = Math.max(1, Math.round((streamSpeed - 25) / 10));
+		const streamDelay = Math.max(1, Math.round(100 / Math.sqrt(streamSpeed)));
+
+		const appendStreamCaret = () => {
+			const target = (answerEl.lastElementChild ?? answerEl) as HTMLElement;
+			target.createSpan({
+				cls: 'anti-dian-stream-caret',
+				attr: { 'aria-hidden': 'true' },
+			});
+		};
+		const renderStreamedMarkdown = () => {
+			if (streamRenderScheduled) return;
+			streamRenderScheduled = true;
+			window.requestAnimationFrame(() => {
+				streamRenderScheduled = false;
+				const version = streamRenderVersion;
+				const markdown = streamedMarkdown;
+				const rendered = answerEl.createDiv();
+				rendered.detach();
+				void MarkdownRenderer.render(
+					this.app,
+					markdown,
+					rendered,
+					renderSourcePath,
+					this,
+				).then(() => {
+					if (streamingFinished || version !== streamRenderVersion) {
+						if (!streamingFinished) renderStreamedMarkdown();
+						return;
+					}
+					answerEl.replaceChildren(...Array.from(rendered.childNodes));
+					appendStreamCaret();
+					this.scrollToBottom();
+				});
+			});
+		};
+		const startTextStream = () => {
+			if (streamAnimationFrame !== null) return;
+			const advance = (timestamp: number) => {
+				if (timestamp - streamLastFrame < streamDelay) {
+					streamAnimationFrame = window.requestAnimationFrame(advance);
+					return;
+				}
+				streamLastFrame = timestamp;
+				streamedMarkdown = receivedMarkdown.slice(
+					0,
+					streamedMarkdown.length + streamChunkSize,
+				);
+				streamRenderVersion++;
+				renderStreamedMarkdown();
+
+				if (streamedMarkdown.length < receivedMarkdown.length) {
+					streamAnimationFrame = window.requestAnimationFrame(advance);
+				} else {
+					streamAnimationFrame = null;
+					if (streamSourceEnded) {
+						resolveStreamComplete?.();
+						resolveStreamComplete = null;
+					}
+				}
+			};
+			streamAnimationFrame = window.requestAnimationFrame(advance);
+		};
+		const waitForTextStream = (): Promise<void> => {
+			if (streamedMarkdown.length >= receivedMarkdown.length) {
+				return Promise.resolve();
+			}
+			return new Promise((resolve) => {
+				resolveStreamComplete = resolve;
+			});
+		};
 
 		try {
 			const activeCtx: ActiveContext = this.promptBar.isContextIncluded()
 				? this.contextService.getActiveContext()
 				: {};
+			renderSourcePath = activeCtx.activeFile ?? '';
 			const result = await this.agent.run(
 				text,
 				activeCtx,
 				this.history,
 				(step: AgentStepEvent) => {
-					thinkingState.handleStep(step);
+					if (step.type === 'answer_start') {
+						if (streamAnimationFrame !== null) {
+							window.cancelAnimationFrame(streamAnimationFrame);
+							streamAnimationFrame = null;
+						}
+						receivedMarkdown = '';
+						streamedMarkdown = '';
+						streamLastFrame = 0;
+						streamSourceEnded = false;
+						streamRenderVersion++;
+						streamingFinished = false;
+						answerEl.empty();
+						appendStreamCaret();
+					} else if (step.type === 'answer_delta') {
+						receivedMarkdown += step.text;
+						if (thinkingState.isThoughtStreaming()) {
+							if (!answerWaitingForThought) {
+								answerWaitingForThought = true;
+								void thinkingState.waitForThoughtStream().then(() => {
+									answerWaitingForThought = false;
+									startTextStream();
+								});
+							}
+						} else {
+							startTextStream();
+						}
+					} else {
+						thinkingState.handleStep(step);
+					}
 				},
 				mediaToSend.length > 0 ? mediaToSend : undefined,
+				async () => {
+					await thinkingState.waitForThoughtStream();
+					await new Promise<void>((resolve) =>
+						window.requestAnimationFrame(() =>
+							window.requestAnimationFrame(() => resolve()),
+						),
+					);
+				},
 			);
 
 			this.history = result.updatedHistory;
 			thinkingState.settle();
+			streamSourceEnded = true;
+			await waitForTextStream();
+			streamingFinished = true;
+			streamRenderVersion++;
+			answerEl.empty();
 
 			await MarkdownRenderer.render(
 				this.app,
@@ -341,6 +466,13 @@ export class AntiDianView extends ItemView {
 			}
 		} catch (err) {
 			thinkingState.settle();
+			streamingFinished = true;
+			if (streamAnimationFrame !== null) {
+				window.cancelAnimationFrame(streamAnimationFrame);
+				streamAnimationFrame = null;
+			}
+			streamRenderVersion++;
+			answerEl.empty();
 			answerEl.createEl('p', {
 				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
 				cls: 'anti-dian-error-text',

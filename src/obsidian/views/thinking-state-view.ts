@@ -1,4 +1,4 @@
-import { App, setIcon } from 'obsidian';
+import { App, Component, MarkdownRenderer, setIcon } from 'obsidian';
 import { AgentStepEvent } from '../../core/agent';
 
 export interface SourceItem {
@@ -27,6 +27,7 @@ export interface ThinkingStep {
 
 export class ThinkingStateView {
 	private app: App;
+	private component: Component;
 	private containerEl: HTMLElement;
 	private headerBtnEl!: HTMLButtonElement;
 	private sparkleIconEl!: HTMLElement;
@@ -43,10 +44,19 @@ export class ThinkingStateView {
 	private startTime = 0;
 	private endTime = 0;
 	private activeStatus = 'Thinking';
+	private thoughtPhases: {
+		receivedText: string;
+		displayedText: string;
+		afterStep: number;
+	}[] = [];
+	private thoughtAnimationFrame: number | null = null;
+	private thoughtLastFrame = 0;
+	private thoughtWaiters: (() => void)[] = [];
 	private selectedStepId: string | null = null;
 
-	constructor(containerEl: HTMLElement, app: App) {
+	constructor(containerEl: HTMLElement, app: App, component: Component) {
 		this.app = app;
+		this.component = component;
 		this.containerEl = containerEl.createDiv({
 			cls: 'anti-dian-thinking-state',
 		});
@@ -57,7 +67,20 @@ export class ThinkingStateView {
 	public handleStep(step: AgentStepEvent): void {
 		if (step.type === 'thinking') {
 			this.activeStatus = 'Thinking';
+			this.thoughtPhases.push({
+				receivedText: '',
+				displayedText: '',
+				afterStep: this.steps.length,
+			});
+			this.isExpanded = true;
 			this.updateHeader();
+			this.renderSteps();
+		} else if (step.type === 'thought_delta') {
+			const phase = this.thoughtPhases[this.thoughtPhases.length - 1];
+			if (phase) phase.receivedText += step.text;
+			this.isExpanded = true;
+			this.updateHeader();
+			this.startThoughtStream();
 		} else if (step.type === 'tool_start') {
 			const isSearch = step.toolName === 'search_notes' || step.toolName === 'web_search';
 			const formatted = this.formatToolStep(step.toolName, step.toolArgs);
@@ -177,6 +200,46 @@ export class ThinkingStateView {
 			this.activeStatus = `Error: ${step.message}`;
 			this.updateHeader();
 		}
+	}
+
+	public isThoughtStreaming(): boolean {
+		return this.thoughtPhases.some(
+			(phase) => phase.displayedText.length < phase.receivedText.length,
+		);
+	}
+
+	public waitForThoughtStream(): Promise<void> {
+		if (!this.isThoughtStreaming()) return Promise.resolve();
+		return new Promise((resolve) => this.thoughtWaiters.push(resolve));
+	}
+
+	private startThoughtStream(): void {
+		if (this.thoughtAnimationFrame !== null) return;
+		const advance = (timestamp: number) => {
+			if (timestamp - this.thoughtLastFrame < Math.round(100 / Math.sqrt(60))) {
+				this.thoughtAnimationFrame = window.requestAnimationFrame(advance);
+				return;
+			}
+			this.thoughtLastFrame = timestamp;
+			const phase = this.thoughtPhases.find(
+				(item) => item.displayedText.length < item.receivedText.length,
+			);
+			if (phase) {
+				phase.displayedText = phase.receivedText.slice(
+					0,
+					phase.displayedText.length + 4,
+				);
+				this.renderSteps();
+			}
+
+			if (this.isThoughtStreaming()) {
+				this.thoughtAnimationFrame = window.requestAnimationFrame(advance);
+			} else {
+				this.thoughtAnimationFrame = null;
+				for (const resolve of this.thoughtWaiters.splice(0)) resolve();
+			}
+		};
+		this.thoughtAnimationFrame = window.requestAnimationFrame(advance);
 	}
 
 	public settle(): void {
@@ -333,20 +396,14 @@ export class ThinkingStateView {
 		this.rowsContainerEl.empty();
 
 		if (this.steps.length === 0) {
-			if (!this.isSettled) {
-				const row = this.rowsContainerEl.createDiv({
-					cls: 'anti-dian-thinking-row',
-				});
-				row.createSpan({ cls: 'anti-dian-thinking-row-spinner' });
-				row.createSpan({
-					cls: 'anti-dian-thinking-row-primary',
-					text: 'Reasoning about prompt context...',
-				});
-			}
+			this.renderThoughtPhases(0);
 			return;
 		}
 
-		for (const step of this.steps) {
+		for (let stepIndex = 0; stepIndex < this.steps.length; stepIndex++) {
+			this.renderThoughtPhases(stepIndex);
+			const step = this.steps[stepIndex];
+			if (!step) continue;
 			// Main Step Row
 			const row = this.rowsContainerEl.createDiv({
 				cls: `anti-dian-thinking-row ${this.selectedStepId === step.id ? 'is-selected' : ''}`,
@@ -475,6 +532,23 @@ export class ThinkingStateView {
 					});
 				}
 			}
+		}
+		this.renderThoughtPhases(this.steps.length);
+	}
+
+	private renderThoughtPhases(afterStep: number): void {
+		for (const phase of this.thoughtPhases) {
+			if (!phase.displayedText || phase.afterStep !== afterStep) continue;
+			const thoughtEl = this.rowsContainerEl.createDiv({
+				cls: 'anti-dian-thinking-model-text',
+			});
+			void MarkdownRenderer.render(
+				this.app,
+				phase.displayedText,
+				thoughtEl,
+				'',
+				this.component,
+			);
 		}
 	}
 }

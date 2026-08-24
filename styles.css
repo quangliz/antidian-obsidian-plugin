@@ -865,6 +865,33 @@
 	margin-bottom: 0;
 }
 
+@keyframes anti-dian-stream-caret-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.anti-dian-stream-caret {
+	display: inline-block;
+	width: 2px;
+	height: 1.05em;
+	margin-left: 1.5px;
+	translate: 0 -0.5px;
+	border-radius: 1px;
+	background: var(--text-normal);
+	vertical-align: text-bottom;
+	animation: anti-dian-stream-caret-in 150ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.anti-dian-stream-caret {
+		animation: none;
+	}
+}
+
 /* ------------------------------------------------------------- */
 /* ThinkingState (Expandable Agent Reasoning & Tools)            */
 /* ------------------------------------------------------------- */
@@ -1005,6 +1032,25 @@ button.anti-dian-thinking-header-btn:hover {
 	flex-direction: column;
 	gap: 2px;
 	padding: 2px 0;
+}
+
+.anti-dian-thinking-model-text {
+	padding: 2px 6px;
+	color: var(--text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.anti-dian-thinking-model-text p {
+	margin: 3px 0;
+}
+
+.anti-dian-thinking-model-text > :first-child {
+	margin-top: 0;
+}
+
+.anti-dian-thinking-model-text > :last-child {
+	margin-bottom: 0;
 }
 
 /* Source rows for searches (nested under tool row) */
@@ -1629,6 +1675,235 @@ button.anti-dian-context-card-chip:hover {
 }
 
 /* ------------------------------------------------------------- */
+/* DiffTable (Borderless Compact File Diff List)                */
+/* ------------------------------------------------------------- */
+
+.anti-dian-diff-summary-card {
+	display: flex;
+	flex-direction: column;
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	padding: 4px 0;
+	gap: 4px;
+	width: 100%;
+	margin: 6px 0;
+	box-sizing: border-box;
+	animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-diff-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.anti-dian-diff-summary-btn,
+button.anti-dian-diff-summary-btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	color: var(--text-normal, #ffffff);
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	padding: 2px 4px;
+	margin-left: -4px;
+	border-radius: 6px;
+	transition: background-color 0.15s ease;
+}
+
+.anti-dian-diff-summary-btn:hover,
+button.anti-dian-diff-summary-btn:hover {
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06)) !important;
+}
+
+.anti-dian-diff-files-count {
+	font-weight: 600;
+	color: var(--text-normal, #ffffff);
+}
+
+.anti-dian-diff-stat-add {
+	color: var(--color-green, #22c55e);
+	font-family: var(--font-monospace);
+	font-size: 12.5px;
+	font-weight: 600;
+	margin-left: 2px;
+}
+
+.anti-dian-diff-stat-del {
+	color: var(--color-red, #ef4444);
+	font-family: var(--font-monospace);
+	font-size: 12.5px;
+	font-weight: 600;
+}
+
+.anti-dian-diff-chevron {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted, #71717a);
+	transition: transform 0.2s ease;
+	margin-left: 2px;
+}
+
+.anti-dian-diff-chevron svg {
+	width: 12px;
+	height: 12px;
+}
+
+.anti-dian-diff-chevron.is-rotated {
+	transform: rotate(180deg);
+}
+
+.anti-dian-diff-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.anti-dian-diff-btn-review,
+button.anti-dian-diff-btn-review {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 24px;
+	padding: 0 8px;
+	border-radius: 6px;
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	color: var(--text-muted, #a1a1aa) !important;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.anti-dian-diff-btn-review:hover,
+button.anti-dian-diff-btn-review:hover {
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.08)) !important;
+	color: var(--text-normal, #ffffff) !important;
+}
+
+.anti-dian-diff-btn-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted, #a1a1aa);
+}
+
+.anti-dian-diff-btn-icon svg {
+	width: 12px;
+	height: 12px;
+}
+
+.anti-dian-diff-rejected-badge {
+	font-size: 11.5px;
+	color: var(--color-red, #ef4444);
+	font-weight: 500;
+}
+
+.anti-dian-diff-files-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding-top: 2px;
+}
+
+.anti-dian-diff-file-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 26px;
+	padding: 3px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+.anti-dian-diff-file-row:hover {
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06));
+}
+
+.anti-dian-diff-file-row.is-selected {
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.08));
+}
+
+.anti-dian-diff-file-icon {
+	display: flex;
+	align-items: center;
+	color: #14b8a6;
+	flex-shrink: 0;
+}
+
+.anti-dian-diff-file-icon svg {
+	width: 13px;
+	height: 13px;
+}
+
+.anti-dian-diff-file-name {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text-normal, #e4e4e7);
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+}
+
+.anti-dian-diff-file-path-sub {
+	font-size: 11.5px;
+	color: var(--text-muted, #71717a);
+	font-family: var(--font-monospace);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+	margin-left: 2px;
+}
+
+.anti-dian-diff-file-counts {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	font-weight: 600;
+	margin-left: auto;
+	flex-shrink: 0;
+}
+
+.anti-dian-diff-file-counts .diff-add {
+	color: var(--color-green, #22c55e);
+}
+
+.anti-dian-diff-file-counts .diff-del {
+	color: var(--color-red, #ef4444);
+}
+
+.anti-dian-diff-inline-box {
+	margin: 3px 0 5px 12px;
+	background: transparent;
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-family: var(--font-monospace);
+	font-size: 11.5px;
+	line-height: 1.4;
+	border-left: 2px solid var(--interactive-accent);
+}
+
+.anti-dian-diff-bottom-bar {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	padding-top: 4px;
+	border-top: none;
+}
+
+/* ------------------------------------------------------------- */
 /* Diff Previews                                                 */
 /* ------------------------------------------------------------- */
 
@@ -1798,4 +2073,3 @@ button.anti-dian-context-card-chip:hover {
 .anti-dian-hidden {
 	display: none !important;
 }
-

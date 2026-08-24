@@ -14,6 +14,9 @@ export interface AgentOptions {
 
 export type AgentStepEvent =
 	| { type: 'thinking' }
+	| { type: 'thought_delta'; text: string }
+	| { type: 'answer_start' }
+	| { type: 'answer_delta'; text: string }
 	| { type: 'tool_start'; toolName: string; toolArgs: Record<string, unknown> }
 	| { type: 'tool_end'; toolName: string; toolOutput: unknown }
 	| {
@@ -81,6 +84,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		history: Message[] = [],
 		onStep?: (event: AgentStepEvent) => void,
 		media?: MediaInput[],
+		beforeTool?: () => Promise<void>,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -127,17 +131,22 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		while (turn < this.maxTurns) {
 			turn++;
 			onStep?.({ type: 'thinking' });
+			onStep?.({ type: 'answer_start' });
 
 			let response;
 			try {
-				response = await this.provider.complete({
-					systemPrompt: this.systemPrompt,
-					messages: currentMessages,
-					tools:
-						toolDeclarations.length > 0
-							? toolDeclarations
-							: undefined,
-				});
+				response = await this.provider.complete(
+					{
+						systemPrompt: this.systemPrompt,
+						messages: currentMessages,
+						tools:
+							toolDeclarations.length > 0
+								? toolDeclarations
+								: undefined,
+					},
+					(text, thought) =>
+						onStep?.({ type: thought ? 'thought_delta' : 'answer_delta', text }),
+				);
 			} catch (err) {
 				const errMsg =
 					err instanceof Error ? err.message : String(err);
@@ -165,6 +174,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 
 				const toolResults: ToolResult[] = [];
 				for (const call of response.toolCalls) {
+					await beforeTool?.();
 					onStep?.({
 						type: 'tool_start',
 						toolName: call.name,

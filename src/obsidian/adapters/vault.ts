@@ -28,7 +28,9 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 
 	normalizePath(rawPath: string): string {
 		let p = rawPath.trim().replace(/\\/g, '/').replace(/^\/+/, '');
-		if (!p.endsWith('.md')) {
+		// Only default to .md when there is no file extension at all
+		const basename = p.split('/').pop() || '';
+		if (!basename.includes('.')) {
 			p += '.md';
 		}
 		return obsNormalizePath(p);

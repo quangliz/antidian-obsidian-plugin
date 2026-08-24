@@ -11,6 +11,7 @@ import {
 	CLOUD_CODE_ENDPOINTS,
 } from './antigravity-oauth';
 import { httpRequest } from './http';
+import { createSSEParser } from './sse';
 
 export interface GeminiProviderOptions {
 	model?: string;
@@ -32,7 +33,10 @@ export class GeminiProvider implements ModelProvider {
 		return this.model;
 	}
 
-	async complete(request: AgentRequest): Promise<AgentResponse> {
+	async complete(
+		request: AgentRequest,
+		onText?: (text: string, thought: boolean) => void,
+	): Promise<AgentResponse> {
 		const accessToken = await getAccessToken();
 		if (!this.projectId) {
 			this.projectId = await discoverProject(accessToken);
@@ -49,6 +53,7 @@ export class GeminiProvider implements ModelProvider {
 					? { parts: [{ text: request.systemPrompt }] }
 					: undefined,
 				contents,
+				generationConfig: { thinkingConfig: { includeThoughts: true } },
 			},
 		};
 
@@ -74,12 +79,19 @@ export class GeminiProvider implements ModelProvider {
 		let lastError: string | null = null;
 		for (const endpoint of CLOUD_CODE_ENDPOINTS) {
 			try {
+				const parseSSE = createSSEParser((data) =>
+					this.emitSSEText(data, onText),
+				);
 				const res = await httpRequest(
 					`${endpoint}/v1internal:streamGenerateContent?alt=sse`,
 					{
 						method: 'POST',
 						headers,
 						body: JSON.stringify(body),
+						onData: (chunk, statusCode) => {
+							if (!onText || statusCode < 200 || statusCode >= 300) return;
+							parseSSE(chunk);
+						},
 					},
 				);
 
@@ -87,6 +99,7 @@ export class GeminiProvider implements ModelProvider {
 					lastError = `${res.statusCode}: ${res.body}`;
 					continue;
 				}
+				parseSSE('', true);
 
 				return this.parseSSEResponse(res.body);
 			} catch (err) {
@@ -98,6 +111,30 @@ export class GeminiProvider implements ModelProvider {
 		throw new Error(
 			`All Antigravity OAuth endpoints failed. Last error: ${lastError ?? 'unknown'}`,
 		);
+	}
+
+	private emitSSEText(
+		raw: string,
+		onText?: (text: string, thought: boolean) => void,
+	): void {
+		if (!onText) return;
+
+		try {
+			const event = JSON.parse(raw) as {
+				response?: {
+					candidates?: {
+						content?: { parts?: { text?: string; thought?: boolean }[] };
+					}[];
+				};
+			};
+			for (const candidate of event.response?.candidates ?? []) {
+				for (const part of candidate.content?.parts ?? []) {
+					if (part.text) onText(part.text, part.thought === true);
+				}
+			}
+		} catch {
+			// Ignore malformed events; the completed response is parsed below.
+		}
 	}
 
 	private formatGeminiContents(
@@ -224,6 +261,7 @@ export class GeminiProvider implements ModelProvider {
 							content?: {
 								parts?: {
 									text?: string;
+									thought?: boolean;
 									functionCall?: {
 										name: string;
 										args: Record<string, unknown>;
@@ -261,7 +299,7 @@ export class GeminiProvider implements ModelProvider {
 				for (const cand of candidates) {
 					const parts = cand.content?.parts ?? [];
 					for (const part of parts) {
-						if (part.text) {
+						if (part.text && !part.thought) {
 							text += part.text;
 						}
 						if (part.functionCall) {
