@@ -74,13 +74,16 @@
 .anti-dian-nav-btn {
 	background: transparent;
 	border: none;
-	padding: 4px;
-	border-radius: var(--radius-s);
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: 50%;
 	color: var(--text-muted);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	transition: all 0.15s ease;
 }
 
 .anti-dian-nav-btn:hover {
@@ -173,20 +176,25 @@
 }
 
 .anti-dian-btn-attach {
-	background: transparent;
-	border: none;
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
 	cursor: pointer;
-	padding: 4px;
-	border-radius: 4px;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	transition: all 0.15s ease;
+	flex-shrink: 0;
 }
 
 .anti-dian-btn-attach:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
+	border-color: var(--interactive-accent);
 }
 
 .anti-dian-model-pill {
