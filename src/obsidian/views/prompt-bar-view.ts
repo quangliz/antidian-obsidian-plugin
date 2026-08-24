@@ -22,6 +22,12 @@ interface AutocompleteItem {
 	action?: () => void;
 }
 
+const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string }[] = [
+	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied' },
+	{ value: 'plan', label: 'Plan', desc: 'Read-only proposals' },
+	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically' },
+];
+
 /* Obsidian crystal gemstone color palette matching assets/logo.png */
 const OBSIDIAN_CRYSTAL_STOPS = [
 	'rgba(45, 27, 206, 0.85)',   // Deep Electric Indigo
@@ -61,7 +67,9 @@ export class PromptBarView {
 	private modelPillLabelEl!: HTMLElement;
 	private activeNotePillEl!: HTMLElement;
 	private activeNoteLabelEl!: HTMLElement;
-	private permSelectEl!: HTMLSelectElement;
+	private permissionPillEl!: HTMLElement;
+	private permissionLabelEl!: HTMLElement;
+	private permissionMenuEl: HTMLElement | null = null;
 	private sendBtnEl!: HTMLButtonElement;
 
 	private menuContainerEl: HTMLElement | null = null;
@@ -100,6 +108,7 @@ export class PromptBarView {
 			this.animFrameId = null;
 		}
 		this.closeAutocompleteMenu();
+		this.closePermissionMenu();
 	}
 
 	public getStagedMedia(): MediaInput[] {
@@ -416,19 +425,36 @@ export class PromptBarView {
 			cls: 'anti-dian-promptbar-controls-right',
 		});
 
-		// Permission Mode select
-		this.permSelectEl = rightControls.createEl('select', {
-			cls: 'anti-dian-promptbar-perm-select',
-			attr: { 'aria-label': 'Permission mode' },
+		// Permission mode pill
+		this.permissionPillEl = rightControls.createDiv({
+			cls: 'anti-dian-promptbar-model-pill anti-dian-promptbar-permission-pill',
+			attr: {
+				role: 'button',
+				tabindex: '0',
+				'aria-label': 'Choose permission mode',
+				'aria-haspopup': 'menu',
+				'aria-expanded': 'false',
+			},
 		});
-		this.permSelectEl.createEl('option', { text: 'Ask', value: 'ask' });
-		this.permSelectEl.createEl('option', { text: 'Plan', value: 'plan' });
-		this.permSelectEl.createEl('option', { text: 'Auto', value: 'auto' });
-		this.permSelectEl.value = this.plugin.settings.permissionMode ?? 'ask';
-		this.permSelectEl.onchange = () => {
-			const val = this.permSelectEl.value as PermissionMode;
-			if (val) {
-				this.callbacks.onPermissionChange(val);
+		this.permissionLabelEl = this.permissionPillEl.createSpan({
+			cls: 'anti-dian-promptbar-model-name',
+			text: this.getPermissionLabel(),
+		});
+		const permissionChevron = this.permissionPillEl.createSpan({
+			cls: 'anti-dian-promptbar-chevron',
+		});
+		setIcon(permissionChevron, 'chevron-down');
+		this.permissionPillEl.onclick = (e) => {
+			e.stopPropagation();
+			this.closeAutocompleteMenu();
+			this.togglePermissionMenu();
+		};
+		this.permissionPillEl.onkeydown = (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				this.togglePermissionMenu();
+			} else if (e.key === 'Escape') {
+				this.closePermissionMenu();
 			}
 		};
 
@@ -524,6 +550,13 @@ export class PromptBarView {
 		document.addEventListener('pointerdown', (e: PointerEvent) => {
 			const target = e.target as HTMLElement;
 			if (
+				this.permissionMenuEl &&
+				!target.closest('.anti-dian-promptbar-permission-pill') &&
+				!target.closest('.anti-dian-permission-menu')
+			) {
+				this.closePermissionMenu();
+			}
+			if (
 				this.menuContainerEl &&
 				!target.closest('.anti-dian-promptbar-autocomplete') &&
 				!target.closest('.anti-dian-promptbar-btn-plus')
@@ -531,6 +564,72 @@ export class PromptBarView {
 				this.closeAutocompleteMenu();
 			}
 		});
+	}
+
+	private getPermissionLabel(): string {
+		const mode = this.plugin.settings.permissionMode ?? 'ask';
+		return PERMISSION_MODES.find((option) => option.value === mode)?.label ?? 'Ask';
+	}
+
+	private togglePermissionMenu(): void {
+		if (this.permissionMenuEl) {
+			this.closePermissionMenu();
+			return;
+		}
+
+		const currentMode = this.plugin.settings.permissionMode ?? 'ask';
+		this.permissionMenuEl = document.body.createDiv({
+			cls: 'anti-dian-model-menu anti-dian-permission-menu',
+			attr: { role: 'menu', 'aria-label': 'Permission mode' },
+		});
+		this.permissionMenuEl.createDiv({
+			cls: 'anti-dian-menu-header',
+			text: 'Permission',
+		});
+		const list = this.permissionMenuEl.createDiv({ cls: 'anti-dian-menu-list' });
+
+		for (const option of PERMISSION_MODES) {
+			const selected = option.value === currentMode;
+			const item = list.createDiv({
+				cls: `anti-dian-menu-item ${selected ? 'is-selected' : ''}`,
+				attr: {
+					role: 'menuitemradio',
+					'aria-checked': String(selected),
+				},
+			});
+			const itemLeft = item.createDiv({ cls: 'anti-dian-menu-item-left' });
+			itemLeft.createSpan({ cls: 'anti-dian-menu-item-title', text: option.label });
+			itemLeft.createSpan({ cls: 'anti-dian-menu-item-effort', text: option.desc });
+
+			if (selected) {
+				const check = item.createSpan({ cls: 'anti-dian-menu-check' });
+				setIcon(check, 'check');
+			}
+
+			item.onclick = (e) => {
+				e.stopPropagation();
+				this.plugin.settings.permissionMode = option.value;
+				this.permissionLabelEl.setText(option.label);
+				this.callbacks.onPermissionChange(option.value);
+				this.closePermissionMenu();
+			};
+		}
+
+		this.permissionPillEl.setAttribute('aria-expanded', 'true');
+		const anchorRect = this.permissionPillEl.getBoundingClientRect();
+		const menuWidth = this.permissionMenuEl.offsetWidth || 250;
+		const menuHeight = this.permissionMenuEl.offsetHeight || 150;
+		const top = window.innerHeight - anchorRect.bottom - 10 >= menuHeight
+			? anchorRect.bottom + 6
+			: Math.max(10, anchorRect.top - menuHeight - 6);
+		const left = Math.max(10, Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 10));
+		this.permissionMenuEl.setCssProps({ left: `${left}px`, top: `${top}px` });
+	}
+
+	private closePermissionMenu(): void {
+		this.permissionMenuEl?.remove();
+		this.permissionMenuEl = null;
+		this.permissionPillEl?.setAttribute('aria-expanded', 'false');
 	}
 
 	private canSend(): boolean {
