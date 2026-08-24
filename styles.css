@@ -113,215 +113,471 @@
 }
 
 /* ------------------------------------------------------------- */
-/* Input Card                                                    */
+/* PromptBar Composer (Modern Input UI)                          */
 /* ------------------------------------------------------------- */
 
-.anti-dian-input-card {
+.anti-dian-promptbar-anchor {
+	position: relative;
+	width: 100%;
+}
+
+.anti-dian-promptbar-card {
+	position: relative;
+	isolation: isolate;
+	display: flex;
+	flex-direction: column;
 	width: 100%;
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	padding: 10px 12px;
-	display: flex;
-	flex-direction: column;
+	border-radius: 14px;
+	padding: 8px 10px;
 	gap: 6px;
 	box-sizing: border-box;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-	transition: border-color 0.15s ease;
+	box-shadow: 0 0 0 1px var(--background-modifier-border), 0 2px 10px rgba(0, 0, 0, 0.12);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	overflow: hidden;
 }
 
-.anti-dian-input-card:focus-within {
+.anti-dian-promptbar-card:focus-within {
 	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent), 0 3px 14px rgba(0, 0, 0, 0.18);
 }
 
-.anti-dian-input-textarea {
+.anti-dian-promptbar-card.is-expanded {
+	padding-bottom: 8px;
+}
+
+.anti-dian-promptbar-canvas {
+	position: absolute;
+	inset: 0;
 	width: 100%;
-	border: none;
-	background: transparent;
-	resize: none;
-	font-size: var(--font-ui-small);
-	color: var(--text-normal);
-	font-family: inherit;
-	padding: 0;
-	outline: none;
-	min-height: 52px;
+	height: 100%;
+	pointer-events: none;
+	border-radius: inherit;
+	z-index: -1;
 }
 
-.anti-dian-input-textarea::placeholder {
-	color: var(--text-muted);
+.anti-dian-promptbar-measure {
+	position: absolute;
+	visibility: hidden;
+	pointer-events: none;
+	white-space: pre-wrap;
 	font-size: var(--font-ui-small);
+	line-height: 18px;
 }
 
-.anti-dian-input-toolbar {
+/* Media Tray inside PromptBar */
+.anti-dian-promptbar-media-tray {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 2px 0 4px 0;
+}
+
+.anti-dian-promptbar-media-chip {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.anti-dian-input-left-controls {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.anti-dian-btn-attach {
-	background: rgba(255, 255, 255, 0.05);
+	gap: 6px;
+	height: 26px;
+	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 2px 6px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-promptbar-chip-thumb {
+	width: 20px;
+	height: 20px;
+	object-fit: cover;
+	border-radius: 3px;
+}
+
+.anti-dian-promptbar-chip-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.anti-dian-promptbar-chip-name {
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: calc(var(--font-ui-smaller) * 0.95);
+}
+
+.anti-dian-promptbar-chip-remove {
+	background: transparent;
+	border: none;
 	color: var(--text-muted);
 	cursor: pointer;
-	width: 26px;
-	height: 26px;
 	padding: 0;
-	border-radius: 50%;
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: all 0.15s ease;
-	flex-shrink: 0;
+	border-radius: 3px;
+	transition: all 0.1s ease;
 }
 
-.anti-dian-btn-attach:hover {
+.anti-dian-promptbar-chip-remove:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
-	border-color: var(--interactive-accent);
 }
 
-.anti-dian-model-pill {
+/* Textarea in PromptBar */
+.anti-dian-promptbar-textarea,
+.anti-dian-promptbar-textarea:focus,
+.anti-dian-promptbar-textarea:hover,
+.anti-dian-promptbar-textarea:active,
+.anti-dian-promptbar-textarea:focus-visible {
+	width: 100%;
+	border: none !important;
+	border-color: transparent !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	box-shadow: none !important;
+	outline: none !important;
+	resize: none;
+	font-size: var(--font-ui-small);
+	line-height: 19px;
+	color: var(--text-normal);
+	font-family: inherit;
+	padding: 2px 2px;
+	min-height: 28px;
+	max-height: 120px;
+	overflow-y: hidden;
+	box-sizing: border-box;
+}
+
+.anti-dian-promptbar-textarea.is-scrollable {
+	overflow-y: auto;
+}
+
+.anti-dian-promptbar-textarea::placeholder {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* Bottom Controls */
+.anti-dian-promptbar-controls {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	width: 100%;
+}
+
+.anti-dian-promptbar-controls-left {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	background: rgba(255, 255, 255, 0.05);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 16px;
-	padding: 3px 10px;
+	min-width: 0;
+	flex: 1;
+}
+
+.anti-dian-promptbar-controls-right {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+/* Plus button */
+.anti-dian-promptbar-btn-plus {
+	width: 28px;
+	height: 28px;
+	border-radius: 8px;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	padding: 0;
+	flex-shrink: 0;
+	transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.anti-dian-promptbar-btn-plus:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.anti-dian-promptbar-btn-plus:active {
+	transform: scale(0.94);
+}
+
+/* Model pill */
+.anti-dian-promptbar-model-pill {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	height: 28px;
+	padding: 0 8px;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-muted);
 	cursor: pointer;
 	user-select: none;
+	flex-shrink: 0;
+	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.anti-dian-model-pill:hover {
+.anti-dian-promptbar-model-pill:hover {
 	background: var(--background-modifier-hover);
-}
-
-.anti-dian-model-pill-label {
-	font-size: calc(var(--font-ui-smaller) * 0.95);
 	color: var(--text-normal);
-	font-weight: var(--font-medium);
 }
 
-.anti-dian-model-pill-chevron {
+.anti-dian-promptbar-model-name {
+	font-size: calc(var(--font-ui-smaller) * 0.95);
+	font-weight: var(--font-medium);
+	white-space: nowrap;
+}
+
+.anti-dian-promptbar-chevron {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
-	font-size: 10px;
 }
 
-.anti-dian-active-note-pill {
+/* Active note pill */
+.anti-dian-promptbar-note-pill {
 	display: flex;
 	align-items: center;
 	gap: 5px;
-	background: rgba(255, 255, 255, 0.05);
+	height: 28px;
+	padding: 0 8px;
+	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 16px;
-	padding: 3px 9px;
+	background: rgba(255, 255, 255, 0.04);
 	cursor: pointer;
 	user-select: none;
-	max-width: 150px;
+	max-width: 140px;
+	min-width: 0;
+	flex-shrink: 1;
 	transition: all 0.15s ease;
 }
 
-.anti-dian-active-note-pill:hover {
+.anti-dian-promptbar-note-pill:hover {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-active-note-pill.is-active {
+.anti-dian-promptbar-note-pill.is-active {
 	border-color: var(--interactive-accent);
 	background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.12);
 }
 
-.anti-dian-active-note-pill.is-active .anti-dian-active-note-icon {
+.anti-dian-promptbar-note-pill.is-active .anti-dian-promptbar-note-icon {
 	color: var(--interactive-accent);
 }
 
-.anti-dian-active-note-pill.is-inactive {
+.anti-dian-promptbar-note-pill.is-inactive {
 	opacity: 0.45;
 	border-style: dashed;
 }
 
-.anti-dian-active-note-pill.is-inactive .anti-dian-active-note-label {
+.anti-dian-promptbar-note-pill.is-inactive .anti-dian-promptbar-note-label {
 	text-decoration: line-through;
 	color: var(--text-muted);
 }
 
-.anti-dian-active-note-pill.is-empty {
+.anti-dian-promptbar-note-pill.is-empty {
 	opacity: 0.35;
 	cursor: default;
 }
 
-.anti-dian-active-note-icon {
+.anti-dian-promptbar-note-icon {
 	display: flex;
 	align-items: center;
 	font-size: 11px;
 	color: var(--text-muted);
+	flex-shrink: 0;
 }
 
-.anti-dian-active-note-label {
-	font-size: calc(var(--font-ui-smaller) * 0.95);
-	color: var(--text-normal);
+.anti-dian-promptbar-note-label {
+	font-size: calc(var(--font-ui-smaller) * 0.9);
 	font-weight: var(--font-medium);
+	color: var(--text-normal);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.anti-dian-input-right-controls {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex-shrink: 0;
-}
-
-.anti-dian-input-perm-select {
+/* Permission mode select */
+.anti-dian-promptbar-perm-select {
+	height: 28px;
 	font-size: calc(var(--font-ui-smaller) * 0.9);
-	padding: 3px 8px;
-	border-radius: 14px;
+	padding: 0 8px;
+	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
-	background: rgba(255, 255, 255, 0.05);
+	background: rgba(255, 255, 255, 0.04);
 	color: var(--text-muted);
 	cursor: pointer;
 	outline: none;
 	transition: all 0.15s ease;
 }
 
-.anti-dian-input-perm-select:hover,
-.anti-dian-input-perm-select:focus {
+.anti-dian-promptbar-perm-select:hover,
+.anti-dian-promptbar-perm-select:focus {
 	border-color: var(--interactive-accent);
 	color: var(--text-normal);
 }
 
-.anti-dian-btn-send {
+/* Send button (Tactile square) */
+.anti-dian-promptbar-btn-send {
 	width: 28px;
 	height: 28px;
-	border-radius: 50%;
+	border-radius: 8px;
 	border: none;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	cursor: not-allowed;
+	opacity: 0.45;
+	padding: 0;
+	flex-shrink: 0;
+	transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease, transform 0.1s ease;
+}
+
+.anti-dian-promptbar-btn-send.is-active,
+.anti-dian-promptbar-btn-send:enabled {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
 	cursor: pointer;
-	transition: opacity 0.15s ease;
+	opacity: 1;
+}
+
+.anti-dian-promptbar-btn-send:enabled:hover {
+	opacity: 0.9;
+}
+
+.anti-dian-promptbar-btn-send:enabled:active {
+	transform: scale(0.94);
+}
+
+/* ------------------------------------------------------------- */
+/* Autocomplete Floating Menu (@ and /)                         */
+/* ------------------------------------------------------------- */
+
+.anti-dian-promptbar-autocomplete {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 100%;
+	margin-bottom: 8px;
+	z-index: 100;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 4px;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+	transform-origin: bottom center;
+	display: flex;
+	flex-direction: column;
+	max-height: 280px;
+	overflow-y: auto;
+}
+
+.anti-dian-promptbar-glider {
+	position: absolute;
+	left: 4px;
+	right: 4px;
+	border-radius: 6px;
+	background: var(--background-modifier-hover);
+	pointer-events: none;
+	z-index: 1;
+	transition: top 200ms cubic-bezier(0.23, 1, 0.32, 1), height 200ms cubic-bezier(0.23, 1, 0.32, 1), opacity 150ms ease;
+}
+
+.anti-dian-promptbar-menu-list {
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	z-index: 2;
+}
+
+.anti-dian-promptbar-menu-row {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 34px;
+	width: 100%;
+	padding: 0 8px;
+	border: none;
+	background: transparent;
+	border-radius: 6px;
+	cursor: pointer;
+	text-align: left;
+}
+
+.anti-dian-promptbar-menu-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	color: var(--text-muted);
 	flex-shrink: 0;
 }
 
-.anti-dian-btn-send:hover {
-	opacity: 0.85;
+.anti-dian-promptbar-menu-name {
+	font-size: 12.5px;
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
-.anti-dian-btn-send:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
+.anti-dian-promptbar-menu-desc {
+	font-size: 12px;
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	flex: 1;
 }
+
+.anti-dian-promptbar-menu-empty {
+	display: flex;
+	align-items: center;
+	height: 34px;
+	padding: 0 8px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.anti-dian-promptbar-menu-footer {
+	margin-top: 4px;
+	border-top: 1px solid var(--background-modifier-border);
+	padding: 6px 8px 2px 8px;
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+@keyframes pop-in {
+	0% {
+		opacity: 0;
+		transform: scale(0.96) translateY(6px);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
 
 /* ------------------------------------------------------------- */
 /* Model Menu Popup & Usage Submenu                             */

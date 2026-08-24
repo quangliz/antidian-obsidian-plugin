@@ -19,9 +19,9 @@ import {
 	AvailableModel,
 	ModelGroup,
 } from '../../core/models/antigravity-oauth';
-import { PermissionMode } from '../../settings';
 import { renderChangeSet } from './changeset-view';
 import { ModelMenuController } from './model-menu-view';
+import { PromptBarView } from './prompt-bar-view';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
@@ -41,25 +41,16 @@ export class AntiDianView extends ItemView {
 	private validator?: ChangeSetValidator;
 	private unsubscribeContext: (() => void) | null = null;
 	private modelMenuController: ModelMenuController;
+	private promptBar!: PromptBarView;
 
 	private rootEl: HTMLElement | null = null;
 	private topNavEl: HTMLElement | null = null;
 	private centerContainerEl: HTMLElement | null = null;
 	private messagesEl: HTMLElement | null = null;
-	private inputCardEl: HTMLElement | null = null;
-	private inputEl: HTMLTextAreaElement | null = null;
-	private sendButtonEl: HTMLButtonElement | null = null;
-	private modelPillLabelEl: HTMLElement | null = null;
-	private activeNotePillEl: HTMLElement | null = null;
-	private activeNoteLabelEl: HTMLElement | null = null;
-	private includeActiveNote = true;
 
 	private availableModels: AvailableModel[] = [];
 	private modelGroups: ModelGroup[] = [];
 	private history: Message[] = [];
-	private stagedMedia: MediaInput[] = [];
-	private mediaTrayEl: HTMLElement | null = null;
-	private fileInputEl: HTMLInputElement | null = null;
 	private isRunning = false;
 
 	// Live session usage tracking
@@ -121,6 +112,7 @@ export class AntiDianView extends ItemView {
 			const target = evt.target as HTMLElement;
 			if (
 				this.modelMenuController.isOpen() &&
+				!target.closest('.anti-dian-promptbar-model-pill') &&
 				!target.closest('.anti-dian-model-pill') &&
 				!target.closest('.anti-dian-model-menu') &&
 				!target.closest('.anti-dian-effort-popup') &&
@@ -138,6 +130,7 @@ export class AntiDianView extends ItemView {
 			this.unsubscribeContext();
 			this.unsubscribeContext = null;
 		}
+		this.promptBar?.destroy();
 		this.modelMenuController.closeMenu();
 		this.contentEl.empty();
 	}
@@ -180,7 +173,7 @@ export class AntiDianView extends ItemView {
 	}
 
 	private updateContextNav(context: ActiveContext): void {
-		this.updateActiveNotePill(context);
+		this.promptBar?.updateActiveNotePill(context);
 	}
 
 	private renderMessagesContainer(): void {
@@ -197,201 +190,24 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-center-card-container',
 		});
 
-		this.inputCardEl = this.centerContainerEl.createDiv({
-			cls: 'anti-dian-input-card',
-		});
-
-		this.mediaTrayEl = this.inputCardEl.createDiv({
-			cls: 'anti-dian-media-tray anti-dian-hidden',
-		});
-
-		this.inputEl = this.inputCardEl.createEl('textarea', {
-			cls: 'anti-dian-input-textarea',
-			attr: {
-				placeholder: 'Ask anything, @ to mention, / for actions',
-				rows: '3',
+		this.promptBar = new PromptBarView(
+			this.centerContainerEl,
+			this.app,
+			this.plugin,
+			{
+				onSend: (text, media) => this.handleSend(text, media),
+				onOpenModelMenu: (anchorEl) =>
+					this.modelMenuController.toggleMenu(anchorEl),
+				onPermissionChange: (mode) => {
+					this.plugin.settings.permissionMode = mode;
+					void this.plugin.saveSettings();
+				},
+				getCurrentModelLabel: () =>
+					this.modelMenuController.formatModelLabel(),
+				getActiveContext: () => this.contextService.getActiveContext(),
+				onStartNewSession: () => this.startNewSession(),
 			},
-		});
-
-		this.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
-			if (event.key === 'Enter' && !event.shiftKey) {
-				event.preventDefault();
-				void this.handleSend();
-			}
-		});
-
-		this.inputEl.addEventListener('paste', (event: ClipboardEvent) => {
-			const items = event.clipboardData?.items;
-			if (!items) return;
-			for (let i = 0; i < items.length; i++) {
-				const item = items[i];
-				if (item && item.kind === 'file' && item.type.startsWith('image/')) {
-					const file = item.getAsFile();
-					if (file) {
-						event.preventDefault();
-						void this.addMediaFile(file);
-					}
-				}
-			}
-		});
-
-		const toolbar = this.inputCardEl.createDiv({
-			cls: 'anti-dian-input-toolbar',
-		});
-
-		const leftControls = toolbar.createDiv({
-			cls: 'anti-dian-input-left-controls',
-		});
-
-		this.fileInputEl = this.inputCardEl.createEl('input', {
-			attr: {
-				type: 'file',
-				accept: 'image/*,video/*,audio/*',
-				multiple: 'true',
-				style: 'display: none;',
-			},
-		});
-		this.fileInputEl.onchange = () => {
-			if (this.fileInputEl?.files) {
-				for (let i = 0; i < this.fileInputEl.files.length; i++) {
-					const file = this.fileInputEl.files[i];
-					if (file) void this.addMediaFile(file);
-				}
-				this.fileInputEl.value = '';
-			}
-		};
-
-		const attachBtn = leftControls.createEl('button', {
-			cls: 'anti-dian-btn-attach',
-			attr: { 'aria-label': 'Add file or image' },
-		});
-		setIcon(attachBtn, 'plus');
-		attachBtn.onclick = (e) => {
-			e.stopPropagation();
-			this.fileInputEl?.click();
-		};
-
-		const modelPill = leftControls.createDiv({
-			cls: 'anti-dian-model-pill',
-		});
-		this.modelPillLabelEl = modelPill.createSpan({
-			cls: 'anti-dian-model-pill-label',
-			text: this.modelMenuController.formatModelLabel(),
-		});
-		const pillChevron = modelPill.createSpan({
-			cls: 'anti-dian-model-pill-chevron',
-		});
-		setIcon(pillChevron, 'chevron-down');
-
-		modelPill.onclick = (e) => {
-			e.stopPropagation();
-			this.modelMenuController.toggleMenu(modelPill);
-		};
-
-		this.activeNotePillEl = leftControls.createDiv({
-			cls: 'anti-dian-active-note-pill',
-			attr: { 'aria-label': 'Toggle active note context' },
-		});
-		const noteIcon = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-active-note-icon',
-		});
-		setIcon(noteIcon, 'file-text');
-
-		this.activeNoteLabelEl = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-active-note-label',
-			text: this.getCurrentActiveNoteName(),
-		});
-
-		this.activeNotePillEl.onclick = (e) => {
-			e.stopPropagation();
-			this.toggleActiveNoteContext();
-		};
-
-		this.updateActiveNotePill();
-
-		const rightControls = toolbar.createDiv({
-			cls: 'anti-dian-input-right-controls',
-		});
-
-		const permSelect = rightControls.createEl('select', {
-			cls: 'anti-dian-input-perm-select',
-			attr: { 'aria-label': 'Permission mode' },
-		});
-		permSelect.createEl('option', { text: 'Ask', value: 'ask' });
-		permSelect.createEl('option', { text: 'Plan', value: 'plan' });
-		permSelect.createEl('option', { text: 'Auto', value: 'auto' });
-		permSelect.value = this.plugin.settings.permissionMode ?? 'ask';
-		permSelect.onchange = () => {
-			const val = permSelect.value as PermissionMode;
-			if (val) {
-				this.plugin.settings.permissionMode = val;
-				void this.plugin.saveSettings();
-			}
-		};
-
-		this.sendButtonEl = rightControls.createEl('button', {
-			cls: 'anti-dian-btn-send',
-			attr: { 'aria-label': 'Send message' },
-		});
-		setIcon(this.sendButtonEl, 'arrow-right');
-		this.sendButtonEl.onclick = () => {
-			void this.handleSend();
-		};
-	}
-
-	private getCurrentActiveNoteName(): string {
-		const ctx = this.contextService.getActiveContext();
-		if (!ctx.activeFile) return 'No note';
-		return (
-			ctx.activeFile.replace(/\.md$/, '').split('/').pop() || 'No note'
 		);
-	}
-
-	private toggleActiveNoteContext(): void {
-		const ctx = this.contextService.getActiveContext();
-		if (!ctx.activeFile) return;
-		this.includeActiveNote = !this.includeActiveNote;
-		this.updateActiveNotePill(ctx);
-	}
-
-	private updateActiveNotePill(context?: ActiveContext): void {
-		if (!this.activeNotePillEl || !this.activeNoteLabelEl) return;
-		const ctx = context ?? this.contextService.getActiveContext();
-		const hasNote = Boolean(ctx.activeFile);
-		const noteName = hasNote
-			? ctx.activeFile?.replace(/\.md$/, '').split('/').pop() || 'Untitled'
-			: 'No note';
-
-		this.activeNoteLabelEl.setText(noteName);
-
-		if (!hasNote) {
-			this.activeNotePillEl.addClass('is-empty');
-			this.activeNotePillEl.removeClass('is-active');
-			this.activeNotePillEl.removeClass('is-inactive');
-			this.activeNotePillEl.setAttribute(
-				'aria-label',
-				'No active note opened',
-			);
-			return;
-		}
-
-		this.activeNotePillEl.removeClass('is-empty');
-
-		if (this.includeActiveNote) {
-			this.activeNotePillEl.addClass('is-active');
-			this.activeNotePillEl.removeClass('is-inactive');
-			this.activeNotePillEl.setAttribute(
-				'aria-label',
-				'Active note included in context (click to exclude)',
-			);
-		} else {
-			this.activeNotePillEl.addClass('is-inactive');
-			this.activeNotePillEl.removeClass('is-active');
-			this.activeNotePillEl.setAttribute(
-				'aria-label',
-				'Active note excluded from context (click to include)',
-			);
-		}
 	}
 
 	private selectModel(modelId: string): void {
@@ -399,95 +215,23 @@ export class AntiDianView extends ItemView {
 		this.plugin.geminiProvider.setModel(modelId);
 		void this.plugin.saveSettings();
 
-		if (this.modelPillLabelEl) {
-			this.modelPillLabelEl.setText(
-				this.modelMenuController.formatModelLabel(modelId),
-			);
-		}
+		this.promptBar?.updateModelLabel(
+			this.modelMenuController.formatModelLabel(modelId),
+		);
+		this.promptBar?.playRainbowSweep();
 	}
 
 	private startNewSession(): void {
 		this.history = [];
-		this.stagedMedia = [];
-		this.renderMediaTray();
+		this.promptBar?.clearStagedMedia();
+		this.promptBar?.setText('');
+		this.promptBar?.focus();
 		if (this.messagesEl) {
 			this.messagesEl.empty();
 		}
 		if (this.rootEl) {
 			this.rootEl.removeClass('has-chat');
 			this.rootEl.addClass('is-empty-session');
-		}
-		if (this.inputEl) {
-			this.inputEl.value = '';
-			this.inputEl.focus();
-		}
-	}
-
-	private async addMediaFile(file: File): Promise<void> {
-		const data = await new Promise<string>((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(reader.result as string);
-			reader.onerror = reject;
-			reader.readAsDataURL(file);
-		});
-
-		const type: MediaInput['type'] = file.type.startsWith('video/')
-			? 'video'
-			: file.type.startsWith('audio/')
-				? 'audio'
-				: 'image';
-
-		this.stagedMedia.push({
-			type,
-			mimeType: file.type || (type === 'image' ? 'image/png' : 'video/mp4'),
-			data,
-		});
-
-		this.renderMediaTray();
-	}
-
-	private renderMediaTray(): void {
-		if (!this.mediaTrayEl) return;
-		this.mediaTrayEl.empty();
-		if (this.stagedMedia.length === 0) {
-			this.mediaTrayEl.addClass('anti-dian-hidden');
-			return;
-		}
-		this.mediaTrayEl.removeClass('anti-dian-hidden');
-
-		for (let i = 0; i < this.stagedMedia.length; i++) {
-			const item = this.stagedMedia[i];
-			if (!item) continue;
-			const chip = this.mediaTrayEl.createDiv({
-				cls: 'anti-dian-media-chip',
-			});
-
-			if (item.type === 'image' && item.data) {
-				chip.createEl('img', {
-					cls: 'anti-dian-media-chip-thumb',
-					attr: { src: item.data },
-				});
-			} else {
-				const iconSpan = chip.createSpan({
-					cls: 'anti-dian-media-chip-icon',
-				});
-				setIcon(iconSpan, item.type === 'video' ? 'video' : 'file');
-				chip.createSpan({
-					text: item.type,
-					cls: 'anti-dian-media-chip-label',
-				});
-			}
-
-			const removeBtn = chip.createEl('button', {
-				cls: 'anti-dian-media-chip-remove',
-				text: '×',
-			});
-			const idx = i;
-			removeBtn.onclick = (e) => {
-				e.stopPropagation();
-				this.stagedMedia.splice(idx, 1);
-				this.renderMediaTray();
-			};
 		}
 	}
 
@@ -501,34 +245,25 @@ export class AntiDianView extends ItemView {
 				this.plugin.settings.model = defaultModelId;
 				this.plugin.geminiProvider.setModel(defaultModelId);
 			}
-			if (this.modelPillLabelEl) {
-				this.modelPillLabelEl.setText(
-					this.modelMenuController.formatModelLabel(),
-				);
-			}
+			this.promptBar?.updateModelLabel();
 		} catch {
 			// Fallback defaults
 		}
 	}
 
-	private async handleSend(): Promise<void> {
-		if (!this.inputEl || !this.messagesEl || this.isRunning) {
+	private async handleSend(
+		text: string,
+		mediaToSend: MediaInput[],
+	): Promise<void> {
+		if (!this.messagesEl || this.isRunning) {
 			return;
 		}
-
-		const text = this.inputEl.value.trim();
-		const mediaToSend = [...this.stagedMedia];
 		if (!text && mediaToSend.length === 0) {
 			return;
 		}
 
-		this.stagedMedia = [];
-		this.renderMediaTray();
-
 		this.isRunning = true;
-		if (this.sendButtonEl) {
-			this.sendButtonEl.disabled = true;
-		}
+		this.promptBar.setDisabled(true);
 
 		if (this.rootEl) {
 			this.rootEl.removeClass('is-empty-session');
@@ -557,7 +292,6 @@ export class AntiDianView extends ItemView {
 			userMsg.createEl('p', { text });
 		}
 
-		this.inputEl.value = '';
 		this.scrollToBottom();
 
 		const agentMsg = this.messagesEl.createDiv({
@@ -580,7 +314,7 @@ export class AntiDianView extends ItemView {
 		const actions: ActionItem[] = [];
 
 		try {
-			const activeCtx: ActiveContext = this.includeActiveNote
+			const activeCtx: ActiveContext = this.promptBar.isContextIncluded()
 				? this.contextService.getActiveContext()
 				: {};
 			const result = await this.agent.run(
@@ -637,9 +371,7 @@ export class AntiDianView extends ItemView {
 			});
 		} finally {
 			this.isRunning = false;
-			if (this.sendButtonEl) {
-				this.sendButtonEl.disabled = false;
-			}
+			this.promptBar.setDisabled(false);
 			this.scrollToBottom();
 		}
 	}
