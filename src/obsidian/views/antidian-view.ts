@@ -169,21 +169,6 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-nav-right',
 		});
 
-		const permSelect = rightGroup.createEl('select', {
-			cls: 'anti-dian-nav-perm-select',
-		});
-		permSelect.createEl('option', { text: 'Ask', value: 'ask' });
-		permSelect.createEl('option', { text: 'Plan', value: 'plan' });
-		permSelect.createEl('option', { text: 'Auto', value: 'auto' });
-		permSelect.value = this.plugin.settings.permissionMode ?? 'ask';
-		permSelect.onchange = () => {
-			const val = permSelect.value as PermissionMode;
-			if (val) {
-				this.plugin.settings.permissionMode = val;
-				void this.plugin.saveSettings();
-			}
-		};
-
 		const newSessionBtn = rightGroup.createEl('button', {
 			cls: 'anti-dian-nav-btn',
 			attr: { 'aria-label': 'New chat session' },
@@ -324,7 +309,27 @@ export class AntiDianView extends ItemView {
 
 		this.updateActiveNotePill();
 
-		this.sendButtonEl = toolbar.createEl('button', {
+		const rightControls = toolbar.createDiv({
+			cls: 'anti-dian-input-right-controls',
+		});
+
+		const permSelect = rightControls.createEl('select', {
+			cls: 'anti-dian-input-perm-select',
+			attr: { 'aria-label': 'Permission mode' },
+		});
+		permSelect.createEl('option', { text: 'Ask', value: 'ask' });
+		permSelect.createEl('option', { text: 'Plan', value: 'plan' });
+		permSelect.createEl('option', { text: 'Auto', value: 'auto' });
+		permSelect.value = this.plugin.settings.permissionMode ?? 'ask';
+		permSelect.onchange = () => {
+			const val = permSelect.value as PermissionMode;
+			if (val) {
+				this.plugin.settings.permissionMode = val;
+				void this.plugin.saveSettings();
+			}
+		};
+
+		this.sendButtonEl = rightControls.createEl('button', {
 			cls: 'anti-dian-btn-send',
 			attr: { 'aria-label': 'Send message' },
 		});
