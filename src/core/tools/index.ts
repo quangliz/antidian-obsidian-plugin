@@ -305,6 +305,120 @@ export interface WebSearchResult {
 	}[];
 }
 
+async function queryAntigravityGrounding(
+	prompt: string,
+): Promise<{ text: string; sources: { title: string; url: string }[] }> {
+	const accessToken = await getAccessToken();
+	const project = await discoverProject(accessToken);
+
+	const body = {
+		model: 'gemini-2.5-flash',
+		project,
+		request: {
+			contents: [
+				{
+					role: 'user',
+					parts: [{ text: prompt }],
+				},
+			],
+			tools: [{ googleSearch: {} }],
+		},
+	};
+
+	const headers = {
+		Authorization: `Bearer ${accessToken}`,
+		'Content-Type': 'application/json',
+		'User-Agent': USER_AGENT,
+		Accept: 'text/event-stream',
+	};
+
+	let rawSSE = '';
+	let lastError: string | null = null;
+	for (const endpoint of CLOUD_CODE_ENDPOINTS) {
+		try {
+			const res = await httpRequest(
+				`${endpoint}/v1internal:streamGenerateContent?alt=sse`,
+				{
+					method: 'POST',
+					headers,
+					body: JSON.stringify(body),
+				},
+			);
+
+			if (res.statusCode >= 200 && res.statusCode < 300) {
+				rawSSE = res.body;
+				break;
+			} else {
+				lastError = `${res.statusCode}: ${res.body}`;
+			}
+		} catch (err) {
+			lastError = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	if (!rawSSE) {
+		throw new Error(
+			`Antigravity grounding failed: ${lastError ?? 'unknown error'}`,
+		);
+	}
+
+	let text = '';
+	const sources: { title: string; url: string }[] = [];
+	const seenUrls = new Set<string>();
+
+	for (const line of rawSSE.split('\n')) {
+		if (!line.startsWith('data:')) continue;
+		const raw = line.slice(5).trim();
+		if (!raw || raw === '[DONE]') continue;
+
+		try {
+			const event = JSON.parse(raw) as {
+				response?: {
+					candidates?: {
+						content?: {
+							parts?: { text?: string }[];
+						};
+						groundingMetadata?: {
+							groundingChunks?: {
+								web?: {
+									uri?: string;
+									title?: string;
+								};
+							}[];
+						};
+					}[];
+				};
+			};
+
+			const candidate = event.response?.candidates?.[0];
+			if (candidate?.content?.parts) {
+				for (const part of candidate.content.parts) {
+					if (part.text) {
+						text += part.text;
+					}
+				}
+			}
+
+			const chunks =
+				candidate?.groundingMetadata?.groundingChunks || [];
+			for (const chunk of chunks) {
+				const uri = chunk.web?.uri;
+				if (uri && !seenUrls.has(uri)) {
+					seenUrls.add(uri);
+					sources.push({
+						title: chunk.web?.title || uri,
+						url: uri,
+					});
+				}
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	return { text: text.trim(), sources };
+}
+
 export function createWebSearchTool(): Tool<
 	WebSearchParams,
 	WebSearchResult
@@ -312,13 +426,14 @@ export function createWebSearchTool(): Tool<
 	return {
 		name: 'web_search',
 		description:
-			'Search the live web using Google Search via the Antigravity endpoint. Returns grounded answers, real-time facts, and source citations.',
+			'Search the live web or fetch and extract content from a specific URL using Google Search via the Antigravity endpoint. Returns grounded answers, page content, real-time facts, and source citations.',
 		schema: {
 			type: 'object',
 			properties: {
 				query: {
 					type: 'string',
-					description: 'The search query or keywords',
+					description:
+						'The search query, keywords, or specific HTTP/HTTPS URL to read',
 				},
 			},
 			required: ['query'],
@@ -333,134 +448,38 @@ export function createWebSearchTool(): Tool<
 				return { summary: 'No search query provided.', sources: [] };
 			}
 
-			const accessToken = await getAccessToken();
-			const project = await discoverProject(accessToken);
+			const isUrl = /^https?:\/\//i.test(query);
+			const prompt = isUrl
+				? `Read and fetch the exact page content and details from this URL: ${query}\nExtract the main text, full documentation, and key information.`
+				: `Search the web and provide concise, accurate information with facts for: ${query}`;
 
-			const body = {
-				model: 'gemini-2.5-flash',
-				project,
-				request: {
-					contents: [
-						{
-							role: 'user',
-							parts: [
-								{
-									text: `Search the web and provide concise, accurate information with facts for: ${query}`,
-								},
-							],
-						},
-					],
-					tools: [{ googleSearch: {} }],
-				},
-			};
-
-			const headers = {
-				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json',
-				'User-Agent': USER_AGENT,
-				Accept: 'text/event-stream',
-			};
-
-			let rawSSE = '';
-			let lastError: string | null = null;
-			for (const endpoint of CLOUD_CODE_ENDPOINTS) {
-				try {
-					const res = await httpRequest(
-						`${endpoint}/v1internal:streamGenerateContent?alt=sse`,
-						{
-							method: 'POST',
-							headers,
-							body: JSON.stringify(body),
-						},
-					);
-
-					if (res.statusCode >= 200 && res.statusCode < 300) {
-						rawSSE = res.body;
-						break;
-					} else {
-						lastError = `${res.statusCode}: ${res.body}`;
-					}
-				} catch (err) {
-					lastError = err instanceof Error ? err.message : String(err);
-				}
-			}
-
-			if (!rawSSE) {
-				throw new Error(
-					`Antigravity web search failed: ${lastError ?? 'unknown error'}`,
-				);
-			}
-
-			let summary = '';
-			const sources: { title: string; url: string }[] = [];
-			const seenUrls = new Set<string>();
-
-			for (const line of rawSSE.split('\n')) {
-				if (!line.startsWith('data:')) continue;
-				const raw = line.slice(5).trim();
-				if (!raw || raw === '[DONE]') continue;
-
-				try {
-					const event = JSON.parse(raw) as {
-						response?: {
-							candidates?: {
-								content?: {
-									parts?: { text?: string }[];
-								};
-								groundingMetadata?: {
-									groundingChunks?: {
-										web?: {
-											uri?: string;
-											title?: string;
-										};
-									}[];
-								};
-							}[];
-						};
-					};
-
-					const candidate = event.response?.candidates?.[0];
-					if (candidate?.content?.parts) {
-						for (const part of candidate.content.parts) {
-							if (part.text) {
-								summary += part.text;
-							}
-						}
-					}
-
-					const chunks =
-						candidate?.groundingMetadata?.groundingChunks || [];
-					for (const chunk of chunks) {
-						const uri = chunk.web?.uri;
-						if (uri && !seenUrls.has(uri)) {
-							seenUrls.add(uri);
-							sources.push({
-								title: chunk.web?.title || uri,
-								url: uri,
-							});
-						}
-					}
-				} catch {
-					continue;
-				}
-			}
-
-			summary = summary.trim();
+			const res = await queryAntigravityGrounding(prompt);
 
 			if (ctx?.recordContext) {
-				for (const src of sources) {
+				if (isUrl) {
 					ctx.recordContext({
-						path: src.title || src.url,
-						reason: 'Google Search (Antigravity)',
+						path: query,
+						reason: 'Fetched URL (Antigravity)',
 					});
+				}
+				for (const src of res.sources) {
+					if (src.url !== query) {
+						ctx.recordContext({
+							path: src.title || src.url,
+							reason: 'Google Search (Antigravity)',
+						});
+					}
 				}
 			}
 
 			return {
-				summary: summary || 'No information found.',
-				sources,
+				summary: res.text || 'No information found.',
+				sources: res.sources,
 			};
 		},
 	};
 }
+
+
+
 
