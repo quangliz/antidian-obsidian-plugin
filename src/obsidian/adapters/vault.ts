@@ -455,6 +455,23 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 					appliedAt: Date.now(),
 					previousContent,
 				});
+			} else if (op.type === 'edit') {
+				const norm = this.normalizePath(op.path);
+				let file = this.app.vault.getAbstractFileByPath(norm);
+				if (!(file instanceof TFile)) {
+					file = this.metadataAdapter.getFirstLinkpathDest(op.path, '');
+				}
+				if (file instanceof TFile) {
+					previousContent = await this.app.vault.read(file);
+					await this.app.vault.modify(file, op.content);
+				} else {
+					throw new Error(`File not found to edit: "${op.path}"`);
+				}
+				appliedOps.push({
+					operation: op,
+					appliedAt: Date.now(),
+					previousContent,
+				});
 			}
 		}
 

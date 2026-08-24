@@ -11,6 +11,8 @@ export interface ContextReference {
 	path: string;
 	heading?: string;
 	reason: string;
+	snippet?: string;
+	chars?: number;
 }
 
 export interface ContextService {

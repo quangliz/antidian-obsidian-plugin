@@ -1,21 +1,32 @@
-import { setIcon } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 import { AgentStepEvent } from '../../core/agent';
+
+export interface SourceItem {
+	title: string;
+	subtitle?: string;
+	href?: string;
+	path?: string;
+}
 
 export interface ThinkingStep {
 	id: string;
 	toolName: string;
+	kind: 'search' | 'code' | 'step';
+	query?: string;
 	primary: string;
 	secondary?: string;
 	mono?: boolean;
 	add?: number;
 	del?: number;
 	status: 'running' | 'done' | 'error';
+	sources?: SourceItem[];
 	args?: Record<string, unknown>;
 	output?: unknown;
 	error?: string;
 }
 
 export class ThinkingStateView {
+	private app: App;
 	private containerEl: HTMLElement;
 	private headerBtnEl!: HTMLButtonElement;
 	private sparkleIconEl!: HTMLElement;
@@ -31,10 +42,11 @@ export class ThinkingStateView {
 	private isSettled = false;
 	private startTime = 0;
 	private endTime = 0;
-	private activeStepName = 'Thinking';
+	private activeStatus = 'Thinking';
 	private selectedStepId: string | null = null;
 
-	constructor(containerEl: HTMLElement) {
+	constructor(containerEl: HTMLElement, app: App) {
+		this.app = app;
 		this.containerEl = containerEl.createDiv({
 			cls: 'anti-dian-thinking-state',
 		});
@@ -44,22 +56,30 @@ export class ThinkingStateView {
 
 	public handleStep(step: AgentStepEvent): void {
 		if (step.type === 'thinking') {
-			this.activeStepName = 'Thinking';
+			this.activeStatus = 'Thinking';
 			this.updateHeader();
 		} else if (step.type === 'tool_start') {
+			const isSearch = step.toolName === 'search_notes' || step.toolName === 'web_search';
 			const formatted = this.formatToolStep(step.toolName, step.toolArgs);
 			const newStep: ThinkingStep = {
 				id: `step_${this.steps.length + 1}`,
 				toolName: step.toolName,
+				kind: isSearch ? 'search' : 'code',
+				query: typeof step.toolArgs.query === 'string' ? step.toolArgs.query : undefined,
 				primary: formatted.primary,
 				secondary: formatted.secondary,
 				mono: formatted.mono,
 				status: 'running',
 				args: step.toolArgs,
+				sources: [],
 			};
 			this.steps.push(newStep);
-			this.activeStepName = `Running ${formatted.primary.toLowerCase()}...`;
-			// Auto expand when tools start running
+			this.activeStatus = isSearch
+				? step.toolName === 'web_search'
+					? 'Searching the web'
+					: 'Searching notes'
+				: `Running ${formatted.primary.toLowerCase()}...`;
+
 			this.isExpanded = true;
 			this.updateHeader();
 			this.renderSteps();
@@ -79,7 +99,65 @@ export class ThinkingStateView {
 					current.error = String((step.toolOutput as { error: unknown }).error);
 				}
 
-				// Check for diff/changeset metrics if tool was patch/create
+				// Extract search result sources
+				if (current.toolName === 'search_notes' && Array.isArray(step.toolOutput)) {
+					const items = (step.toolOutput as unknown[]).filter(
+						(item): item is { path?: string; heading?: string } =>
+							typeof item === 'object' && item !== null,
+					);
+					current.sources = items.map((item) => {
+						const path = typeof item.path === 'string' ? item.path : 'Untitled';
+						const noteName = path.replace(/\.md$/, '').split('/').pop() || path;
+						const folder = path.includes('/') ? path.split('/').slice(0, -1).join('/') : '';
+						return {
+							title: item.heading ? `${noteName} > #${item.heading}` : noteName,
+							subtitle: folder || undefined,
+							path,
+						};
+					});
+				} else if (current.toolName === 'web_search') {
+					let sourceList: Array<{ title?: string; url?: string }> = [];
+					if (Array.isArray(step.toolOutput)) {
+						sourceList = (step.toolOutput as unknown[]).filter(
+							(item): item is { title?: string; url?: string } =>
+								typeof item === 'object' && item !== null,
+						);
+					} else if (step.toolOutput && typeof step.toolOutput === 'object') {
+						const out = step.toolOutput as {
+							sources?: unknown[];
+							results?: unknown[];
+						};
+						if (Array.isArray(out.sources)) {
+							sourceList = out.sources.filter(
+								(item): item is { title?: string; url?: string } =>
+									typeof item === 'object' && item !== null,
+							);
+						} else if (Array.isArray(out.results)) {
+							sourceList = out.results.filter(
+								(item): item is { title?: string; url?: string } =>
+									typeof item === 'object' && item !== null,
+							);
+						}
+					}
+
+					current.sources = sourceList.map((item) => {
+						let domain = '';
+						if (item.url) {
+							try {
+								domain = new URL(item.url).hostname.replace(/^www\./, '');
+							} catch {
+								domain = item.url;
+							}
+						}
+						return {
+							title: item.title || domain || 'Web source',
+							subtitle: domain || undefined,
+							href: item.url,
+						};
+					});
+				}
+
+				// Extract diff stats for patch/create
 				if (
 					step.toolOutput &&
 					typeof step.toolOutput === 'object' &&
@@ -92,11 +170,11 @@ export class ThinkingStateView {
 					}
 				}
 			}
-			this.activeStepName = 'Thinking...';
+			this.activeStatus = 'Thinking...';
 			this.updateHeader();
 			this.renderSteps();
 		} else if (step.type === 'error') {
-			this.activeStepName = `Error: ${step.message}`;
+			this.activeStatus = `Error: ${step.message}`;
 			this.updateHeader();
 		}
 	}
@@ -110,13 +188,22 @@ export class ThinkingStateView {
 		);
 
 		if (this.steps.length > 0) {
-			const toolCount = this.steps.length;
-			this.activeStepName = `Ran ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'} (${durationSec}s)`;
+			const searchCount = this.steps.filter((s) => s.kind === 'search').length;
+			const codeCount = this.steps.filter((s) => s.kind === 'code').length;
+
+			if (searchCount > 0 && codeCount === 0) {
+				const totalSources = this.steps.reduce((acc, s) => acc + (s.sources?.length || 0), 0);
+				this.activeStatus = totalSources > 0
+					? `Searched ${totalSources} ${totalSources === 1 ? 'source' : 'sources'} (${durationSec}s)`
+					: `Searched (${durationSec}s)`;
+			} else {
+				const toolCount = this.steps.length;
+				this.activeStatus = `Ran ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'} (${durationSec}s)`;
+			}
 		} else {
-			this.activeStepName = `Thought for ${durationSec}s`;
+			this.activeStatus = `Thought for ${durationSec}s`;
 		}
 
-		// By default collapse when settled to keep the response clean, but leave expandable
 		this.isExpanded = false;
 		this.updateHeader();
 		this.renderSteps();
@@ -144,6 +231,7 @@ export class ThinkingStateView {
 					secondary: typeof args.path === 'string' ? args.path.replace(/\.md$/, '').split('/').pop() : undefined,
 					mono: true,
 				};
+			case 'edit_note':
 			case 'patch_note':
 				return {
 					primary: 'Edit',
@@ -223,13 +311,13 @@ export class ThinkingStateView {
 			this.sparkleIconEl.addClass('is-settled');
 			this.statusTextEl.removeClass('is-shimmer');
 			this.statusTextEl.addClass('is-settled');
-			this.statusTextEl.setText(this.activeStepName);
+			this.statusTextEl.setText(this.activeStatus);
 		} else {
 			this.sparkleIconEl.addClass('is-active');
 			this.sparkleIconEl.removeClass('is-settled');
 			this.statusTextEl.addClass('is-shimmer');
 			this.statusTextEl.removeClass('is-settled');
-			this.statusTextEl.setText(this.activeStepName);
+			this.statusTextEl.setText(this.activeStatus);
 		}
 
 		if (this.isExpanded) {
@@ -249,10 +337,7 @@ export class ThinkingStateView {
 				const row = this.rowsContainerEl.createDiv({
 					cls: 'anti-dian-thinking-row',
 				});
-				const spinner = row.createSpan({
-					cls: 'anti-dian-thinking-row-spinner',
-				});
-				spinner.setAttribute('aria-hidden', 'true');
+				row.createSpan({ cls: 'anti-dian-thinking-row-spinner' });
 				row.createSpan({
 					cls: 'anti-dian-thinking-row-primary',
 					text: 'Reasoning about prompt context...',
@@ -262,6 +347,7 @@ export class ThinkingStateView {
 		}
 
 		for (const step of this.steps) {
+			// Main Step Row
 			const row = this.rowsContainerEl.createDiv({
 				cls: `anti-dian-thinking-row ${this.selectedStepId === step.id ? 'is-selected' : ''}`,
 			});
@@ -283,7 +369,7 @@ export class ThinkingStateView {
 				text: step.primary,
 			});
 
-			// Secondary details
+			// Secondary details (e.g. search query or target file)
 			if (step.secondary) {
 				row.createSpan({
 					cls: `anti-dian-thinking-row-secondary ${step.mono ? 'is-mono' : ''}`,
@@ -300,7 +386,7 @@ export class ThinkingStateView {
 					diffSpan.createSpan({ cls: 'diff-add', text: `+${step.add}` });
 				}
 				if (step.del !== undefined) {
-					diffSpan.createSpan({ cls: 'diff-del', text: ` -${step.del}` });
+					diffSpan.createSpan({ cls: 'diff-del', text: ` −${step.del}` });
 				}
 			}
 
@@ -310,6 +396,57 @@ export class ThinkingStateView {
 				this.selectedStepId = this.selectedStepId === step.id ? null : step.id;
 				this.renderSteps();
 			};
+
+			// Render matching sources if search returned items
+			if (step.sources && step.sources.length > 0) {
+				const visibleSources = step.sources.slice(0, 3);
+				for (const src of visibleSources) {
+					const srcRow = this.rowsContainerEl.createEl(
+						src.href ? 'a' : 'div',
+						{
+							cls: 'anti-dian-thinking-source-row',
+							attr: src.href
+								? { href: src.href, target: '_blank', rel: 'noopener noreferrer' }
+								: {},
+						},
+					);
+
+					// Grey source icon
+					const iconSpan = srcRow.createSpan({
+						cls: 'anti-dian-thinking-source-icon',
+					});
+					setIcon(iconSpan, src.href ? 'globe' : 'file-text');
+
+					srcRow.createSpan({
+						cls: 'anti-dian-thinking-source-title',
+						text: src.title,
+					});
+
+					if (src.subtitle) {
+						srcRow.createSpan({
+							cls: 'anti-dian-thinking-source-subtitle',
+							text: src.subtitle,
+						});
+					}
+
+					// If vault path, clicking opens the note
+					if (src.path) {
+						srcRow.onclick = (e) => {
+							e.stopPropagation();
+							if (src.path) {
+								void this.app.workspace.openLinkText(src.path, '', false);
+							}
+						};
+					}
+				}
+
+				if (step.sources.length > 3) {
+					const moreSpan = this.rowsContainerEl.createSpan({
+						cls: 'anti-dian-thinking-more-count',
+					});
+					moreSpan.setText(`+${step.sources.length - 3} more`);
+				}
+			}
 
 			// Detail card if expanded
 			if (this.selectedStepId === step.id && (step.args || step.error)) {

@@ -11,6 +11,12 @@ export type ChangeOperation =
 			heading: string;
 			content: string;
 			baseMtime?: number;
+	  }
+	| {
+			type: 'edit';
+			path: string;
+			content: string;
+			baseMtime?: number;
 	  };
 
 export interface ChangeSet {
@@ -57,7 +63,7 @@ export interface DiffHunk {
 
 export interface FileDiff {
 	path: string;
-	operationType: 'create' | 'patch-section';
+	operationType: 'create' | 'patch-section' | 'edit';
 	heading?: string;
 	oldContent: string;
 	newContent: string;

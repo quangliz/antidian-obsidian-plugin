@@ -22,6 +22,7 @@ import {
 	createSearchNotesTool,
 	createReadNoteTool,
 	createCreateNoteTool,
+	createEditNoteTool,
 	createPatchNoteTool,
 	createWebSearchTool,
 } from './core/tools';
@@ -61,6 +62,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.toolRegistry.register(createSearchNotesTool(this.vaultAdapter));
 		this.toolRegistry.register(createReadNoteTool(this.vaultAdapter));
 		this.toolRegistry.register(createCreateNoteTool(this.stagingManager));
+		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
 		this.toolRegistry.register(createPatchNoteTool(this.stagingManager));
 		this.toolRegistry.register(createWebSearchTool());
 

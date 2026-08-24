@@ -102,6 +102,8 @@ export function createSearchNotesTool(
 						path: res.path,
 						heading: res.heading,
 						reason: `Search (${res.matchType})`,
+						snippet: res.snippet,
+						chars: res.snippet?.length,
 					});
 				}
 			}
@@ -147,6 +149,11 @@ export function createReadNoteTool(
 						path: note.path,
 						heading: note.heading,
 						reason: 'Read note',
+						chars: note.content.length,
+						snippet:
+							note.content.length > 200
+								? `${note.content.slice(0, 200).trim()}...`
+								: note.content.trim(),
 					});
 				}
 				if (note.mtime && ctx?.recordReadMtime) {
@@ -288,6 +295,68 @@ export function createPatchNoteTool(
 					heading,
 				},
 				message: `Staged patch for "${path}" under heading "${heading}". Operation is queued for user review and approval.`,
+			};
+		},
+	};
+}
+
+export interface EditNoteInput {
+	path: string;
+	content: string;
+}
+
+export function createEditNoteTool(
+	staging: ChangeStagingManager,
+): Tool<EditNoteInput, Record<string, unknown>> {
+	return {
+		name: 'edit_note',
+		description:
+			'Stage an update/replacement of an entire existing note in the vault. Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
+		schema: {
+			type: 'object',
+			properties: {
+				path: {
+					type: 'string',
+					description: 'Vault path to the existing note (e.g. "llama.cpp.md")',
+				},
+				content: {
+					type: 'string',
+					description: 'Updated markdown content for the note',
+				},
+			},
+			required: ['path', 'content'],
+		},
+		execute: async (
+			input: EditNoteInput,
+			ctx?: ToolContext,
+		): Promise<Record<string, unknown>> => {
+			const path = typeof input?.path === 'string' ? input.path : '';
+			const content =
+				typeof input?.content === 'string' ? input.content : '';
+			const baseMtime = ctx?.getReadMtime?.(path);
+
+			const changeSet = staging.stage({
+				type: 'edit',
+				path,
+				content,
+				baseMtime,
+			});
+
+			if (ctx?.recordContext) {
+				ctx.recordContext({
+					path,
+					reason: 'Staged edit',
+				});
+			}
+
+			return {
+				staged: true,
+				changeSetId: changeSet.id,
+				operation: {
+					type: 'edit',
+					path,
+				},
+				message: `Staged edit of "${path}". Operation is queued for user review and approval.`,
 			};
 		},
 	};

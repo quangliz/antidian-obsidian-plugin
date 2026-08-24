@@ -122,6 +122,31 @@ export class ChangeSetValidator {
 						}
 					}
 				}
+			} else if (op.type === 'edit') {
+				// 9. Target note existence for edit
+				const exists = await this.inspector.fileExists(normPath);
+				if (!exists) {
+					errors.push({
+						operationIndex: i,
+						path: normPath,
+						code: 'file_not_found',
+						message: `Target note does not exist for edit: "${normPath}"`,
+					});
+				} else if (op.baseMtime !== undefined) {
+					const currentMtime =
+						await this.inspector.getFileMtime(normPath);
+					if (
+						currentMtime !== null &&
+						currentMtime > op.baseMtime
+					) {
+						errors.push({
+							operationIndex: i,
+							path: normPath,
+							code: 'stale_base',
+							message: `File "${normPath}" was modified after it was read by the agent (stale base).`,
+						});
+					}
+				}
 			}
 		}
 

@@ -20,6 +20,7 @@ import {
 	ModelGroup,
 } from '../../core/models/antigravity-oauth';
 import { renderChangeSet } from './changeset-view';
+import { ContextCardsView } from './context-cards-view';
 import { ModelMenuController } from './model-menu-view';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
@@ -290,7 +291,7 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const thinkingState = new ThinkingStateView(agentMsg);
+		const thinkingState = new ThinkingStateView(agentMsg, this.app);
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 
 		try {
@@ -355,59 +356,7 @@ export class AntiDianView extends ItemView {
 		parent: HTMLElement,
 		contextUsed: ContextReference[],
 	): void {
-		const grouped = new Map<string, { reason: string; headings: string[] }>();
-
-		for (const ref of contextUsed) {
-			const existing = grouped.get(ref.path);
-			if (existing) {
-				if (ref.heading && !existing.headings.includes(ref.heading)) {
-					existing.headings.push(ref.heading);
-				}
-			} else {
-				grouped.set(ref.path, {
-					reason: ref.reason,
-					headings: ref.heading ? [ref.heading] : [],
-				});
-			}
-		}
-
-		const container = parent.createDiv({
-			cls: 'anti-dian-context-used-container',
-		});
-
-		const header = container.createDiv({
-			cls: 'anti-dian-context-used-header',
-		});
-		header.createSpan({ text: 'Context used', cls: 'anti-dian-context-used-title' });
-
-		const list = container.createDiv({ cls: 'anti-dian-context-used-list' });
-
-		for (const [filePath, info] of grouped.entries()) {
-			const item = list.createDiv({ cls: 'anti-dian-context-used-item' });
-
-			const noteName = filePath.replace(/\.md$/, '').split('/').pop();
-			const link = item.createEl('a', {
-				text: `[[${noteName}]]`,
-				cls: 'anti-dian-context-used-link',
-			});
-
-			link.onclick = (e) => {
-				e.preventDefault();
-				void this.app.workspace.openLinkText(filePath, '', false);
-			};
-
-			if (info.headings.length > 0) {
-				const headingsContainer = item.createDiv({
-					cls: 'anti-dian-context-used-headings',
-				});
-				for (const h of info.headings) {
-					headingsContainer.createDiv({
-						text: `> #${h}`,
-						cls: 'anti-dian-context-used-heading',
-					});
-				}
-			}
-		}
+		new ContextCardsView(parent, this.app, contextUsed);
 	}
 
 	private renderUsageFooter(

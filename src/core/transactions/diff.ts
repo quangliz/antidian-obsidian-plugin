@@ -97,6 +97,12 @@ export class ChangeSetDiffGenerator {
 				});
 				oldContent = existing?.content ?? '';
 				headingHeader = `## ${op.heading}`;
+			} else if (op.type === 'edit') {
+				const existing = await this.vaultService.readNote({
+					path: op.path,
+				});
+				oldContent = existing?.content ?? '';
+				headingHeader = undefined;
 			}
 
 			const lines = computeLineDiff(oldContent, op.content);
