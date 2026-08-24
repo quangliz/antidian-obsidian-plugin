@@ -1,5 +1,5 @@
 import { ActiveContext, ContextReference } from '../types/context';
-import { ModelProvider, Message, ToolResult } from '../types/model';
+import { ModelProvider, Message, ToolResult, MediaInput } from '../types/model';
 import { ChangeSet } from '../types/changes';
 import { Tool, ToolRegistry } from '../tools';
 import { ChangeStagingManager } from '../transactions';
@@ -80,6 +80,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 		context?: ActiveContext,
 		history: Message[] = [],
 		onStep?: (event: AgentStepEvent) => void,
+		media?: MediaInput[],
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -112,6 +113,7 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 			{
 				role: 'user',
 				text: fullUserPrompt,
+				media,
 			},
 		];
 

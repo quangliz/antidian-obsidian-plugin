@@ -23,6 +23,7 @@ import {
 	createReadNoteTool,
 	createCreateNoteTool,
 	createPatchNoteTool,
+	createWebSearchTool,
 } from './core/tools';
 import { Agent } from './core/agent';
 import { registerCommands } from './obsidian/commands';
@@ -61,6 +62,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.toolRegistry.register(createReadNoteTool(this.vaultAdapter));
 		this.toolRegistry.register(createCreateNoteTool(this.stagingManager));
 		this.toolRegistry.register(createPatchNoteTool(this.stagingManager));
+		this.toolRegistry.register(createWebSearchTool());
 
 		this.agent = new Agent({
 			provider: this.geminiProvider,

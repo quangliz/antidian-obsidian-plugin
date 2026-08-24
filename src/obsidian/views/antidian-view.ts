@@ -11,7 +11,7 @@ import {
 	ContextService,
 } from '../../core/types/context';
 import { Agent, AgentStepEvent } from '../../core/agent';
-import { Message } from '../../core/types/model';
+import { Message, MediaInput } from '../../core/types/model';
 import { ChangeSet } from '../../core/types/changes';
 import { ChangeSetValidator } from '../../core/transactions';
 import {
@@ -60,6 +60,9 @@ export class AntiDianView extends ItemView {
 	private availableModels: AvailableModel[] = [];
 	private modelGroups: ModelGroup[] = [];
 	private history: Message[] = [];
+	private stagedMedia: MediaInput[] = [];
+	private mediaTrayEl: HTMLElement | null = null;
+	private fileInputEl: HTMLInputElement | null = null;
 	private isRunning = false;
 	private isModelMenuOpen = false;
 	private isUsageSubmenuOpen = false;
@@ -208,7 +211,12 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-input-card',
 		});
 
-		// 1. Textarea
+		// 1. Media attachment tray
+		this.mediaTrayEl = this.inputCardEl.createDiv({
+			cls: 'anti-dian-media-tray anti-dian-hidden',
+		});
+
+		// 2. Textarea
 		this.inputEl = this.inputCardEl.createEl('textarea', {
 			cls: 'anti-dian-input-textarea',
 			attr: {
@@ -224,7 +232,23 @@ export class AntiDianView extends ItemView {
 			}
 		});
 
-		// 2. Toolbar inside input card
+		// Paste image / media from clipboard
+		this.inputEl.addEventListener('paste', (event: ClipboardEvent) => {
+			const items = event.clipboardData?.items;
+			if (!items) return;
+			for (let i = 0; i < items.length; i++) {
+				const item = items[i];
+				if (item && item.kind === 'file' && item.type.startsWith('image/')) {
+					const file = item.getAsFile();
+					if (file) {
+						event.preventDefault();
+						void this.addMediaFile(file);
+					}
+				}
+			}
+		});
+
+		// 3. Toolbar inside input card
 		const toolbar = this.inputCardEl.createDiv({
 			cls: 'anti-dian-input-toolbar',
 		});
@@ -233,12 +257,35 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-input-left-controls',
 		});
 
+		// Hidden file picker input
+		this.fileInputEl = this.inputCardEl.createEl('input', {
+			attr: {
+				type: 'file',
+				accept: 'image/*,video/*,audio/*',
+				multiple: 'true',
+				style: 'display: none;',
+			},
+		});
+		this.fileInputEl.onchange = () => {
+			if (this.fileInputEl?.files) {
+				for (let i = 0; i < this.fileInputEl.files.length; i++) {
+					const file = this.fileInputEl.files[i];
+					if (file) void this.addMediaFile(file);
+				}
+				this.fileInputEl.value = '';
+			}
+		};
+
 		// Attach / Context button
 		const attachBtn = leftControls.createEl('button', {
 			cls: 'anti-dian-btn-attach',
-			attr: { 'aria-label': 'Add context' },
+			attr: { 'aria-label': 'Add file or image' },
 		});
 		setIcon(attachBtn, 'plus');
+		attachBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.fileInputEl?.click();
+		};
 
 		// Model selector pill
 		const modelPill = leftControls.createDiv({
@@ -854,6 +901,8 @@ export class AntiDianView extends ItemView {
 
 	private startNewSession(): void {
 		this.history = [];
+		this.stagedMedia = [];
+		this.renderMediaTray();
 		if (this.messagesEl) {
 			this.messagesEl.empty();
 		}
@@ -864,6 +913,74 @@ export class AntiDianView extends ItemView {
 		if (this.inputEl) {
 			this.inputEl.value = '';
 			this.inputEl.focus();
+		}
+	}
+
+	private async addMediaFile(file: File): Promise<void> {
+		const data = await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result as string);
+			reader.onerror = reject;
+			reader.readAsDataURL(file);
+		});
+
+		const type: MediaInput['type'] = file.type.startsWith('video/')
+			? 'video'
+			: file.type.startsWith('audio/')
+				? 'audio'
+				: 'image';
+
+		this.stagedMedia.push({
+			type,
+			mimeType: file.type || (type === 'image' ? 'image/png' : 'video/mp4'),
+			data,
+		});
+
+		this.renderMediaTray();
+	}
+
+	private renderMediaTray(): void {
+		if (!this.mediaTrayEl) return;
+		this.mediaTrayEl.empty();
+		if (this.stagedMedia.length === 0) {
+			this.mediaTrayEl.addClass('anti-dian-hidden');
+			return;
+		}
+		this.mediaTrayEl.removeClass('anti-dian-hidden');
+
+		for (let i = 0; i < this.stagedMedia.length; i++) {
+			const item = this.stagedMedia[i];
+			if (!item) continue;
+			const chip = this.mediaTrayEl.createDiv({
+				cls: 'anti-dian-media-chip',
+			});
+
+			if (item.type === 'image' && item.data) {
+				chip.createEl('img', {
+					cls: 'anti-dian-media-chip-thumb',
+					attr: { src: item.data },
+				});
+			} else {
+				const iconSpan = chip.createSpan({
+					cls: 'anti-dian-media-chip-icon',
+				});
+				setIcon(iconSpan, item.type === 'video' ? 'video' : 'file');
+				chip.createSpan({
+					text: item.type,
+					cls: 'anti-dian-media-chip-label',
+				});
+			}
+
+			const removeBtn = chip.createEl('button', {
+				cls: 'anti-dian-media-chip-remove',
+				text: '×',
+			});
+			const idx = i;
+			removeBtn.onclick = (e) => {
+				e.stopPropagation();
+				this.stagedMedia.splice(idx, 1);
+				this.renderMediaTray();
+			};
 		}
 	}
 
@@ -893,9 +1010,13 @@ export class AntiDianView extends ItemView {
 		}
 
 		const text = this.inputEl.value.trim();
-		if (!text) {
+		const mediaToSend = [...this.stagedMedia];
+		if (!text && mediaToSend.length === 0) {
 			return;
 		}
+
+		this.stagedMedia = [];
+		this.renderMediaTray();
 
 		this.isRunning = true;
 		if (this.sendButtonEl) {
@@ -911,7 +1032,24 @@ export class AntiDianView extends ItemView {
 		const userMsg = this.messagesEl.createDiv({
 			cls: 'anti-dian-message anti-dian-message-user',
 		});
-		userMsg.createEl('p', { text });
+
+		if (mediaToSend.length > 0) {
+			const mediaRow = userMsg.createDiv({
+				cls: 'anti-dian-user-media-row',
+			});
+			for (const m of mediaToSend) {
+				if (m.type === 'image' && m.data) {
+					mediaRow.createEl('img', {
+						cls: 'anti-dian-user-media-img',
+						attr: { src: m.data },
+					});
+				}
+			}
+		}
+
+		if (text) {
+			userMsg.createEl('p', { text });
+		}
 
 		this.inputEl.value = '';
 		this.scrollToBottom();
@@ -951,6 +1089,7 @@ export class AntiDianView extends ItemView {
 						liveStatusEl,
 					);
 				},
+				mediaToSend.length > 0 ? mediaToSend : undefined,
 			);
 
 			this.history = result.updatedHistory;

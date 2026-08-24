@@ -114,13 +114,34 @@ export class GeminiProvider implements ModelProvider {
 				const mediaUris = new Set<string>();
 				if (msg.media) {
 					for (const m of msg.media) {
-						mediaUris.add(m.uri);
-						parts.push({
-							fileData: {
-								fileUri: m.uri,
-								mimeType: m.mimeType ?? 'video/mp4',
-							},
-						});
+						if (m.data) {
+							const mimeType =
+								m.mimeType ??
+								(m.data.startsWith('data:')
+									? m.data.split(';')[0]?.slice(5) || 'image/png'
+									: 'image/png');
+							const base64Data = m.data.includes(',')
+								? m.data.split(',')[1] || ''
+								: m.data;
+							parts.push({
+								inlineData: {
+									mimeType,
+									data: base64Data,
+								},
+							});
+						} else if (m.uri) {
+							mediaUris.add(m.uri);
+							parts.push({
+								fileData: {
+									fileUri: m.uri,
+									mimeType:
+										m.mimeType ??
+										(m.type === 'video'
+											? 'video/mp4'
+											: 'image/png'),
+								},
+							});
+						}
 					}
 				}
 				// ponytail: auto-detect YouTube URLs in prompt text so direct link pasting works without custom attachment UI

@@ -15,8 +15,9 @@ export interface ToolResult {
 
 export interface MediaInput {
 	type: 'video' | 'image' | 'audio';
-	uri: string;
+	uri?: string;
 	mimeType?: string;
+	data?: string;
 }
 
 export interface Message {

@@ -7,6 +7,13 @@ import {
 } from '../types/vault';
 import { ActiveContext, ContextReference } from '../types/context';
 import { ChangeStagingManager } from '../transactions';
+import { httpRequest } from '../models/http';
+import {
+	getAccessToken,
+	discoverProject,
+	CLOUD_CODE_ENDPOINTS,
+	USER_AGENT,
+} from '../models/antigravity-oauth';
 
 export interface ToolContext {
 	context?: ActiveContext;
@@ -285,3 +292,175 @@ export function createPatchNoteTool(
 		},
 	};
 }
+
+export interface WebSearchParams {
+	query: string;
+}
+
+export interface WebSearchResult {
+	summary: string;
+	sources: {
+		title: string;
+		url: string;
+	}[];
+}
+
+export function createWebSearchTool(): Tool<
+	WebSearchParams,
+	WebSearchResult
+> {
+	return {
+		name: 'web_search',
+		description:
+			'Search the live web using Google Search via the Antigravity endpoint. Returns grounded answers, real-time facts, and source citations.',
+		schema: {
+			type: 'object',
+			properties: {
+				query: {
+					type: 'string',
+					description: 'The search query or keywords',
+				},
+			},
+			required: ['query'],
+		},
+		execute: async (
+			input: WebSearchParams,
+			ctx?: ToolContext,
+		): Promise<WebSearchResult> => {
+			const query =
+				typeof input?.query === 'string' ? input.query.trim() : '';
+			if (!query) {
+				return { summary: 'No search query provided.', sources: [] };
+			}
+
+			const accessToken = await getAccessToken();
+			const project = await discoverProject(accessToken);
+
+			const body = {
+				model: 'gemini-2.5-flash',
+				project,
+				request: {
+					contents: [
+						{
+							role: 'user',
+							parts: [
+								{
+									text: `Search the web and provide concise, accurate information with facts for: ${query}`,
+								},
+							],
+						},
+					],
+					tools: [{ googleSearch: {} }],
+				},
+			};
+
+			const headers = {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json',
+				'User-Agent': USER_AGENT,
+				Accept: 'text/event-stream',
+			};
+
+			let rawSSE = '';
+			let lastError: string | null = null;
+			for (const endpoint of CLOUD_CODE_ENDPOINTS) {
+				try {
+					const res = await httpRequest(
+						`${endpoint}/v1internal:streamGenerateContent?alt=sse`,
+						{
+							method: 'POST',
+							headers,
+							body: JSON.stringify(body),
+						},
+					);
+
+					if (res.statusCode >= 200 && res.statusCode < 300) {
+						rawSSE = res.body;
+						break;
+					} else {
+						lastError = `${res.statusCode}: ${res.body}`;
+					}
+				} catch (err) {
+					lastError = err instanceof Error ? err.message : String(err);
+				}
+			}
+
+			if (!rawSSE) {
+				throw new Error(
+					`Antigravity web search failed: ${lastError ?? 'unknown error'}`,
+				);
+			}
+
+			let summary = '';
+			const sources: { title: string; url: string }[] = [];
+			const seenUrls = new Set<string>();
+
+			for (const line of rawSSE.split('\n')) {
+				if (!line.startsWith('data:')) continue;
+				const raw = line.slice(5).trim();
+				if (!raw || raw === '[DONE]') continue;
+
+				try {
+					const event = JSON.parse(raw) as {
+						response?: {
+							candidates?: {
+								content?: {
+									parts?: { text?: string }[];
+								};
+								groundingMetadata?: {
+									groundingChunks?: {
+										web?: {
+											uri?: string;
+											title?: string;
+										};
+									}[];
+								};
+							}[];
+						};
+					};
+
+					const candidate = event.response?.candidates?.[0];
+					if (candidate?.content?.parts) {
+						for (const part of candidate.content.parts) {
+							if (part.text) {
+								summary += part.text;
+							}
+						}
+					}
+
+					const chunks =
+						candidate?.groundingMetadata?.groundingChunks || [];
+					for (const chunk of chunks) {
+						const uri = chunk.web?.uri;
+						if (uri && !seenUrls.has(uri)) {
+							seenUrls.add(uri);
+							sources.push({
+								title: chunk.web?.title || uri,
+								url: uri,
+							});
+						}
+					}
+				} catch {
+					continue;
+				}
+			}
+
+			summary = summary.trim();
+
+			if (ctx?.recordContext) {
+				for (const src of sources) {
+					ctx.recordContext({
+						path: src.title || src.url,
+						reason: 'Google Search (Antigravity)',
+					});
+				}
+			}
+
+			return {
+				summary: summary || 'No information found.',
+				sources,
+			};
+		},
+	};
+}
+
