@@ -13,9 +13,16 @@ export interface ToolResult {
 	output: unknown;
 }
 
+export interface MediaInput {
+	type: 'video' | 'image' | 'audio';
+	uri: string;
+	mimeType?: string;
+}
+
 export interface Message {
 	role: 'user' | 'assistant';
 	text?: string;
+	media?: MediaInput[];
 	toolCalls?: ToolCall[];
 	toolResults?: ToolResult[];
 }

@@ -111,6 +111,37 @@ export class GeminiProvider implements ModelProvider {
 				if (msg.text) {
 					parts.push({ text: msg.text });
 				}
+				const mediaUris = new Set<string>();
+				if (msg.media) {
+					for (const m of msg.media) {
+						mediaUris.add(m.uri);
+						parts.push({
+							fileData: {
+								fileUri: m.uri,
+								mimeType: m.mimeType ?? 'video/mp4',
+							},
+						});
+					}
+				}
+				// ponytail: auto-detect YouTube URLs in prompt text so direct link pasting works without custom attachment UI
+				if (msg.text) {
+					const ytMatches = msg.text.match(
+						/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[a-zA-Z0-9_-]+/g,
+					);
+					if (ytMatches) {
+						for (const uri of ytMatches) {
+							if (!mediaUris.has(uri)) {
+								mediaUris.add(uri);
+								parts.push({
+									fileData: {
+										fileUri: uri,
+										mimeType: 'video/mp4',
+									},
+								});
+							}
+						}
+					}
+				}
 				if (msg.toolResults) {
 					for (const res of msg.toolResults) {
 						parts.push({
