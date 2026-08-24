@@ -22,17 +22,9 @@ import {
 import { renderChangeSet } from './changeset-view';
 import { ModelMenuController } from './model-menu-view';
 import { PromptBarView } from './prompt-bar-view';
+import { ThinkingStateView } from './thinking-state-view';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
-
-interface ActionItem {
-	id: string;
-	name: string;
-	args: Record<string, unknown>;
-	output?: unknown;
-	status: 'running' | 'done' | 'error';
-	error?: string;
-}
 
 export class AntiDianView extends ItemView {
 	private plugin: AntiDianPlugin;
@@ -298,20 +290,8 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const actionsContainer = agentMsg.createDiv({
-			cls: 'anti-dian-actions-container',
-		});
-		const liveStatusEl = agentMsg.createDiv({
-			cls: 'anti-dian-live-status',
-		});
+		const thinkingState = new ThinkingStateView(agentMsg);
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
-
-		liveStatusEl.createSpan({
-			text: 'Thinking...',
-			cls: 'anti-dian-status-text',
-		});
-
-		const actions: ActionItem[] = [];
 
 		try {
 			const activeCtx: ActiveContext = this.promptBar.isContextIncluded()
@@ -322,18 +302,13 @@ export class AntiDianView extends ItemView {
 				activeCtx,
 				this.history,
 				(step: AgentStepEvent) => {
-					this.handleAgentStep(
-						step,
-						actions,
-						actionsContainer,
-						liveStatusEl,
-					);
+					thinkingState.handleStep(step);
 				},
 				mediaToSend.length > 0 ? mediaToSend : undefined,
 			);
 
 			this.history = result.updatedHistory;
-			liveStatusEl.remove();
+			thinkingState.settle();
 
 			await MarkdownRenderer.render(
 				this.app,
@@ -364,7 +339,7 @@ export class AntiDianView extends ItemView {
 				this.renderUsageFooter(agentMsg, result.usage);
 			}
 		} catch (err) {
-			liveStatusEl.remove();
+			thinkingState.settle();
 			answerEl.createEl('p', {
 				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
 				cls: 'anti-dian-error-text',
@@ -373,124 +348,6 @@ export class AntiDianView extends ItemView {
 			this.isRunning = false;
 			this.promptBar.setDisabled(false);
 			this.scrollToBottom();
-		}
-	}
-
-	private handleAgentStep(
-		step: AgentStepEvent,
-		actions: ActionItem[],
-		actionsContainer: HTMLElement,
-		liveStatusEl: HTMLElement,
-	): void {
-		if (step.type === 'thinking') {
-			liveStatusEl.empty();
-			liveStatusEl.createSpan({
-				text: 'Thinking...',
-				cls: 'anti-dian-status-text',
-			});
-		} else if (step.type === 'tool_start') {
-			actions.push({
-				id: `act_${actions.length + 1}`,
-				name: step.toolName,
-				args: step.toolArgs,
-				status: 'running',
-			});
-			this.renderActionsTray(actionsContainer, actions);
-
-			liveStatusEl.empty();
-			liveStatusEl.createSpan({
-				text: `Running ${step.toolName}...`,
-				cls: 'anti-dian-status-text',
-			});
-		} else if (step.type === 'tool_end') {
-			const current = actions.find((a) => a.name === step.toolName);
-			if (current) {
-				current.status =
-					step.toolOutput &&
-					typeof step.toolOutput === 'object' &&
-					'error' in step.toolOutput
-						? 'error'
-						: 'done';
-				current.output = step.toolOutput;
-				if (current.status === 'error') {
-					current.error = String(
-						(step.toolOutput as { error: unknown }).error,
-					);
-				}
-			}
-			this.renderActionsTray(actionsContainer, actions);
-		} else if (step.type === 'error') {
-			liveStatusEl.empty();
-			liveStatusEl.createSpan({
-				text: `Error: ${step.message}`,
-				cls: 'anti-dian-error-text',
-			});
-		}
-	}
-
-	private renderActionsTray(
-		container: HTMLElement,
-		actions: ActionItem[],
-	): void {
-		container.empty();
-		if (actions.length === 0) return;
-
-		const details = container.createEl('details', {
-			cls: 'anti-dian-actions-details',
-		});
-
-		const summary = details.createEl('summary', {
-			cls: 'anti-dian-actions-summary',
-		});
-		summary.createSpan({
-			text: `Actions (${actions.length} ${actions.length === 1 ? 'tool call' : 'tool calls'})`,
-			cls: 'anti-dian-actions-title',
-		});
-
-		const list = details.createDiv({ cls: 'anti-dian-actions-list' });
-
-		for (const act of actions) {
-			const item = list.createDiv({ cls: 'anti-dian-action-item' });
-
-			const top = item.createDiv({ cls: 'anti-dian-action-top' });
-			top.createSpan({
-				text: act.name,
-				cls: 'anti-dian-action-name',
-			});
-
-			const badge = top.createSpan({
-				cls: `anti-dian-action-badge action-badge-${act.status}`,
-			});
-			badge.setText(
-				act.status === 'running'
-					? 'running'
-					: act.status === 'done'
-						? 'done'
-						: 'error',
-			);
-
-			if (act.args && Object.keys(act.args).length > 0) {
-				const argsEl = item.createDiv({
-					cls: 'anti-dian-action-args',
-				});
-				for (const [k, v] of Object.entries(act.args)) {
-					const valStr =
-						typeof v === 'object' && v !== null
-							? JSON.stringify(v)
-							: String(v);
-					argsEl.createDiv({
-						text: `${k}: ${valStr}`,
-						cls: 'anti-dian-action-arg-line',
-					});
-				}
-			}
-
-			if (act.error) {
-				item.createDiv({
-					text: act.error,
-					cls: 'anti-dian-action-error-msg',
-				});
-			}
 		}
 	}
 

@@ -831,9 +831,11 @@
 .anti-dian-message-user {
 	align-self: flex-end;
 	background: var(--background-modifier-active-hover);
-	padding: var(--size-4-2) var(--size-4-3);
+	padding: 8px 12px;
+	border: none;
 	border-radius: var(--radius-m);
 	max-width: 88%;
+	box-shadow: none;
 }
 
 .anti-dian-message-user p {
@@ -843,100 +845,255 @@
 
 .anti-dian-message-agent {
 	align-self: flex-start;
-	background: var(--background-secondary);
-	padding: var(--size-4-2) var(--size-4-3);
-	border-radius: var(--radius-m);
-	max-width: 95%;
+	background: transparent;
+	border: none;
+	padding: 4px 0;
+	border-radius: 0;
+	max-width: 100%;
 	width: 100%;
 	box-sizing: border-box;
+	box-shadow: none;
 }
 
 .anti-dian-answer-body p {
 	margin: 0 0 var(--size-4-2) 0;
 	font-size: var(--font-ui-small);
+	line-height: 1.55;
 }
 
 .anti-dian-answer-body p:last-child {
 	margin-bottom: 0;
 }
 
-.anti-dian-live-status {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	margin-bottom: 4px;
-}
-
 /* ------------------------------------------------------------- */
-/* Actions Tray                                                  */
+/* ThinkingState (Expandable Agent Reasoning & Tools)            */
 /* ------------------------------------------------------------- */
 
-.anti-dian-actions-container {
-	margin-bottom: 4px;
+@keyframes shimmer-text {
+	0% {
+		background-position: 150% center;
+	}
+	100% {
+		background-position: -50% center;
+	}
 }
 
-.anti-dian-actions-details {
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	padding: 4px 8px;
+@keyframes spin-slow {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
 }
 
-.anti-dian-actions-summary {
-	cursor: pointer;
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-medium);
-	color: var(--text-muted);
-}
-
-.anti-dian-actions-list {
+.anti-dian-thinking-state {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	margin-top: 6px;
-	padding-top: 4px;
-	border-top: 1px solid var(--background-modifier-border);
+	width: 100%;
+	margin-bottom: 6px;
 }
 
-.anti-dian-action-item {
-	background: var(--background-secondary);
-	border-radius: var(--radius-s);
-	padding: 4px 6px;
-	font-size: calc(var(--font-ui-smaller) * 0.9);
-}
-
-.anti-dian-action-top {
+.anti-dian-thinking-header-btn {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	gap: 6px;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	padding: 3px 6px;
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-family: inherit;
+	width: fit-content;
+	transition: background-color 0.15s ease, color 0.15s ease;
+	margin-left: -6px;
 }
 
-.anti-dian-action-name {
-	font-weight: var(--font-semibold);
+.anti-dian-thinking-header-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.anti-dian-thinking-sparkle-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+	transition: color 0.2s ease;
+}
+
+.anti-dian-thinking-sparkle-icon.is-active {
+	color: var(--interactive-accent);
+}
+
+.anti-dian-thinking-sparkle-icon.is-settled {
+	color: var(--text-muted);
+}
+
+.anti-dian-thinking-status-text {
+	font-size: 12.5px;
+	font-weight: var(--font-medium);
+	white-space: nowrap;
+}
+
+.anti-dian-thinking-status-text.is-shimmer {
+	background: linear-gradient(90deg, var(--text-muted) 30%, var(--interactive-accent) 50%, var(--text-muted) 70%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	animation: shimmer-text 1.6s linear infinite;
+}
+
+.anti-dian-thinking-status-text.is-settled {
+	color: var(--text-muted);
+}
+
+.anti-dian-thinking-chevron-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+	transition: transform 0.25s ease;
+}
+
+.anti-dian-thinking-chevron-icon.is-rotated {
+	transform: rotate(180deg);
+}
+
+.anti-dian-thinking-trace-wrapper {
+	display: none;
+	width: 100%;
+	overflow: hidden;
+}
+
+.anti-dian-thinking-trace-wrapper.is-open {
+	display: block;
+	animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-thinking-trace-content {
+	position: relative;
+	margin-top: 4px;
+	margin-left: 7px;
+	padding-left: 14px;
+}
+
+.anti-dian-thinking-guideline {
+	position: absolute;
+	left: 0;
+	top: 2px;
+	bottom: 4px;
+	width: 1px;
+	background: var(--background-modifier-border);
+}
+
+.anti-dian-thinking-rows-container {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 2px 0;
+}
+
+.anti-dian-thinking-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 26px;
+	padding: 2px 6px;
+	border-radius: 6px;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+	font-size: 12px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.anti-dian-thinking-row:hover,
+.anti-dian-thinking-row.is-selected {
+	background: var(--background-modifier-hover);
+}
+
+.anti-dian-thinking-row-spinner {
+	width: 11px;
+	height: 11px;
+	border: 1.5px solid var(--background-modifier-border);
+	border-top-color: var(--interactive-accent);
+	border-radius: 50%;
+	animation: spin-slow 0.7s linear infinite;
+	flex-shrink: 0;
+}
+
+.anti-dian-thinking-row-check {
+	display: flex;
+	align-items: center;
+	color: var(--color-green, #22c55e);
+	flex-shrink: 0;
+}
+
+.anti-dian-thinking-row-err {
+	display: flex;
+	align-items: center;
+	color: var(--color-red, #ef4444);
+	flex-shrink: 0;
+}
+
+.anti-dian-thinking-row-primary {
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.anti-dian-thinking-row-secondary {
+	color: var(--text-muted);
+	font-size: 11.5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	flex: 1;
+}
+
+.anti-dian-thinking-row-secondary.is-mono {
 	font-family: var(--font-monospace);
 }
 
-.anti-dian-action-badge {
-	font-size: calc(var(--font-ui-smaller) * 0.8);
-	padding: 1px 4px;
-	border-radius: var(--radius-s);
+.anti-dian-thinking-row-diff {
+	font-family: var(--font-monospace);
+	font-size: 11px;
+	margin-left: auto;
+	flex-shrink: 0;
 }
 
-.action-badge-running {
-	background: rgba(var(--interactive-accent-rgb), 0.15);
-	color: var(--text-accent);
+.anti-dian-thinking-row-diff .diff-add {
+	color: var(--color-green, #22c55e);
 }
 
-.action-badge-done {
-	background: rgba(var(--color-green-rgb), 0.15);
-	color: var(--color-green);
+.anti-dian-thinking-row-diff .diff-del {
+	color: var(--color-red, #ef4444);
 }
 
-.action-badge-error {
-	background: rgba(var(--color-red-rgb), 0.15);
-	color: var(--color-red);
+.anti-dian-thinking-step-detail {
+	margin: 2px 0 4px 18px;
+	background: var(--background-secondary);
+	border-radius: 6px;
+	padding: 6px 8px;
+	font-size: 11.5px;
+	font-family: var(--font-monospace);
+	animation: pop-in 150ms ease both;
+	border: none;
+}
+
+.anti-dian-thinking-arg-line {
+	color: var(--text-muted);
+	word-break: break-all;
+}
+
+.anti-dian-thinking-error-text {
+	color: var(--text-error);
+	margin-top: 2px;
 }
 
 /* ------------------------------------------------------------- */
@@ -944,11 +1101,11 @@
 /* ------------------------------------------------------------- */
 
 .anti-dian-context-used-container {
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	padding: 4px 8px;
-	margin-top: 4px;
+	background: var(--background-secondary);
+	border: none;
+	border-radius: 8px;
+	padding: 6px 10px;
+	margin-top: 6px;
 }
 
 .anti-dian-context-used-header {
@@ -990,10 +1147,10 @@
 /* ------------------------------------------------------------- */
 
 .anti-dian-changeset-card {
-	background: var(--background-primary);
-	border: 1px dashed var(--interactive-accent);
-	border-radius: var(--radius-m);
-	padding: var(--size-4-2);
+	background: var(--background-secondary);
+	border: none;
+	border-radius: 10px;
+	padding: 8px 12px;
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
@@ -1097,14 +1254,14 @@
 	font-size: var(--font-ui-smaller);
 	padding: 2px 8px;
 	border-radius: var(--radius-s);
-	border: 1px solid var(--background-modifier-border);
-	background: transparent;
+	border: none;
+	background: var(--background-modifier-hover);
 	color: var(--text-muted);
 	cursor: pointer;
 }
 
 .anti-dian-btn-review:hover {
-	background: var(--background-modifier-hover);
+	background: var(--background-modifier-active-hover);
 	color: var(--text-normal);
 }
 
@@ -1120,20 +1277,21 @@
 	font-size: var(--font-ui-smaller);
 	padding: 4px 12px;
 	border-radius: var(--radius-s);
-	border: 1px solid var(--text-error);
-	background: transparent;
+	border: none;
+	background: rgba(var(--color-red-rgb), 0.12);
 	color: var(--text-error);
 	cursor: pointer;
 }
 
 .anti-dian-btn-reject:hover {
-	background: rgba(var(--color-red-rgb), 0.1);
+	background: rgba(var(--color-red-rgb), 0.2);
 }
 
 .anti-dian-btn-apply {
 	font-size: var(--font-ui-smaller);
 	padding: 4px 14px;
 	border-radius: var(--radius-s);
+	border: none;
 	cursor: pointer;
 }
 
@@ -1157,14 +1315,14 @@
 	font-size: calc(var(--font-ui-smaller) * 0.9);
 	padding: 2px 8px;
 	border-radius: var(--radius-s);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
+	border: none;
+	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 	cursor: pointer;
 }
 
 .anti-dian-btn-undo:hover {
-	background: var(--background-modifier-hover);
+	background: var(--background-modifier-active-hover);
 }
 
 .anti-dian-notice-applied {
@@ -1188,7 +1346,7 @@
 
 .anti-dian-diff-preview {
 	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	border: none;
 	border-radius: var(--radius-s);
 	padding: 4px;
 	font-family: var(--font-monospace);
@@ -1238,7 +1396,7 @@
 
 .anti-dian-diff-file-card {
 	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	border: none;
 	border-radius: var(--radius-s);
 	padding: 6px;
 	margin-bottom: 6px;
