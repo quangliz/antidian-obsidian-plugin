@@ -109,7 +109,7 @@ Do not put retrieval, LLM orchestration, or mutation logic in `main.ts`.
 ## Current Status & Priorities
 Implemented foundation:
 - Sidebar chat UI with streaming thoughts/answers, tool trace, model picker, quota/context usage, and permission mode selector
-- Session manager in the top nav (`SessionMenuController`): lists this vault's stored sessions via ACP `session/list` (filtered to the vault cwd), resumes one via `session/load` (history replay, injected context stripped by `stripCompiledContext`), and shows the CLI-generated session title
+- Session manager in the top nav (`SessionMenuController`): lists this vault's stored sessions via ACP `session/list` (filtered to the vault cwd), resumes one via `session/load` (replays messages, thoughts and tool calls into the same trace view; injected context stripped by `stripCompiledContext`; per-turn token usage is not replayed by the CLI), and shows the CLI-generated session title
 - Active note + selection tracking (`ObsidianWorkspaceAdapter` + `ObsidianEditorAdapter`)
 - `ContextCompiler` with session-level skill injection, Plan Mode notice, and deduplicated active note outline + selection
 - 12 MCP tools: `list_notes`, `get_note_outline`, `search_notes`, `read_note`, `create_note`, `patch_note`, `replace_block`, `append_note`, `update_frontmatter`, `edit_note`, `list_skills`, `load_skill`

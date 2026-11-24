@@ -142,7 +142,9 @@ export class Agent {
 			.map((m) =>
 				m.role === 'user' ? { ...m, text: stripCompiledContext(m.text) } : m,
 			)
-			.filter((m) => m.text.trim().length > 0);
+			.filter(
+				(m) => m.text.trim().length > 0 || (m.events?.length ?? 0) > 0,
+			);
 	}
 
 	async run(

@@ -108,10 +108,27 @@ export interface AcpSessionSummary {
 	updatedAt?: string;
 }
 
+/** Reasoning or a tool call inside a replayed agent turn, in original order. */
+export type ReplayedAgentEvent =
+	| { type: 'thought'; text: string }
+	| {
+			type: 'tool';
+			callId?: string;
+			/** Display name (the `anti-dian-vault` MCP prefix is stripped). */
+			toolName: string;
+			toolArgs: Record<string, unknown>;
+			/** ACP status: `completed` / `failed`, or unfinished (`pending`, `in_progress`). */
+			status?: string;
+			output?: unknown;
+	  };
+
 /** One message of a stored conversation, replayed by ACP `session/load`. */
 export interface ReplayedMessage {
 	role: 'user' | 'agent';
+	/** User prompt, or the agent's answer text. */
 	text: string;
+	/** Agent turns only: reasoning and tool calls that preceded the answer. */
+	events?: ReplayedAgentEvent[];
 }
 
 /** Pages of `session/list` to follow before giving up (guards a looping cursor). */
@@ -1160,16 +1177,7 @@ export class AntigravityAcpClient {
 		}
 
 		if (this.replayBuffer) {
-			const role =
-				update.sessionUpdate === 'user_message_chunk'
-					? 'user'
-					: update.sessionUpdate === 'agent_message_chunk'
-						? 'agent'
-						: null;
-			const text = update.content?.text;
-			if (role && typeof text === 'string') {
-				appendReplayChunk(this.replayBuffer, role, text);
-			}
+			applyReplayUpdate(this.replayBuffer, update);
 			return;
 		}
 
@@ -1251,7 +1259,7 @@ export function appendReplayChunk(
 	if (last && last.role === role) {
 		last.text += text;
 	} else {
-		buffer.push({ role, text });
+		buffer.push(role === 'agent' ? { role, text, events: [] } : { role, text });
 	}
 }
 
@@ -1296,4 +1304,125 @@ function sortSessionsNewestFirst(
 		return Number.isFinite(t) ? t : 0;
 	};
 	return [...sessions].sort((a, b) => time(b) - time(a));
+}
+
+/** Returns the agent message receiving replay events, starting one if needed. */
+function currentAgentMessage(buffer: ReplayedMessage[]): ReplayedMessage {
+	const last = buffer[buffer.length - 1];
+	if (last && last.role === 'agent') return last;
+	const msg: ReplayedMessage = { role: 'agent', text: '', events: [] };
+	buffer.push(msg);
+	return msg;
+}
+
+function displayToolName(rawName: string): string {
+	return rawName.startsWith(MCP_TOOL_PREFIX)
+		? rawName.slice(MCP_TOOL_PREFIX.length)
+		: rawName;
+}
+
+function asRecord(v: unknown): Record<string, unknown> | undefined {
+	return v && typeof v === 'object' && !Array.isArray(v)
+		? (v as Record<string, unknown>)
+		: undefined;
+}
+
+/**
+ * Turns a stored tool result into the shape live tool events carry: MCP text
+ * content and JSON strings are parsed, and failures expose an `error` field.
+ */
+export function normalizeReplayedToolOutput(
+	raw: unknown,
+	status?: string,
+): unknown {
+	let out = raw;
+	if (Array.isArray(out)) {
+		const texts = out
+			.map((c) => asRecord(c))
+			.filter((c): c is Record<string, unknown> => !!c && c.type === 'text')
+			.map((c) => (typeof c.text === 'string' ? c.text : ''));
+		if (texts.length > 0 && texts.length === out.length) out = texts.join('\n');
+	}
+	const mcp = asRecord(out);
+	if (mcp && Array.isArray(mcp.content)) {
+		return normalizeReplayedToolOutput(mcp.content, status);
+	}
+	if (typeof out === 'string') {
+		try {
+			out = JSON.parse(out);
+		} catch {
+			// Plain text output (e.g. a built-in tool's stdout).
+		}
+	}
+	if (status === 'failed') {
+		const rec = asRecord(out);
+		if (!rec || !('error' in rec)) {
+			return { error: typeof out === 'string' ? out : JSON.stringify(out) };
+		}
+	}
+	return out ?? { status };
+}
+
+/** Applies one `session/load` replay update to the buffer (pure; unit-tested). */
+export function applyReplayUpdate(
+	buffer: ReplayedMessage[],
+	update: {
+		sessionUpdate?: string;
+		content?: { type?: string; text?: string };
+		toolCallId?: string;
+		name?: string;
+		title?: unknown;
+		args?: Record<string, unknown>;
+		rawInput?: Record<string, unknown>;
+		rawOutput?: unknown;
+		status?: string;
+	},
+): void {
+	const kind = update.sessionUpdate;
+	const text = update.content?.text;
+	if (kind === 'user_message_chunk' && typeof text === 'string') {
+		appendReplayChunk(buffer, 'user', text);
+		return;
+	}
+	if (kind === 'agent_message_chunk' && typeof text === 'string') {
+		appendReplayChunk(buffer, 'agent', text);
+		return;
+	}
+	if (kind === 'agent_thought_chunk' && typeof text === 'string') {
+		const events = (currentAgentMessage(buffer).events ??= []);
+		const last = events[events.length - 1];
+		if (last && last.type === 'thought') last.text += text;
+		else events.push({ type: 'thought', text });
+		return;
+	}
+	if (kind === 'tool_call') {
+		const events = (currentAgentMessage(buffer).events ??= []);
+		const done = update.status === 'completed' || update.status === 'failed';
+		events.push({
+			type: 'tool',
+			callId: update.toolCallId,
+			toolName: displayToolName(update.name ?? ''),
+			toolArgs: asRecord(update.args) ?? asRecord(update.rawInput) ?? {},
+			status: update.status,
+			output: done
+				? normalizeReplayedToolOutput(update.rawOutput, update.status)
+				: undefined,
+		});
+		return;
+	}
+	if (kind === 'tool_call_update' && update.toolCallId) {
+		const last = buffer[buffer.length - 1];
+		const tool = last?.events?.find(
+			(e): e is Extract<ReplayedAgentEvent, { type: 'tool' }> =>
+				e.type === 'tool' && e.callId === update.toolCallId,
+		);
+		if (!tool) return;
+		if (update.status) tool.status = update.status;
+		if (update.status === 'completed' || update.status === 'failed') {
+			tool.output = normalizeReplayedToolOutput(
+				update.rawOutput ?? tool.output,
+				update.status,
+			);
+		}
+	}
 }

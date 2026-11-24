@@ -7,6 +7,8 @@ import {
 } from '../src/core/context/compiler.ts';
 import {
 	appendReplayChunk,
+	applyReplayUpdate,
+	normalizeReplayedToolOutput,
 	parseSessionList,
 } from '../src/core/models/antigravity-acp.ts';
 import {
@@ -82,9 +84,66 @@ test('appendReplayChunk merges consecutive chunks per role', () => {
 	appendReplayChunk(buf, 'user', 'bye');
 	assert.deepEqual(buf, [
 		{ role: 'user', text: 'hello' },
-		{ role: 'agent', text: 'Hi!' },
+		{ role: 'agent', text: 'Hi!', events: [] },
 		{ role: 'user', text: 'bye' },
 	]);
+});
+
+test('applyReplayUpdate keeps thoughts and tool calls in order within the agent turn', () => {
+	const buf = [];
+	const u = (update) => applyReplayUpdate(buf, update);
+	u({ sessionUpdate: 'user_message_chunk', content: { text: 'list notes' } });
+	u({ sessionUpdate: 'agent_thought_chunk', content: { text: 'Let me ' } });
+	u({ sessionUpdate: 'agent_thought_chunk', content: { text: 'look.' } });
+	u({
+		sessionUpdate: 'tool_call',
+		toolCallId: 't1',
+		name: 'mcp_anti-dian-vault_list_notes',
+		rawInput: { folder: 'A' },
+		status: 'completed',
+		rawOutput: { content: [{ type: 'text', text: '[{"path":"A/x.md"}]' }] },
+	});
+	u({ sessionUpdate: 'tool_call', toolCallId: 't2', name: 'run_command', args: { CommandLine: 'ls' }, status: 'pending' });
+	u({ sessionUpdate: 'tool_call_update', toolCallId: 't2', status: 'failed', rawOutput: 'denied' });
+	u({ sessionUpdate: 'agent_thought_chunk', content: { text: 'Done.' } });
+	u({ sessionUpdate: 'agent_message_chunk', content: { text: 'One note.' } });
+	u({ sessionUpdate: 'usage_update', used: 1, size: 2 });
+
+	assert.deepEqual(buf, [
+		{ role: 'user', text: 'list notes' },
+		{
+			role: 'agent',
+			text: 'One note.',
+			events: [
+				{ type: 'thought', text: 'Let me look.' },
+				{
+					type: 'tool',
+					callId: 't1',
+					toolName: 'list_notes',
+					toolArgs: { folder: 'A' },
+					status: 'completed',
+					output: [{ path: 'A/x.md' }],
+				},
+				{
+					type: 'tool',
+					callId: 't2',
+					toolName: 'run_command',
+					toolArgs: { CommandLine: 'ls' },
+					status: 'failed',
+					output: { error: 'denied' },
+				},
+				{ type: 'thought', text: 'Done.' },
+			],
+		},
+	]);
+});
+
+test('normalizeReplayedToolOutput parses JSON text and flags failures', () => {
+	assert.deepEqual(normalizeReplayedToolOutput('{"applied":true}', 'completed'), { applied: true });
+	assert.equal(normalizeReplayedToolOutput('plain stdout', 'completed'), 'plain stdout');
+	assert.deepEqual(normalizeReplayedToolOutput({ error: 'x' }, 'failed'), { error: 'x' });
+	assert.deepEqual(normalizeReplayedToolOutput([{ type: 'text', text: 'oops' }], 'failed'), { error: 'oops' });
+	assert.deepEqual(normalizeReplayedToolOutput(undefined, 'completed'), { status: 'completed' });
 });
 
 test('session picker helpers group, filter, and format recency', () => {

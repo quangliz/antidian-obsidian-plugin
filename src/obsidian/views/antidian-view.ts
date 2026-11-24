@@ -21,6 +21,7 @@ import {
 	AcpSessionSummary,
 	AvailableModel,
 	ModelGroup,
+	ReplayedAgentEvent,
 	ReplayedMessage,
 } from '../../core/models/antigravity-acp';
 import { ModelMenuController } from './model-menu-view';
@@ -307,12 +308,47 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const agentMsg = this.messagesEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-agent is-replayed',
 				});
+				if (message.events && message.events.length > 0) {
+					this.renderReplayedTrace(agentMsg, message.events);
+				}
 				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
 				linkifyCodeWikilinks(this.app, answerEl, '');
 			}
 		}
 		this.scrollToBottom();
+	}
+
+	/** Rebuilds a stored turn's reasoning and tool trace with the live trace view. */
+	private renderReplayedTrace(
+		agentMsg: HTMLElement,
+		events: ReplayedAgentEvent[],
+	): void {
+		const trace = new ThinkingStateView(agentMsg, this.app, this, {
+			hoverParent: this,
+			getShowRawToolData: () => this.plugin.settings.showRawToolData ?? false,
+		});
+		for (const event of events) {
+			if (event.type === 'thought') {
+				trace.handleStep({ type: 'thought_delta', text: event.text });
+				continue;
+			}
+			trace.handleStep({
+				type: 'tool_start',
+				toolName: event.toolName,
+				toolArgs: event.toolArgs,
+				callId: event.callId,
+			});
+			if (event.status === 'completed' || event.status === 'failed') {
+				trace.handleStep({
+					type: 'tool_end',
+					toolName: event.toolName,
+					toolOutput: event.output,
+					callId: event.callId,
+				});
+			}
+		}
+		trace.settle({ replayed: true });
 	}
 
 	private clearMessages(): void {

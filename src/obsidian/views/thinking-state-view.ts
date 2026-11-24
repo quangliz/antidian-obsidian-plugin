@@ -407,8 +407,13 @@ export class ThinkingStateView {
 		el.toggleClass('is-clamped', el.scrollHeight > el.clientHeight + 4);
 	}
 
-	public settle(options?: { cancelled?: boolean }): void {
+	/**
+	 * Finishes the trace. `replayed` marks a turn rebuilt from a stored session:
+	 * its duration is unknown, and calls that never finished are shown as stopped.
+	 */
+	public settle(options?: { cancelled?: boolean; replayed?: boolean }): void {
 		const cancelled = options?.cancelled === true;
+		const replayed = options?.replayed === true;
 		if (this.thoughtAnimationFrame !== null) {
 			window.cancelAnimationFrame(this.thoughtAnimationFrame);
 			this.thoughtAnimationFrame = null;
@@ -421,7 +426,7 @@ export class ThinkingStateView {
 		}
 		for (const resolve of this.thoughtWaiters.splice(0)) resolve();
 
-		if (cancelled) {
+		if (cancelled || replayed) {
 			this.cancelPendingApprovals();
 			for (const step of this.steps) {
 				if (step.status === 'running') {
@@ -439,13 +444,17 @@ export class ThinkingStateView {
 		);
 
 		const parts = this.buildSummary(cancelled);
-		parts.push({
-			text: parts.length
-				? ` (${durationSec}s)`
-				: cancelled
-					? `Stopped (${durationSec}s)`
-					: `Thought for ${durationSec}s`,
-		});
+		if (replayed) {
+			if (!parts.length) parts.push({ text: 'Thought' });
+		} else {
+			parts.push({
+				text: parts.length
+					? ` (${durationSec}s)`
+					: cancelled
+						? `Stopped (${durationSec}s)`
+						: `Thought for ${durationSec}s`,
+			});
+		}
 		this.summaryParts = parts;
 		this.activeStatus = parts.map((p) => p.text).join('');
 
