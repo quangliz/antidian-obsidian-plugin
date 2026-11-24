@@ -4,6 +4,9 @@
 
 export type AttachmentKind = 'image' | 'video' | 'audio';
 
+/** Upper bound for attached media files to prevent out-of-memory base64 reads. */
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
 /** File extensions that can be attached as media, with their MIME types. */
 export const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
 	png: 'image/png',

@@ -23,6 +23,8 @@ interface JsonRpcRequest {
 	params?: Record<string, unknown>;
 }
 
+const MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024;
+
 export class McpToolServer {
 	private registry: ToolRegistry;
 	private server: http.Server | null = null;
@@ -96,12 +98,19 @@ export class McpToolServer {
 		});
 	}
 
+	private isAuthorized(authHeader: string | undefined): boolean {
+		if (!authHeader) return false;
+		const expected = Buffer.from(`Bearer ${this.token}`, 'utf8');
+		const actual = Buffer.from(authHeader, 'utf8');
+		if (actual.length !== expected.length) return false;
+		return crypto.timingSafeEqual(actual, expected);
+	}
+
 	private async handleRequest(
 		req: http.IncomingMessage,
 		res: http.ServerResponse,
 	): Promise<void> {
-		const authHeader = req.headers.authorization;
-		if (authHeader !== `Bearer ${this.token}`) {
+		if (!this.isAuthorized(req.headers.authorization)) {
 			res.writeHead(401, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify({ error: 'Unauthorized' }));
 			return;
@@ -119,13 +128,32 @@ export class McpToolServer {
 			return;
 		}
 
-		const rawBody = await new Promise<string>((resolve) => {
+		const bodyResult = await new Promise<{ body: string; tooLarge: boolean }>((resolve) => {
 			let data = '';
+			let totalBytes = 0;
+			let tooLarge = false;
 			req.on('data', (chunk: Buffer | string) => {
-				data += chunk.toString();
+				const buf = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+				totalBytes += buf.length;
+				if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+					tooLarge = true;
+					req.destroy();
+					return;
+				}
+				data += buf.toString('utf8');
 			});
-			req.on('end', () => resolve(data));
+			req.on('end', () => resolve({ body: data, tooLarge }));
+			req.on('close', () => {
+				if (tooLarge) resolve({ body: '', tooLarge: true });
+			});
 		});
+
+		if (bodyResult.tooLarge) {
+			res.writeHead(413, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: 'Payload too large' }));
+			return;
+		}
+		const rawBody = bodyResult.body;
 
 		if (!rawBody.trim()) {
 			res.writeHead(202);

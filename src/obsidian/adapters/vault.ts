@@ -42,8 +42,25 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 
 	isPathWithinVault(rawPath: string): boolean {
 		const p = rawPath.trim().replace(/\\/g, '/');
-		if (p.includes('..') || p.startsWith('/') || p.includes('://')) {
+		if (
+			!p ||
+			p.includes('\0') ||
+			p.includes('..') ||
+			p.startsWith('/') ||
+			p.includes('://') ||
+			/^[A-Za-z]:/.test(p)
+		) {
 			return false;
+		}
+		const configDirLower = this.app.vault.configDir
+			.replace(/^\/+|\/+$/g, '')
+			.toLowerCase();
+		const segments = p.split('/').filter(Boolean);
+		for (const seg of segments) {
+			const lower = seg.toLowerCase();
+			if (lower === configDirLower || lower === '.git') {
+				return false;
+			}
 		}
 		return true;
 	}

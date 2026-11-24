@@ -12,7 +12,6 @@ import type { MediaInput, TokenUsage } from '../types/model';
 import {
 	type BinaryDownloadProgress,
 	type EnsureAgyBinaryResult,
-	checkAndStageAgyUpdate,
 	ensureAgyBinary,
 	getManagedAgyBinaryPath,
 } from './agy-binary-manager';
@@ -162,7 +161,6 @@ export const QUOTA_FRESH_TTL_MS = 120_000;
 const AUTO_RECOVER_MAX_ATTEMPTS = 3;
 const AUTO_RECOVER_WINDOW_MS = 10 * 60_000;
 const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
-const BACKGROUND_UPDATE_DELAY_MS = 60_000;
 
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
@@ -360,9 +358,6 @@ export class AntigravityAcpClient {
 	private stderrTail: string[] = [];
 	private recoveryAttemptTimestamps: number[] = [];
 	private recoveryTimer: ReturnType<typeof nodeSetTimeout> | null = null;
-	private backgroundUpdateTimer: ReturnType<typeof nodeSetTimeout> | null =
-		null;
-	private backgroundUpdateScheduled = false;
 	private rl: readline.Interface | null = null;
 	private nextId = 1;
 	private pending = new Map<number, PendingRpc>();
@@ -665,24 +660,8 @@ export class AntigravityAcpClient {
 		);
 	}
 
-	private scheduleBackgroundUpdateCheck(): void {
-		if (this.backgroundUpdateScheduled || this.cliPath?.trim()) return;
-		this.backgroundUpdateScheduled = true;
-		const timer = nodeSetTimeout(() => {
-			this.backgroundUpdateTimer = null;
-			void checkAndStageAgyUpdate({
-				customPath: this.cliPath,
-				caCertificates: this.caCertificates,
-			}).catch(() => {
-				// Best-effort background update check
-			});
-		}, BACKGROUND_UPDATE_DELAY_MS);
-		timer.unref?.();
-		this.backgroundUpdateTimer = timer;
-	}
-
 	async checkStatus(
-		onProgress?: (progress: BinaryDownloadProgress) => void,
+		_onProgress?: (progress: BinaryDownloadProgress) => void,
 	): Promise<{
 		cliFound: boolean;
 		binaryPath?: string;
@@ -690,17 +669,14 @@ export class AntigravityAcpClient {
 		tier?: AccountTierInfo | null;
 		error?: string;
 	}> {
-		let binaryPath: string;
-		try {
-			const ensured = await this.ensureBinary(onProgress);
-			binaryPath = ensured.binaryPath;
-		} catch (err) {
+		if (!isAgyBinaryAvailable(this.cliPath)) {
 			return {
 				cliFound: false,
 				authenticated: false,
-				error: err instanceof Error ? err.message : String(err),
+				error: 'Backend not installed yet',
 			};
 		}
+		const binaryPath = resolveAgyBinary(this.cliPath);
 
 		try {
 			await this.ensureSession();
@@ -1148,7 +1124,6 @@ export class AntigravityAcpClient {
 		}
 		this.emitCacheUpdate();
 		this.prefetchQuota();
-		this.scheduleBackgroundUpdateCheck();
 		this.emitSessionInfo();
 	}
 
@@ -1302,10 +1277,6 @@ export class AntigravityAcpClient {
 		if (this.recoveryTimer) {
 			nodeClearTimeout(this.recoveryTimer);
 			this.recoveryTimer = null;
-		}
-		if (this.backgroundUpdateTimer) {
-			nodeClearTimeout(this.backgroundUpdateTimer);
-			this.backgroundUpdateTimer = null;
 		}
 		if (this.rl) {
 			this.rl.close();

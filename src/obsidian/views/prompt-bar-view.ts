@@ -18,6 +18,7 @@ import type { PermissionMode } from '../../settings';
 import { MenuGlider, attachNativeMenuGlider } from './menu-glider';
 import { MediaPreviewModal } from './media-preview-modal';
 import {
+	MAX_ATTACHMENT_BYTES,
 	isAttachableMime,
 	mediaKind,
 	mediaMimeForName,
@@ -1056,6 +1057,11 @@ export class PromptBarView {
 				continue;
 			}
 			try {
+				const st = await fsp.stat(path);
+				if (st.size > MAX_ATTACHMENT_BYTES) {
+					new Notice(`${nodePath.basename(path)} exceeds the 25 MB attachment limit.`);
+					continue;
+				}
 				const bytes = await fsp.readFile(path);
 				this.stagedMedia.push({
 					type: mediaKind(mimeType),
@@ -1089,6 +1095,10 @@ export class PromptBarView {
 				skipped++;
 				continue;
 			}
+			if (file.stat.size > MAX_ATTACHMENT_BYTES) {
+				new Notice(`${file.name} exceeds the 25 MB attachment limit.`);
+				continue;
+			}
 			const data = `data:${mimeType};base64,${arrayBufferToBase64(await this.app.vault.readBinary(file))}`;
 			this.stagedMedia.push({ type: mediaKind(mimeType), mimeType, data });
 			this.renderMediaTray();
@@ -1100,6 +1110,10 @@ export class PromptBarView {
 	}
 
 	private async addMediaFile(file: File): Promise<void> {
+		if (file.size > MAX_ATTACHMENT_BYTES) {
+			new Notice(`${file.name} exceeds the 25 MB attachment limit.`);
+			return;
+		}
 		const data = await new Promise<string>((resolve, reject) => {
 			const reader = new FileReader();
 			reader.onload = () => resolve(reader.result as string);

@@ -85,7 +85,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					? 'Checking sign-in status...'
 					: hasCustomPath
 						? `Configured binary not found: ${resolvedBin}`
-						: 'Preparing backend (will download automatically if needed)...',
+						: 'Backend not installed yet. Click Sign in with Google to download and connect.',
 			);
 
 		authSetting.addButton((button) => {
@@ -160,10 +160,12 @@ export class AntiDianSettingTab extends PluginSettingTab {
 			this.plugin.antigravityProvider.getCachedAvailableModels();
 		if (cachedModels && cachedModels.models.length > 0) {
 			populateModelDropdown(cachedModels.models, cachedModels.defaultModelId);
-		} else if (!hasCustomPath || cliFound) {
+		} else if (cliFound) {
 			modelSetting.setDesc('Loading available models...');
-		} else {
+		} else if (hasCustomPath) {
 			modelSetting.setDesc('Configure a valid binary path to load models.');
+		} else {
+			modelSetting.setDesc('Sign in with Google to install the backend and load models.');
 		}
 
 		new Setting(containerEl)
@@ -253,7 +255,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 		if (!hasCustomPath) {
 			backendSetting.addButton((button) => {
 				button
-					.setButtonText('Check for updates')
+					.setButtonText(cliFound ? 'Check for updates' : 'Install backend')
 					.onClick(async () => {
 						button.setDisabled(true);
 						button.setButtonText('Checking...');
@@ -299,7 +301,9 @@ export class AntiDianSettingTab extends PluginSettingTab {
 							);
 						} finally {
 							button.setDisabled(false);
-							button.setButtonText('Check for updates');
+							button.setButtonText(
+								isAgyBinaryAvailable() ? 'Check for updates' : 'Install backend',
+							);
 						}
 					});
 			});
@@ -359,7 +363,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 			});
 
 		/* ── Live status & model refresh ──────────────────────────────────── */
-		if (!hasCustomPath || cliFound) {
+		if (cliFound) {
 			void this.plugin.antigravityProvider
 				.checkStatus((progress) => {
 					authSetting.setDesc(progress.message);

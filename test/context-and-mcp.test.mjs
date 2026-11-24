@@ -192,6 +192,26 @@ test('McpToolServer blocks mutating tools in plan mode and allows read tools', a
 		});
 		assert.equal(cancelled.cancelled, true);
 		assert.equal(staging.getActive()?.operations.length, 0);
+		// Missing or invalid Bearer token returns 401
+		const unauthStatus = await new Promise((resolve, reject) => {
+			const req = http.request(
+				info.url,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer wrong-token',
+					},
+				},
+				(res) => {
+					res.resume();
+					res.on('end', () => resolve(res.statusCode));
+				},
+			);
+			req.on('error', reject);
+			req.end('{}');
+		});
+		assert.equal(unauthStatus, 401);
 	} finally {
 		await server.stop();
 	}
