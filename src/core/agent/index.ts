@@ -1,14 +1,14 @@
 import { ActiveContext, ContextReference } from '../types/context';
-import { ModelProvider, Message, ToolResult, MediaInput } from '../types/model';
+import { Message, MediaInput } from '../types/model';
 import { ChangeSet } from '../types/changes';
 import { Tool, ToolRegistry } from '../tools';
 import { ChangeStagingManager } from '../transactions';
+import { AntigravityProvider } from '../models/antigravity-provider';
 
 export interface AgentOptions {
-	provider: ModelProvider;
+	provider: AntigravityProvider;
 	tools?: ToolRegistry | Tool[];
 	stagingManager?: ChangeStagingManager;
-	maxTurns?: number;
 	systemPrompt?: string;
 }
 
@@ -39,12 +39,15 @@ export interface AgentRunResult {
 	};
 }
 
+export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent note-taking companion inside Obsidian.
+Use the anti-dian-vault MCP tools (search_notes, read_note, create_note, edit_note, patch_note) for all Obsidian vault operations so changes are staged safely for user review and approval.
+Never write directly to vault files via raw filesystem or shell tools.
+When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and concise.`;
+
 export class Agent {
-	private provider: ModelProvider;
+	private provider: AntigravityProvider;
 	private registry: ToolRegistry;
 	private stagingManager?: ChangeStagingManager;
-	private maxTurns: number;
-	private systemPrompt: string;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
@@ -60,14 +63,6 @@ export class Agent {
 				}
 			}
 		}
-
-		this.maxTurns = options.maxTurns ?? 6;
-		this.systemPrompt =
-			options.systemPrompt ??
-			`You are Anti-dian, an intelligent note-taking companion inside Obsidian.
-Use your tools to search and read notes in the vault to provide accurate, grounded answers.
-When modifying or creating notes, use create_note or patch_note to stage changes safely.
-When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and concise.`;
 	}
 
 	getRegistry(): ToolRegistry {
@@ -76,6 +71,10 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 
 	getStagingManager(): ChangeStagingManager | undefined {
 		return this.stagingManager;
+	}
+
+	async resetSession(): Promise<void> {
+		await this.provider.resetSession();
 	}
 
 	async run(
@@ -121,185 +120,94 @@ When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and
 			},
 		];
 
-		const toolDeclarations = this.registry.getDeclarations();
+		onStep?.({ type: 'thinking' });
+		onStep?.({ type: 'answer_start' });
 
-		let totalPromptTokens = 0;
-		let totalCandidatesTokens = 0;
-		let lastPromptTokens = 0;
+		const mcpServer = this.provider.getMcpToolServer();
+		mcpServer?.setTurnContext(
+			{
+				context,
+				recordContext: (ref: ContextReference) => {
+					rawContextUsed.push(ref);
+				},
+				recordReadMtime: (path: string, mtime: number) => {
+					readMtimes.set(path, mtime);
+				},
+				getReadMtime: (path: string) => readMtimes.get(path),
+			},
+			{
+				onToolStart: ({ toolName, toolArgs }) => {
+					void beforeTool?.();
+					onStep?.({ type: 'tool_start', toolName, toolArgs });
+				},
+				onToolEnd: ({ toolName, toolOutput }) => {
+					onStep?.({ type: 'tool_end', toolName, toolOutput });
+				},
+			},
+		);
 
-		let turn = 0;
-		while (turn < this.maxTurns) {
-			turn++;
-			onStep?.({ type: 'thinking' });
-			onStep?.({ type: 'answer_start' });
+		try {
+			const result = await this.provider.runTurn(fullUserPrompt, media, {
+				onThoughtDelta: (text) =>
+					onStep?.({ type: 'thought_delta', text }),
+				onAnswerDelta: (text) =>
+					onStep?.({ type: 'answer_delta', text }),
+				onToolStart: (toolName, toolArgs) => {
+					void beforeTool?.();
+					onStep?.({ type: 'tool_start', toolName, toolArgs });
+				},
+				onToolEnd: (toolName, toolOutput) => {
+					onStep?.({ type: 'tool_end', toolName, toolOutput });
+				},
+			});
 
-			let response;
-			try {
-				response = await this.provider.complete(
-					{
-						systemPrompt: this.systemPrompt,
-						messages: currentMessages,
-						tools:
-							toolDeclarations.length > 0
-								? toolDeclarations
-								: undefined,
-					},
-					(text, thought) =>
-						onStep?.({ type: thought ? 'thought_delta' : 'answer_delta', text }),
-				);
-			} catch (err) {
-				const errMsg =
-					err instanceof Error ? err.message : String(err);
-				onStep?.({ type: 'error', message: errMsg });
-				return {
-					answer: `Error communicating with model: ${errMsg}`,
-					updatedHistory: currentMessages,
-					contextUsed: this.deduplicateContext(rawContextUsed),
-				};
-			}
+			const contextUsed = this.deduplicateContext(rawContextUsed);
+			const finalChangeSet =
+				activeTurnChangeSet && activeTurnChangeSet.operations.length > 0
+					? activeTurnChangeSet
+					: undefined;
 
-			if (response.usage) {
-				totalPromptTokens += response.usage.promptTokens ?? 0;
-				totalCandidatesTokens += response.usage.candidatesTokens ?? 0;
-				lastPromptTokens =
-					response.usage.promptTokens ?? lastPromptTokens;
-			}
+			onStep?.({
+				type: 'answer',
+				text: result.answer,
+				contextUsed,
+				changeSet: finalChangeSet,
+			});
 
-			if (response.toolCalls && response.toolCalls.length > 0) {
-				currentMessages.push({
-					role: 'assistant',
-					text: response.text,
-					toolCalls: response.toolCalls,
-				});
+			currentMessages.push({
+				role: 'assistant',
+				text: result.answer,
+			});
 
-				const toolResults: ToolResult[] = [];
-				for (const call of response.toolCalls) {
-					await beforeTool?.();
-					onStep?.({
-						type: 'tool_start',
-						toolName: call.name,
-						toolArgs: call.args,
-					});
-
-					const tool = this.registry.get(call.name);
-					let output: unknown;
-					if (tool) {
-						try {
-							output = await tool.execute(call.args, {
-								context,
-								recordContext: (ref: ContextReference) => {
-									rawContextUsed.push(ref);
-								},
-								recordReadMtime: (path: string, mtime: number) => {
-									readMtimes.set(path, mtime);
-								},
-								getReadMtime: (path: string) => {
-									return readMtimes.get(path);
-								},
-							});
-						} catch (err) {
-							output = {
-								error:
-									err instanceof Error
-										? err.message
-										: String(err),
-							};
-						}
-					} else {
-						output = {
-							error: `Tool ${call.name} not found in registry`,
-						};
-					}
-
-					onStep?.({
-						type: 'tool_end',
-						toolName: call.name,
-						toolOutput: output,
-					});
-
-					toolResults.push({
-						id: call.id,
-						name: call.name,
-						output,
-					});
-				}
-
-				currentMessages.push({
-					role: 'user',
-					toolResults,
-				});
-			} else {
-				const answerText =
-					response.text || '(No response text generated)';
-				const contextUsed = this.deduplicateContext(rawContextUsed);
-				const finalChangeSet =
-					activeTurnChangeSet &&
-					activeTurnChangeSet.operations.length > 0
-						? activeTurnChangeSet
-						: undefined;
-
-				onStep?.({
-					type: 'answer',
-					text: answerText,
-					contextUsed,
-					changeSet: finalChangeSet,
-				});
-
-				currentMessages.push({
-					role: 'assistant',
-					text: answerText,
-				});
-
-				const usage =
-					totalPromptTokens > 0 || totalCandidatesTokens > 0
-						? {
-								promptTokens: lastPromptTokens,
-								candidatesTokens: totalCandidatesTokens,
-								totalTokens:
-									lastPromptTokens + totalCandidatesTokens,
-						  }
-						: undefined;
-
-				return {
-					answer: answerText,
-					updatedHistory: currentMessages,
-					contextUsed,
-					changeSet: finalChangeSet,
-					usage,
-				};
-			}
-		}
-
-		const fallback = 'Agent reached maximum tool turns limit.';
-		const contextUsed = this.deduplicateContext(rawContextUsed);
-		const finalChangeSet =
-			activeTurnChangeSet && activeTurnChangeSet.operations.length > 0
-				? activeTurnChangeSet
-				: undefined;
-
-		onStep?.({
-			type: 'answer',
-			text: fallback,
-			contextUsed,
-			changeSet: finalChangeSet,
-		});
-
-		const fallbackUsage =
-			totalPromptTokens > 0 || totalCandidatesTokens > 0
+			const usage = result.usage
 				? {
-						promptTokens: lastPromptTokens,
-						candidatesTokens: totalCandidatesTokens,
-						totalTokens: lastPromptTokens + totalCandidatesTokens,
-				  }
+						promptTokens: result.usage.promptTokens ?? 0,
+						candidatesTokens: result.usage.candidatesTokens ?? 0,
+						totalTokens:
+							result.usage.totalTokens ??
+							(result.usage.promptTokens ?? 0) +
+								(result.usage.candidatesTokens ?? 0),
+					}
 				: undefined;
 
-		return {
-			answer: fallback,
-			updatedHistory: currentMessages,
-			contextUsed,
-			changeSet: finalChangeSet,
-			usage: fallbackUsage,
-		};
+			return {
+				answer: result.answer,
+				updatedHistory: currentMessages,
+				contextUsed,
+				changeSet: finalChangeSet,
+				usage,
+			};
+		} catch (err) {
+			const errMsg = err instanceof Error ? err.message : String(err);
+			onStep?.({ type: 'error', message: errMsg });
+			return {
+				answer: `Error communicating with Antigravity CLI: ${errMsg}`,
+				updatedHistory: currentMessages,
+				contextUsed: this.deduplicateContext(rawContextUsed),
+			};
+		} finally {
+			mcpServer?.clearTurnContext();
+		}
 	}
 
 	private deduplicateContext(

@@ -11,6 +11,7 @@ import {
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
 import { AntigravityProvider } from './core/models/antigravity-provider';
+import { McpToolServer } from './core/models/mcp-tool-server';
 import {
 	ChangeStagingManager,
 	ChangeSetValidator,
@@ -24,9 +25,8 @@ import {
 	createCreateNoteTool,
 	createEditNoteTool,
 	createPatchNoteTool,
-	createWebSearchTool,
 } from './core/tools';
-import { Agent } from './core/agent';
+import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
 
 export default class AntiDianPlugin extends Plugin {
@@ -37,6 +37,7 @@ export default class AntiDianPlugin extends Plugin {
 	validator!: ChangeSetValidator;
 	diffGenerator!: ChangeSetDiffGenerator;
 	applicator!: ChangeSetApplicator;
+	mcpToolServer!: McpToolServer;
 	antigravityProvider!: AntigravityProvider;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
@@ -54,17 +55,26 @@ export default class AntiDianPlugin extends Plugin {
 			this.validator,
 		);
 
-		this.antigravityProvider = new AntigravityProvider({
-			model: this.settings.model,
-		});
-
 		this.toolRegistry = new ToolRegistry();
 		this.toolRegistry.register(createSearchNotesTool(this.vaultAdapter));
 		this.toolRegistry.register(createReadNoteTool(this.vaultAdapter));
 		this.toolRegistry.register(createCreateNoteTool(this.stagingManager));
 		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
 		this.toolRegistry.register(createPatchNoteTool(this.stagingManager));
-		this.toolRegistry.register(createWebSearchTool());
+
+		this.mcpToolServer = new McpToolServer(this.toolRegistry);
+
+		const vaultBasePath = (
+			this.app.vault.adapter as { basePath?: string }
+		).basePath;
+
+		this.antigravityProvider = new AntigravityProvider({
+			cliPath: this.settings.cliPath,
+			cwd: vaultBasePath,
+			model: this.settings.model || undefined,
+			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
+			mcpToolServer: this.mcpToolServer,
+		});
 
 		this.agent = new Agent({
 			provider: this.antigravityProvider,
@@ -88,6 +98,7 @@ export default class AntiDianPlugin extends Plugin {
 
 	onunload(): void {
 		this.workspaceAdapter?.destroy();
+		void this.antigravityProvider?.destroy();
 	}
 
 	async activateView(): Promise<void> {
@@ -116,15 +127,21 @@ export default class AntiDianPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<AntiDianSettings>,
 		);
-		if (this.antigravityProvider && this.settings.model) {
-			this.antigravityProvider.setModel(this.settings.model);
+		if (this.antigravityProvider) {
+			this.antigravityProvider.setCliPath(this.settings.cliPath);
+			if (this.settings.model) {
+				this.antigravityProvider.setModel(this.settings.model);
+			}
 		}
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-		if (this.antigravityProvider && this.settings.model) {
-			this.antigravityProvider.setModel(this.settings.model);
+		if (this.antigravityProvider) {
+			this.antigravityProvider.setCliPath(this.settings.cliPath);
+			if (this.settings.model) {
+				this.antigravityProvider.setModel(this.settings.model);
+			}
 		}
 	}
 }

@@ -1,22 +1,23 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type AntiDianPlugin from './main';
 import {
-	isLoggedIn,
-	startOAuthLogin,
-	fetchAvailableModels,
 	formatTokens,
-} from './core/models/antigravity-oauth';
+	isAgyBinaryAvailable,
+	resolveAgyBinary,
+} from './core/models/antigravity-acp';
 
 export type PermissionMode = 'ask' | 'plan' | 'auto';
 
 export interface AntiDianSettings {
 	model?: string;
 	permissionMode?: PermissionMode;
+	cliPath?: string;
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {
-	model: 'gemini-3.7-flash-high',
+	model: '',
 	permissionMode: 'ask',
+	cliPath: '',
 };
 
 export class AntiDianSettingTab extends PluginSettingTab {
@@ -31,35 +32,50 @@ export class AntiDianSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		const loggedIn = isLoggedIn();
+		const cliFound = isAgyBinaryAvailable(this.plugin.settings.cliPath);
+		const resolvedBin = resolveAgyBinary(this.plugin.settings.cliPath);
+
+		const authSetting = new Setting(containerEl)
+			.setName('Antigravity CLI authentication')
+			.setDesc(
+				cliFound
+					? `Checking official Antigravity CLI (${resolvedBin})...`
+					: 'Antigravity CLI (agy) not found. Install it or set its path below.',
+			);
+
+		authSetting.addButton((button) => {
+			button
+				.setButtonText('Sign in with Google')
+				.setCta()
+				.setDisabled(!cliFound)
+				.onClick(async () => {
+					button.setDisabled(true);
+					button.setButtonText('Waiting for browser...');
+					try {
+						await this.plugin.antigravityProvider.login();
+						new Notice('Antigravity login successful');
+						this.display();
+					} catch (err) {
+						new Notice(
+							`Login failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
+						button.setDisabled(false);
+						button.setButtonText('Sign in with Google');
+					}
+				});
+		});
 
 		new Setting(containerEl)
-			.setName('Google antigravity authentication')
+			.setName('Antigravity CLI path')
 			.setDesc(
-				loggedIn
-					? 'Connected via Google Antigravity OAuth (~/.config/antigravity-oauth/tokens.json)'
-					: 'Not connected. Connect using your Google account.',
+				'Optional path to the official agy binary. Leave blank to auto-detect from path or ~/.local/bin/agy.',
 			)
-			.addButton((button) => {
-				button
-					.setButtonText(
-						loggedIn ? 'Re-authenticate' : 'Connect with Google',
-					)
-					.setCta()
-					.onClick(async () => {
-						button.setDisabled(true);
-						button.setButtonText('Waiting for browser...');
-						try {
-							await startOAuthLogin();
-							new Notice('Antigravity login successful');
-							this.display();
-						} catch (err) {
-							new Notice(
-								`Login failed: ${err instanceof Error ? err.message : String(err)}`,
-							);
-							button.setDisabled(false);
-							button.setButtonText('Connect with Google');
-						}
+			.addText((text) => {
+				text.setPlaceholder('/usr/local/bin/agy')
+					.setValue(this.plugin.settings.cliPath ?? '')
+					.onChange(async (value) => {
+						this.plugin.settings.cliPath = value.trim();
+						await this.plugin.saveSettings();
 					});
 			});
 
@@ -81,43 +97,65 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					});
 			});
 
-		if (loggedIn) {
+		if (cliFound) {
 			const modelSetting = new Setting(containerEl)
 				.setName('Model')
-				.setDesc('Loading available models from API...');
+				.setDesc('Loading available models from antigravity CLI...');
 
-			void fetchAvailableModels()
-				.then(({ models, defaultModelId }) => {
-					modelSetting.setDesc(
-						'Select active model for reasoning and tool use.',
-					);
-					modelSetting.addDropdown((dropdown) => {
-						for (const m of models) {
-							const ctxLabel = m.maxTokens
-								? ` (${formatTokens(m.maxTokens)} ctx)`
-								: '';
-							dropdown.addOption(
-								m.id,
-								`${m.displayName}${ctxLabel}`,
-							);
-						}
+			void this.plugin.antigravityProvider
+				.checkStatus()
+				.then(async (status) => {
+					if (status.authenticated) {
+						const tierLabel = status.tier?.tierName
+							? ` (${status.tier.tierName})`
+							: '';
+						authSetting.setDesc(
+							`Connected via official Antigravity CLI (${resolvedBin})${tierLabel}`,
+						);
 
-						const currentModel =
-							this.plugin.settings.model ||
-							defaultModelId ||
-							'gemini-3.7-flash-high';
-						dropdown.setValue(currentModel);
+						const { models, defaultModelId } =
+							await this.plugin.antigravityProvider.fetchAvailableModels();
+						modelSetting.setDesc(
+							'Select active model for reasoning and tool use.',
+						);
+						modelSetting.addDropdown((dropdown) => {
+							for (const m of models) {
+								const ctxLabel = m.maxTokens
+									? ` (${formatTokens(m.maxTokens)} ctx)`
+									: '';
+								dropdown.addOption(
+									m.id,
+									`${m.displayName}${ctxLabel}`,
+								);
+							}
 
-						dropdown.onChange(async (val) => {
-							this.plugin.settings.model = val;
-							this.plugin.antigravityProvider.setModel(val);
-							await this.plugin.saveSettings();
+							const currentModel =
+								this.plugin.settings.model ||
+								defaultModelId ||
+								models[0]?.id ||
+								'';
+							if (currentModel) {
+								dropdown.setValue(currentModel);
+							}
+
+							dropdown.onChange(async (val) => {
+								this.plugin.settings.model = val;
+								this.plugin.antigravityProvider.setModel(val);
+								await this.plugin.saveSettings();
+							});
 						});
-					});
+					} else {
+						authSetting.setDesc(
+							`Not signed in (${status.error ?? 'click Sign in with Google'})`,
+						);
+						modelSetting.setDesc(
+							'Sign in with antigravity CLI to load available models.',
+						);
+					}
 				})
 				.catch((err) => {
 					modelSetting.setDesc(
-						`Could not load models via API: ${err instanceof Error ? err.message : String(err)}`,
+						`Could not load models: ${err instanceof Error ? err.message : String(err)}`,
 					);
 				});
 		}

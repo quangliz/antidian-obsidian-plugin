@@ -14,11 +14,10 @@ import { Agent, AgentStepEvent } from '../../core/agent';
 import { Message, MediaInput } from '../../core/types/model';
 import { ChangeSetValidator } from '../../core/transactions';
 import {
-	fetchAvailableModels,
 	formatTokens,
 	AvailableModel,
 	ModelGroup,
-} from '../../core/models/antigravity-oauth';
+} from '../../core/models/antigravity-acp';
 import { renderChangeSet } from './changeset-view';
 import { ContextCardsView } from './context-cards-view';
 import { ModelMenuController } from './model-menu-view';
@@ -61,10 +60,13 @@ export class AntiDianView extends ItemView {
 
 		this.modelMenuController = new ModelMenuController({
 			getCurrentModelId: () =>
-				this.plugin.settings.model || 'gemini-3.7-flash-high',
+				this.plugin.settings.model ||
+				this.plugin.antigravityProvider.getModel(),
 			onSelectModel: (modelId) => this.selectModel(modelId),
 			getAvailableModels: () => this.availableModels,
 			getModelGroups: () => this.modelGroups,
+			getAccountTier: () =>
+				this.plugin.antigravityProvider.getAccountTier(),
 			getSessionStats: () => ({
 				promptTokens: this.sessionPromptTokens,
 				candidateTokens: this.sessionCandidateTokens,
@@ -216,6 +218,7 @@ export class AntiDianView extends ItemView {
 
 	private startNewSession(): void {
 		this.history = [];
+		void this.agent.resetSession();
 		this.promptBar?.clearStagedMedia();
 		this.promptBar?.setText('');
 		this.promptBar?.focus();
@@ -231,7 +234,7 @@ export class AntiDianView extends ItemView {
 	private async loadModels(): Promise<void> {
 		try {
 			const { models, defaultModelId, groups } =
-				await fetchAvailableModels();
+				await this.plugin.antigravityProvider.fetchAvailableModels();
 			this.availableModels = models;
 			this.modelGroups = groups;
 			if (!this.plugin.settings.model && defaultModelId) {

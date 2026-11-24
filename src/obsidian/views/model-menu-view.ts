@@ -1,16 +1,17 @@
 import { setIcon } from 'obsidian';
 import {
+	AccountTierInfo,
 	AvailableModel,
 	ModelGroup,
 	groupModels,
-	fetchUserQuota,
-} from '../../core/models/antigravity-oauth';
+} from '../../core/models/antigravity-acp';
 
 export interface ModelMenuContext {
 	getCurrentModelId: () => string;
 	onSelectModel: (modelId: string) => void;
 	getAvailableModels: () => AvailableModel[];
 	getModelGroups: () => ModelGroup[];
+	getAccountTier: () => AccountTierInfo | null;
 	getSessionStats: () => {
 		promptTokens: number;
 		candidateTokens: number;
@@ -302,7 +303,7 @@ export class ModelMenuController {
 		}
 	}
 
-	async openUsageSubmenu(anchorEl: HTMLElement): Promise<void> {
+	openUsageSubmenu(anchorEl: HTMLElement): void {
 		this.closeUsageSubmenu();
 		this.closeEffortSubmenu();
 		this.isUsageSubmenuOpen = true;
@@ -311,22 +312,7 @@ export class ModelMenuController {
 			cls: 'anti-dian-usage-popup',
 		});
 
-		this.positionSubmenu(anchorEl, this.usageSubmenuEl);
-
-		const loadingSec = this.usageSubmenuEl.createDiv({
-			cls: 'anti-dian-usage-section',
-		});
-		loadingSec.createDiv({
-			text: 'Loading quota limits...',
-			cls: 'anti-dian-usage-limit-subtext',
-		});
-
-		const quotaData = await fetchUserQuota();
-		if (!this.usageSubmenuEl || !this.isUsageSubmenuOpen) return;
-		this.usageSubmenuEl.empty();
-
-		// 0. Account & Tier Section
-		const tier = quotaData?.accountTier;
+		const tier = this.ctx.getAccountTier();
 		const accountSec = this.usageSubmenuEl.createDiv({
 			cls: 'anti-dian-usage-section anti-dian-usage-account-section',
 		});
@@ -336,17 +322,11 @@ export class ModelMenuController {
 		const userCol = accountHeader.createDiv({
 			cls: 'anti-dian-usage-user-col',
 		});
-		if (tier?.userEmail) {
-			userCol.createDiv({
-				text: tier.userEmail,
-				cls: 'anti-dian-usage-user-email',
-			});
-		}
 		const tierRow = userCol.createDiv({
 			cls: 'anti-dian-usage-tier-row',
 		});
 		tierRow.createSpan({
-			text: tier?.tierName || 'Antigravity Free Tier',
+			text: tier?.tierName || 'Antigravity CLI (ACP)',
 			cls: 'anti-dian-usage-tier-badge',
 		});
 		if (tier?.tierId) {
@@ -355,82 +335,6 @@ export class ModelMenuController {
 				cls: 'anti-dian-usage-tier-tag',
 			});
 		}
-
-		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
-
-		const buckets = quotaData?.buckets || [];
-		const geminiBucket =
-			buckets.find((b) => b.modelId.startsWith('gemini-3.7-flash')) ||
-			buckets.find((b) => b.modelId.startsWith('gemini'));
-		const claudeBucket = buckets.find((b) =>
-			b.modelId.startsWith('claude'),
-		);
-		const gptBucket = buckets.find((b) => b.modelId.startsWith('gpt'));
-
-		const geminiRemainingPct = geminiBucket
-			? `${Math.round(geminiBucket.remainingFraction * 100)}%`
-			: '81%';
-		const geminiStatus =
-			(geminiBucket?.remainingFraction ?? 0.81) < 0.3
-				? 'warning'
-				: 'success';
-
-		const claudeRemainingPct = claudeBucket
-			? `${Math.round(claudeBucket.remainingFraction * 100)}%`
-			: '100%';
-		const gptRemainingPct = gptBucket
-			? `${Math.round(gptBucket.remainingFraction * 100)}%`
-			: '100%';
-
-		const geminiSec = this.usageSubmenuEl.createDiv({
-			cls: 'anti-dian-usage-section',
-		});
-		geminiSec.createDiv({
-			text: 'Gemini Models',
-			cls: 'anti-dian-usage-sec-title',
-		});
-
-		this.renderUsageLimitRow(
-			geminiSec,
-			'Weekly Limit Remaining',
-			geminiRemainingPct,
-			geminiBucket?.resetTime
-				? `Resets ${new Date(geminiBucket.resetTime).toLocaleDateString()}`
-				: 'Rolling weekly limit',
-			geminiStatus,
-		);
-		this.renderUsageLimitRow(
-			geminiSec,
-			'Five Hour Limit Remaining',
-			geminiRemainingPct,
-			'Short rolling window',
-			geminiStatus,
-		);
-
-		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
-
-		const claudeSec = this.usageSubmenuEl.createDiv({
-			cls: 'anti-dian-usage-section',
-		});
-		claudeSec.createDiv({
-			text: 'Claude and GPT models',
-			cls: 'anti-dian-usage-sec-title',
-		});
-
-		this.renderUsageLimitRow(
-			claudeSec,
-			'Weekly Limit Remaining',
-			claudeRemainingPct,
-			undefined,
-			'success',
-		);
-		this.renderUsageLimitRow(
-			claudeSec,
-			'Five Hour Limit Remaining',
-			gptRemainingPct,
-			undefined,
-			'success',
-		);
 
 		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
 
