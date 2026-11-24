@@ -117,6 +117,28 @@ button.anti-dian-nav-btn {
 	animation: anti-dian-drawer-slide 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
+.anti-dian-session-drawer.is-closing {
+	pointer-events: none;
+}
+
+.anti-dian-session-drawer.is-closing .anti-dian-session-drawer-panel {
+	animation: anti-dian-drawer-slide-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.anti-dian-session-drawer.is-closing .anti-dian-session-drawer-backdrop {
+	animation: anti-dian-drawer-fade-out 180ms ease both;
+}
+
+@keyframes anti-dian-drawer-slide-out {
+	from { transform: translateX(0); }
+	to { transform: translateX(-100%); }
+}
+
+@keyframes anti-dian-drawer-fade-out {
+	from { opacity: 1; }
+	to { opacity: 0; }
+}
+
 @keyframes anti-dian-drawer-slide {
 	from { transform: translateX(-100%); }
 	to { transform: translateX(0); }

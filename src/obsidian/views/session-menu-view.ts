@@ -131,7 +131,7 @@ export class SessionMenuController {
 
 	close(): void {
 		this.loadToken++;
-		this.rootEl?.remove();
+		if (this.rootEl) this.animateOut(this.rootEl);
 		this.rootEl = null;
 		this.listEl = null;
 		this.glider = null;
@@ -144,6 +144,21 @@ export class SessionMenuController {
 			this.triggerEl.removeClass('is-active');
 			this.triggerEl = null;
 		}
+	}
+
+	/** Slide the panel back out and fade the backdrop, then remove the drawer. */
+	private animateOut(root: HTMLElement): void {
+		root.addClass('is-closing');
+		const panel = root.querySelector('.anti-dian-session-drawer-panel');
+		let removed = false;
+		const remove = () => {
+			if (removed) return;
+			removed = true;
+			root.remove();
+		};
+		panel?.addEventListener('animationend', remove, { once: true });
+		// Fallback when animations are disabled (reduced motion, hidden view).
+		window.setTimeout(remove, 260);
 	}
 
 	private async refresh(): Promise<void> {
