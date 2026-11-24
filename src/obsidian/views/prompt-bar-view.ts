@@ -1,6 +1,10 @@
 import {
 	App,
 	Menu,
+	Notice,
+	TAbstractFile,
+	TFile,
+	arrayBufferToBase64,
 	SearchResult,
 	prepareFuzzySearch,
 	renderResults,
@@ -13,6 +17,16 @@ import { MediaInput } from '../../core/types/model';
 import type { PermissionMode } from '../../settings';
 import { MenuGlider, attachNativeMenuGlider } from './menu-glider';
 import { MediaPreviewModal } from './media-preview-modal';
+import {
+	isAttachableMime,
+	mediaKind,
+	mediaMimeForName,
+	parseClipboardFilePaths,
+	parseFileUriList,
+	parseGnomeCopiedFiles,
+} from './attachments';
+import { promises as fsp } from 'fs';
+import * as nodePath from 'path';
 import {
 	PromptChip,
 	PromptChipKind,
@@ -43,6 +57,37 @@ interface AutocompleteItem {
 }
 
 const MAX_AT_ITEMS = 8;
+
+/** The bit of Electron's clipboard API used here (Obsidian is Electron; electron is external). */
+interface ElectronClipboard {
+	availableFormats(): string[];
+	readBuffer(format: string): { toString(encoding: string): string };
+}
+
+/**
+ * Files copied in a file manager, read straight from the OS clipboard. Chromium
+ * hides `text/uri-list` / `x-special/gnome-copied-files` from paste events on
+ * Linux and only exposes the path as plain text, so ask Electron directly.
+ */
+function readClipboardFilePaths(): string[] {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- electron is provided by Obsidian at runtime and has no ES module entry here
+		const { clipboard } = require('electron') as { clipboard?: ElectronClipboard };
+		if (!clipboard) return [];
+		const formats = clipboard.availableFormats();
+		if (formats.includes('x-special/gnome-copied-files')) {
+			const paths = parseGnomeCopiedFiles(clipboard.readBuffer('x-special/gnome-copied-files').toString('utf8'));
+			if (paths.length > 0) return paths;
+		}
+		if (formats.includes('text/uri-list')) {
+			return parseFileUriList(clipboard.readBuffer('text/uri-list').toString('utf8'));
+		}
+	} catch {
+		// Not running in Electron, or the format can't be read.
+	}
+	return [];
+}
+
 
 const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string; icon: string }[] = [
 	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied', icon: 'lock' },
@@ -136,6 +181,10 @@ export class PromptBarView {
 	private menuRowEls: HTMLElement[] = [];
 
 	private stagedMedia: MediaInput[] = [];
+	/** Running collapse of the emptied media tray, if any. */
+	private trayCollapse: Animation | null = null;
+	/** Running open / grow of the media tray, if any. */
+	private trayResize: Animation | null = null;
 	private isMenuDismissed = false;
 	private activeRowIndex = 0;
 	private isGliderEngaged = false;
@@ -409,6 +458,7 @@ export class PromptBarView {
 		const shellEl = this.composerAnchorEl.createDiv({
 			cls: 'anti-dian-promptbar-shell',
 		});
+		this.setupDropZone(shellEl);
 
 		// Top context bar (active note toggle)
 		const contextBarEl = shellEl.createDiv({
@@ -665,17 +715,26 @@ export class PromptBarView {
 		});
 
 		this.inputEl.addEventListener('paste', (event: ClipboardEvent) => {
-			const items = event.clipboardData?.items;
-			if (!items) return;
-			for (let i = 0; i < items.length; i++) {
-				const item = items[i];
-				if (item && item.kind === 'file' && item.type.startsWith('image/')) {
-					const file = item.getAsFile();
-					if (file) {
-						event.preventDefault();
-						void this.addMediaFile(file);
-					}
-				}
+			const data = event.clipboardData;
+			if (!data) return;
+			// Screenshots and files copied by apps that put real files on the clipboard.
+			const files = Array.from(data.files);
+			if (files.length > 0) {
+				event.preventDefault();
+				this.addDroppedFiles(files);
+				return;
+			}
+			// File managers copy files as paths only: read them from the OS clipboard,
+			// else from the paste's own text (file:// URIs or plain absolute paths).
+			const plain = data.getData('text/plain');
+			const osPaths = readClipboardFilePaths().filter((p) => mediaMimeForName(p));
+			const paths =
+				osPaths.length > 0 ? osPaths : parseClipboardFilePaths(data.getData('text/uri-list') || plain);
+			if (paths.length > 0) {
+				// Existence is checked asynchronously, so take over the paste and fall
+				// back to inserting the text if these aren't readable media files.
+				event.preventDefault();
+				void this.pasteLocalPaths(paths, plain);
 			}
 		});
 
@@ -815,6 +874,150 @@ export class PromptBarView {
 		this.updateActiveNotePill(ctx);
 	}
 
+	/* ------------------------------------------------------------- */
+	/* Drag & drop                                                   */
+	/* ------------------------------------------------------------- */
+
+	/**
+	 * Drop files from the OS (images, video, audio are attached) or items dragged
+	 * from Obsidian's file explorer (notes become @note chips, media is attached).
+	 */
+	private setupDropZone(zoneEl: HTMLElement): void {
+		let depth = 0;
+		const setActive = (active: boolean) => zoneEl.toggleClass('is-drag-over', active);
+		const accepts = (e: DragEvent) =>
+			Boolean(e.dataTransfer?.types.includes('Files')) || this.getDraggedVaultFiles().length > 0;
+
+		zoneEl.addEventListener('dragenter', (e) => {
+			if (!accepts(e)) return;
+			e.preventDefault();
+			depth++;
+			setActive(true);
+		});
+		zoneEl.addEventListener('dragover', (e) => {
+			if (!accepts(e)) return;
+			// Required for the drop to fire; also keeps Obsidian from handling it.
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+		});
+		zoneEl.addEventListener('dragleave', () => {
+			depth = Math.max(0, depth - 1);
+			if (depth === 0) setActive(false);
+		});
+		zoneEl.addEventListener('drop', (e) => {
+			depth = 0;
+			setActive(false);
+			if (!accepts(e)) return;
+			e.preventDefault();
+			e.stopPropagation();
+			const vaultFiles = this.getDraggedVaultFiles();
+			if (vaultFiles.length > 0) {
+				void this.addVaultFiles(vaultFiles);
+			} else {
+				const files = Array.from(e.dataTransfer?.files ?? []);
+				const paths = files.length > 0 ? [] : parseFileUriList(e.dataTransfer?.getData('text/uri-list') ?? '');
+				if (paths.length > 0) void this.addLocalPaths(paths);
+				else this.addDroppedFiles(files);
+			}
+			this.inputEl.focus();
+		});
+	}
+
+	/** Files being dragged from Obsidian's own UI (file explorer, tabs, links). */
+	private getDraggedVaultFiles(): TFile[] {
+		// `dragManager` is not in the public typings; read it defensively.
+		const draggable = (this.app as App & {
+			dragManager?: { draggable?: { type?: string; file?: TAbstractFile; files?: TAbstractFile[] } | null };
+		}).dragManager?.draggable;
+		if (!draggable) return [];
+		const items = draggable.files ?? (draggable.file ? [draggable.file] : []);
+		return items.filter((f): f is TFile => f instanceof TFile);
+	}
+
+	private addDroppedFiles(files: File[]): void {
+		let skipped = 0;
+		for (const file of files) {
+			if (isAttachableMime(file.type || mediaMimeForName(file.name) || '')) void this.addMediaFile(file);
+			else skipped++;
+		}
+		if (skipped > 0) {
+			new Notice(`Only images, video and audio can be attached (${skipped} skipped).`);
+		}
+	}
+
+	private async pasteLocalPaths(paths: string[], fallbackText: string): Promise<void> {
+		const exists = await Promise.all(
+			paths.map((p) =>
+				fsp.stat(p).then(
+					(st) => st.isFile(),
+					() => false,
+				),
+			),
+		);
+		if (exists.every(Boolean)) {
+			await this.addLocalPaths(paths);
+			return;
+		}
+		// Not files on this machine: paste the text as the user expected.
+		const input = this.inputEl;
+		input.setRangeText(fallbackText, input.selectionStart, input.selectionEnd, 'end');
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
+	/** Attach media files by absolute path (desktop only: copied in a file manager). */
+	private async addLocalPaths(paths: string[]): Promise<void> {
+		let skipped = 0;
+		for (const path of paths) {
+			const mimeType = mediaMimeForName(path);
+			if (!mimeType) {
+				skipped++;
+				continue;
+			}
+			try {
+				const bytes = await fsp.readFile(path);
+				this.stagedMedia.push({
+					type: mediaKind(mimeType),
+					mimeType,
+					data: `data:${mimeType};base64,${bytes.toString('base64')}`,
+				});
+			} catch {
+				new Notice(`Could not read ${nodePath.basename(path)}.`);
+			}
+		}
+		this.renderMediaTray();
+		this.updateSendButtonState();
+		if (skipped > 0) {
+			new Notice(`Only images, video and audio can be attached (${skipped} skipped).`);
+		}
+	}
+
+	private async addVaultFiles(files: TFile[]): Promise<void> {
+		let skipped = 0;
+		for (const file of files) {
+			if (file.extension === 'md') {
+				const current = this.inputEl.value;
+				const needsSpace = current.length > 0 && !/\s$/.test(current);
+				this.insertChip(`${current}${needsSpace ? ' ' : ''}`, `@${file.basename}`, 'file');
+				this.adjustTextareaHeight();
+				this.updateSendButtonState();
+				continue;
+			}
+			const mimeType = mediaMimeForName(file.name);
+			if (!mimeType) {
+				skipped++;
+				continue;
+			}
+			const data = `data:${mimeType};base64,${arrayBufferToBase64(await this.app.vault.readBinary(file))}`;
+			this.stagedMedia.push({ type: mediaKind(mimeType), mimeType, data });
+			this.renderMediaTray();
+			this.updateSendButtonState();
+		}
+		if (skipped > 0) {
+			new Notice(`Only notes, images, video and audio can be added (${skipped} skipped).`);
+		}
+	}
+
 	private async addMediaFile(file: File): Promise<void> {
 		const data = await new Promise<string>((resolve, reject) => {
 			const reader = new FileReader();
@@ -823,20 +1026,70 @@ export class PromptBarView {
 			reader.readAsDataURL(file);
 		});
 
-		const type: MediaInput['type'] = file.type.startsWith('video/')
-			? 'video'
-			: file.type.startsWith('audio/')
-				? 'audio'
-				: 'image';
+		// Some files (e.g. .mkv, .flac) come without a MIME type; fall back to the extension.
+		const mimeType = file.type || mediaMimeForName(file.name) || 'image/png';
+		const dataUrl = data.replace(/^data:[^;,]*;/, `data:${mimeType};`);
 
 		this.stagedMedia.push({
-			type,
-			mimeType: file.type || (type === 'image' ? 'image/png' : 'video/mp4'),
-			data,
+			type: mediaKind(mimeType),
+			mimeType,
+			data: dataUrl,
 		});
 
 		this.renderMediaTray();
 		this.updateSendButtonState();
+	}
+
+	/**
+	 * Animates the emptied tray shut (height, padding and the card's gap to the
+	 * textarea), keeping its last contents visible while they fade, then hides it.
+	 */
+	private collapseMediaTray(): void {
+		const tray = this.mediaTrayEl;
+		const finish = () => {
+			tray.empty();
+			tray.addClass('anti-dian-hidden');
+			tray.removeClass('is-collapsing');
+			this.adjustTextareaHeight();
+		};
+		const reduceMotion = tray.win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		if (tray.hasClass('anti-dian-hidden') || reduceMotion) {
+			finish();
+			return;
+		}
+
+		const styles = tray.win.getComputedStyle(tray);
+		const gap = this.cardEl.win.getComputedStyle(this.cardEl).rowGap || '0px';
+		tray.addClass('is-collapsing');
+		const anim = tray.animate(
+			[
+				{
+					height: `${tray.offsetHeight}px`,
+					paddingTop: styles.paddingTop,
+					paddingBottom: styles.paddingBottom,
+					marginBottom: '0px',
+					opacity: 1,
+				},
+				{
+					height: '0px',
+					paddingTop: '0px',
+					paddingBottom: '0px',
+					marginBottom: `calc(-1 * ${gap})`,
+					opacity: 0,
+				},
+			],
+			{ duration: 220, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+		);
+		this.trayCollapse = anim;
+		anim.finished
+			.then(() => {
+				if (this.trayCollapse !== anim) return;
+				this.trayCollapse = null;
+				finish();
+			})
+			.catch(() => {
+				// Cancelled because new media arrived; renderMediaTray took over.
+			});
 	}
 
 	private createMediaRemoveButton(parent: HTMLElement, cls: string, onRemove: () => void): void {
@@ -854,15 +1107,95 @@ export class PromptBarView {
 
 	private renderMediaTray(): void {
 		if (!this.mediaTrayEl) return;
-		this.mediaTrayEl.empty();
+		const tray = this.mediaTrayEl;
+		// Where the tray's box is right now, so growing starts from there.
+		const wasHidden = tray.hasClass('anti-dian-hidden');
+		const from = wasHidden ? null : this.measureTray();
+		// New media while collapsing: stop the collapse and grow back from its current size.
+		if (this.trayCollapse) {
+			this.trayCollapse.cancel();
+			this.trayCollapse = null;
+			tray.removeClass('is-collapsing');
+		}
+		this.trayResize?.cancel();
+		this.trayResize = null;
 
 		if (this.stagedMedia.length === 0) {
-			this.mediaTrayEl.addClass('anti-dian-hidden');
+			this.collapseMediaTray();
 			return;
 		}
 
-		this.mediaTrayEl.removeClass('anti-dian-hidden');
+		tray.empty();
+		tray.removeClass('anti-dian-hidden');
+		this.renderMediaTrayItems();
+		this.animateTrayOpen(from);
+	}
 
+	/** Current animatable box of the tray (mid-animation values included). */
+	private measureTray(): { height: number; paddingTop: string; paddingBottom: string; marginBottom: string; opacity: string } {
+		const tray = this.mediaTrayEl;
+		const styles = tray.win.getComputedStyle(tray);
+		return {
+			height: tray.getBoundingClientRect().height,
+			paddingTop: styles.paddingTop,
+			paddingBottom: styles.paddingBottom,
+			marginBottom: styles.marginBottom,
+			opacity: styles.opacity,
+		};
+	}
+
+	/**
+	 * Grows the tray from `from` (null = fully closed) to its natural size, so it
+	 * opens smoothly when the first file is added and when tiles wrap to a new row.
+	 */
+	private animateTrayOpen(
+		from: ReturnType<PromptBarView['measureTray']> | null,
+	): void {
+		const tray = this.mediaTrayEl;
+		if (tray.win.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const to = this.measureTray();
+		const gap = this.cardEl.win.getComputedStyle(this.cardEl).rowGap || '0px';
+		const start = from ?? {
+			height: 0,
+			paddingTop: '0px',
+			paddingBottom: '0px',
+			marginBottom: `calc(-1 * ${gap})`,
+			opacity: '0',
+		};
+		if (Math.abs(start.height - to.height) < 1 && start.opacity === to.opacity) return;
+
+		tray.addClass('is-resizing');
+		const anim = tray.animate(
+			[
+				{
+					height: `${start.height}px`,
+					paddingTop: start.paddingTop,
+					paddingBottom: start.paddingBottom,
+					marginBottom: start.marginBottom,
+					opacity: start.opacity,
+				},
+				{
+					height: `${to.height}px`,
+					paddingTop: to.paddingTop,
+					paddingBottom: to.paddingBottom,
+					marginBottom: to.marginBottom,
+					opacity: to.opacity,
+				},
+			],
+			{ duration: 240, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' },
+		);
+		this.trayResize = anim;
+		const done = () => {
+			if (this.trayResize !== anim) return;
+			this.trayResize = null;
+			tray.removeClass('is-resizing');
+		};
+		anim.finished.then(done).catch(() => {
+			tray.removeClass('is-resizing');
+		});
+	}
+
+	private renderMediaTrayItems(): void {
 		for (let i = 0; i < this.stagedMedia.length; i++) {
 			const item = this.stagedMedia[i];
 			if (!item) continue;

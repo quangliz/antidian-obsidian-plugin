@@ -460,6 +460,34 @@ button.anti-dian-session-drawer-close:hover {
 	transition: border-color 0.15s ease;
 }
 
+/* Drag & drop target (files from the OS or Obsidian's file explorer). */
+.anti-dian-promptbar-shell {
+	position: relative;
+}
+
+.anti-dian-promptbar-shell::after {
+	content: 'Drop to attach';
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1.5px dashed var(--interactive-accent);
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-secondary));
+	color: var(--text-accent);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+.anti-dian-promptbar-shell.is-drag-over::after {
+	opacity: 1;
+}
+
 .anti-dian-promptbar-shell:focus-within {
 	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
@@ -517,6 +545,17 @@ button.anti-dian-session-drawer-close:hover {
 	flex-wrap: wrap;
 	gap: 6px;
 	padding: 2px 0 4px 0;
+	box-sizing: border-box;
+}
+
+/* While the tray animates open/shut (see animateTrayOpen / collapseMediaTray). */
+.anti-dian-promptbar-media-tray.is-resizing {
+	overflow: hidden;
+}
+
+.anti-dian-promptbar-media-tray.is-collapsing {
+	overflow: hidden;
+	pointer-events: none;
 }
 
 /* Image / video attachment: preview tile with a round remove button on its corner. */
