@@ -51,6 +51,8 @@ export class ContextCompiler {
 					blocks.push(
 						`[Available Vault Skills (call load_skill(name) when relevant):\n${lines.join('\n')}\n]`,
 					);
+				} else {
+					blocks.push('[Vault Skills: none configured]');
 				}
 			} catch {
 				// Ignore skill discovery errors

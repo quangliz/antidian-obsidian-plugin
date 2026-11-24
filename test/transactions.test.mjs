@@ -164,3 +164,71 @@ test('ChangeSetDiffGenerator computes diffs sequentially across operations', asy
 	assert.equal(diff.files[1]?.operationType, 'update-frontmatter');
 	assert.ok(diff.totalAdditions > 0);
 });
+
+test('ChangeSetDiffGenerator trims unchanged lines to unified context hunks', async () => {
+	const bodyLines = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`);
+	const vault = createMemoryVault({
+		'Notes/Long.md': `${bodyLines.join('\n')}\n`,
+	});
+	const generator = new ChangeSetDiffGenerator(vault);
+
+	const diff = await generator.generate({
+		id: 'cs_long',
+		createdAt: Date.now(),
+		status: 'staged',
+		operations: [
+			{
+				type: 'update-frontmatter',
+				path: 'Notes/Long.md',
+				set: { title: 'Long Note', tags: ['test'] },
+			},
+		],
+	});
+
+	const file = diff.files[0];
+	assert.ok(file);
+	assert.equal(file.hunks.length, 1);
+	const hunk = file.hunks[0];
+	assert.ok(hunk);
+	assert.match(hunk.header ?? '', /^Frontmatter\s+@@ -1,3 \+1,\d+ @@$/);
+
+	const contextLines = hunk.lines.filter((l) => l.type === 'context');
+	assert.equal(contextLines.length, 3);
+	assert.deepEqual(
+		contextLines.map((l) => l.content),
+		['Line 1', 'Line 2', 'Line 3'],
+	);
+});
+
+test('ChangeSetDiffGenerator splits distant edits into separate hunks', async () => {
+	const lines = Array.from({ length: 30 }, (_, i) => `Line ${i + 1}`);
+	const original = `${lines.join('\n')}\n`;
+	const editedLines = [...lines];
+	editedLines[2] = 'Line 3 (edited)';
+	editedLines[25] = 'Line 26 (edited)';
+	const edited = `${editedLines.join('\n')}\n`;
+
+	const vault = createMemoryVault({ 'Notes/Multi.md': original });
+	const generator = new ChangeSetDiffGenerator(vault);
+
+	const diff = await generator.generate({
+		id: 'cs_multi',
+		createdAt: Date.now(),
+		status: 'staged',
+		operations: [
+			{
+				type: 'edit',
+				path: 'Notes/Multi.md',
+				content: edited,
+			},
+		],
+	});
+
+	const file = diff.files[0];
+	assert.ok(file);
+	assert.equal(file.hunks.length, 2);
+	assert.equal(file.hunks[0]?.lines.length, 7); // 2 before + 1 removed + 1 added + 3 after
+	assert.equal(file.hunks[1]?.lines.length, 8); // 3 before + 1 removed + 1 added + 3 after
+	assert.match(file.hunks[0]?.header ?? '', /^@@ -1,6 \+1,6 @@$/);
+	assert.match(file.hunks[1]?.header ?? '', /^@@ -23,7 \+23,7 @@$/);
+});

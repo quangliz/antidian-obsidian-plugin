@@ -81,6 +81,25 @@ test('ContextCompiler deduplicates active note across turns and injects skills o
 	assert.match(turn4.prompt, /Current Active Note/);
 });
 
+test('ContextCompiler explicitly reports when no vault skills are configured', async () => {
+	const compiler = new ContextCompiler({
+		skillService: {
+			async listSkills() {
+				return [];
+			},
+			async loadSkill() {
+				return null;
+			},
+		},
+	});
+
+	const turn1 = await compiler.compile('Update metadata', undefined, 'ask');
+	assert.match(turn1.prompt, /\[Vault Skills: none configured\]/);
+
+	const turn2 = await compiler.compile('Follow-up', undefined, 'ask');
+	assert.equal(turn2.prompt, 'Follow-up');
+});
+
 test('McpToolServer blocks mutating tools in plan mode and allows read tools', async () => {
 	const staging = new ChangeStagingManager();
 	staging.startTurn();

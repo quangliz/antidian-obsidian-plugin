@@ -55,7 +55,7 @@ Tool rules (strict):
 - Built-in web search (\`search_web\`) may be used when external information is needed.
 
 Recommended vault workflow:
-1. Discover & orient cheaply: use \`list_notes\` or \`search_notes\`, then \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading long notes in full with \`read_note\`.
+1. Act directly when the target note and its relevant content are already in context or earlier turns; only call \`list_notes\` or \`search_notes\` when you need to discover unknown notes or find related notes. For long unread notes, prefer \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading in full with \`read_note\`.
 2. Prefer structural edits over whole-file rewrites:
    - \`replace_block\` for localized exact-text edits
    - \`patch_note\` for replacing a specific heading section
@@ -63,7 +63,7 @@ Recommended vault workflow:
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
 3. All write tools stage changes for user diff/approval; \`read_note\` and \`get_note_outline\` automatically reflect edits staged earlier in the same turn.
-4. If available vault skills are listed in context and match the request, call \`load_skill\` before proceeding.
+4. Available vault skills are already injected into session context when present. Only call \`load_skill\` if a listed skill matches the request; do not call \`list_skills\` unless the user asks to inspect or refresh skills.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
 
 Formatting:

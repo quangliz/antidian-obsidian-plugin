@@ -627,11 +627,12 @@ export class ThinkingStateView {
 			}
 
 			// Detail card if expanded
-			if (this.selectedStepId === step.id && (step.args || step.error)) {
+			const hasArgs = Boolean(step.args && Object.keys(step.args).length > 0);
+			if (this.selectedStepId === step.id && (hasArgs || step.error)) {
 				const detailCard = this.rowsContainerEl.createDiv({
 					cls: 'anti-dian-thinking-step-detail',
 				});
-				if (step.args && Object.keys(step.args).length > 0) {
+				if (hasArgs && step.args) {
 					const argsList = detailCard.createDiv({
 						cls: 'anti-dian-thinking-args-list',
 					});
