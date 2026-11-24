@@ -12,6 +12,13 @@ import { ActiveContext } from '../../core/types/context';
 import { MediaInput } from '../../core/types/model';
 import type { PermissionMode } from '../../settings';
 import { MenuGlider, attachNativeMenuGlider } from './menu-glider';
+import {
+	PromptChip,
+	PromptChipKind,
+	chipAtCaret,
+	rebaseChips,
+	segmentPrompt,
+} from './prompt-chips';
 
 export interface PromptBarCallbacks {
 	onSend: (text: string, media: MediaInput[]) => void | Promise<void>;
@@ -83,6 +90,12 @@ export class PromptBarView {
 	private canvasEl!: HTMLCanvasElement;
 	private mediaTrayEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
+	/** Paints chip backgrounds behind the textarea text (same metrics as the textarea). */
+	private highlightEl!: HTMLElement;
+	/** Ranges inserted via autocomplete; only these render as chips. */
+	private chips: PromptChip[] = [];
+	/** Textarea value the chips are anchored to. */
+	private chipsText = '';
 	private measureEl!: HTMLElement;
 	private controlsRowEl!: HTMLElement;
 	private fileInputEl!: HTMLInputElement;
@@ -173,6 +186,8 @@ export class PromptBarView {
 	public setText(value: string): void {
 		if (this.inputEl) {
 			this.inputEl.value = value;
+			this.chips = [];
+			this.syncChips();
 			this.adjustTextareaHeight();
 			this.updateSendButtonState();
 		}
@@ -449,8 +464,13 @@ export class PromptBarView {
 			cls: 'anti-dian-promptbar-media-tray anti-dian-hidden',
 		});
 
-		// Main Textarea
-		this.inputEl = this.cardEl.createEl('textarea', {
+		// Main Textarea, over a mirror that draws chips for autocompleted items.
+		const inputWrapEl = this.cardEl.createDiv({ cls: 'anti-dian-promptbar-input-wrap' });
+		this.highlightEl = inputWrapEl.createDiv({
+			cls: 'anti-dian-promptbar-highlight',
+			attr: { 'aria-hidden': 'true' },
+		});
+		this.inputEl = inputWrapEl.createEl('textarea', {
 			cls: 'anti-dian-promptbar-textarea',
 			attr: {
 				placeholder: 'Ask anything, @ to mention, / for actions',
@@ -566,7 +586,12 @@ export class PromptBarView {
 	}
 
 	private setupEventListeners(): void {
+		this.inputEl.addEventListener('scroll', () => {
+			this.highlightEl.scrollTop = this.inputEl.scrollTop;
+		});
+
 		this.inputEl.addEventListener('input', () => {
+			this.syncChips();
 			this.isMenuDismissed = false;
 			this.closePlusMenu();
 			this.adjustTextareaHeight();
@@ -575,6 +600,10 @@ export class PromptBarView {
 		});
 
 		this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+			if ((e.key === 'Backspace' || e.key === 'Delete') && this.deleteChipAtCaret(e.key)) {
+				e.preventDefault();
+				return;
+			}
 			if (this.contextMenuEl && e.key === 'Escape') {
 				e.preventDefault();
 				this.closePlusMenu();
@@ -749,6 +778,8 @@ export class PromptBarView {
 		} else {
 			input.removeClass('is-scrollable');
 		}
+		// Same scrollbar gutter on the chip mirror, so its lines wrap identically.
+		this.highlightEl?.toggleClass('is-scrollable', scrollH > maxH);
 
 		// Check if controls should be stacked or inline
 		if (nextH > 36 || input.value.includes('\n')) {
@@ -765,6 +796,8 @@ export class PromptBarView {
 		const media = [...this.stagedMedia];
 
 		this.inputEl.value = '';
+		this.chips = [];
+		this.syncChips();
 		this.stagedMedia = [];
 		this.renderMediaTray();
 		this.adjustTextareaHeight();
@@ -894,6 +927,7 @@ export class PromptBarView {
 		const current = this.inputEl.value;
 		const needsSpace = current.length > 0 && !/\s$/.test(current);
 		this.inputEl.value = `${current}${needsSpace ? ' ' : ''}${trigger}`;
+		this.syncChips();
 		this.isMenuDismissed = false;
 		this.adjustTextareaHeight();
 		this.updateSendButtonState();
@@ -949,7 +983,7 @@ export class PromptBarView {
 					this.closePlusMenu();
 					const current = this.inputEl.value;
 					const needsSpace = current.length > 0 && !/\s$/.test(current);
-					this.inputEl.value = `${current}${needsSpace ? ' ' : ''}@Web search `;
+					this.insertChip(`${current}${needsSpace ? ' ' : ''}`, '@Web search', 'source');
 					this.adjustTextareaHeight();
 					this.updateSendButtonState();
 					this.inputEl.focus();
@@ -1216,24 +1250,78 @@ export class PromptBarView {
 
 		if (item.key === 'clear') {
 			this.inputEl.value = '';
+			this.chips = [];
+			this.syncChips();
 			this.callbacks.onStartNewSession?.();
 			this.closeAutocompleteMenu();
 			this.inputEl.focus();
 			return;
 		}
 
+		const prefix = token ? currentVal.slice(0, token.start) : currentVal;
 		if (kind === 'at') {
-			const prefix = token ? currentVal.slice(0, token.start) : currentVal;
-			this.inputEl.value = `${prefix}@${item.name} `;
+			this.insertChip(prefix, `@${item.name}`, item.type === 'source' ? 'source' : 'file');
 		} else {
-			const prefix = token ? currentVal.slice(0, token.start) : currentVal;
-			this.inputEl.value = `${prefix}${item.name} `;
+			this.insertChip(prefix, item.name, 'command');
 		}
 
 		this.closeAutocompleteMenu();
 		this.adjustTextareaHeight();
 		this.updateSendButtonState();
 		this.inputEl.focus();
+	}
+
+	/* ------------------------------------------------------------- */
+	/* Chips                                                         */
+	/* ------------------------------------------------------------- */
+
+	/** Sets the value to `prefix + label + ' '` and marks `label` as a chip. */
+	private insertChip(prefix: string, label: string, kind: PromptChipKind): void {
+		this.inputEl.value = `${prefix}${label} `;
+		this.syncChips();
+		this.chips.push({ start: prefix.length, end: prefix.length + label.length, kind });
+		this.renderHighlight();
+		const caret = this.inputEl.value.length;
+		this.inputEl.setSelectionRange(caret, caret);
+	}
+
+	/** Re-anchors chips to the current value and repaints them. */
+	private syncChips(): void {
+		const value = this.inputEl.value;
+		this.chips = rebaseChips(this.chips, this.chipsText, value);
+		this.chipsText = value;
+		this.renderHighlight();
+	}
+
+	/** Backspace after / Delete before a chip removes the whole chip. */
+	private deleteChipAtCaret(key: 'Backspace' | 'Delete'): boolean {
+		const input = this.inputEl;
+		if (input.selectionStart !== input.selectionEnd) return false;
+		const chip = chipAtCaret(this.chips, input.selectionStart, key);
+		if (!chip) return false;
+		input.setRangeText('', chip.start, chip.end, 'start');
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	}
+
+	private renderHighlight(): void {
+		const el = this.highlightEl;
+		if (!el) return;
+		el.empty();
+		if (this.chips.length === 0) return;
+		for (const segment of segmentPrompt(this.inputEl.value, this.chips)) {
+			if (segment.chip) {
+				el.createSpan({
+					cls: `anti-dian-prompt-chip is-${segment.chip.kind}`,
+					text: segment.text,
+				});
+			} else {
+				el.appendText(segment.text);
+			}
+		}
+		// A trailing newline needs a character after it to take up a line.
+		if (this.inputEl.value.endsWith('\n')) el.appendText(' ');
+		el.scrollTop = this.inputEl.scrollTop;
 	}
 
 	public closeAutocompleteMenu(): void {

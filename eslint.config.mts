@@ -23,6 +23,8 @@ export default defineConfig(
 			parserOptions: {
 				projectService: {
 					allowDefaultProject: ['eslint.config.mts', 'manifest.json', 'test/*.mjs'],
+					// test/*.mjs files sit outside tsconfig; allow more than the default 8.
+					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 32,
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],

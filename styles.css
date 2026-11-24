@@ -620,6 +620,65 @@ button.anti-dian-session-drawer-close:hover {
 	text-overflow: ellipsis;
 }
 
+/* Chip mirror: sits behind the transparent textarea with identical text metrics,
+   painting backgrounds for autocompleted @mentions and /commands only. */
+.anti-dian-promptbar-input-wrap {
+	position: relative;
+	width: 100%;
+}
+
+.anti-dian-promptbar-input-wrap .anti-dian-promptbar-textarea {
+	position: relative;
+	z-index: 1;
+	display: block;
+}
+
+.anti-dian-promptbar-highlight {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	box-sizing: border-box;
+	padding: 2px 2px 2px 6px;
+	font-size: var(--font-ui-small);
+	line-height: 19px;
+	font-family: inherit;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	word-break: normal;
+	color: transparent;
+	overflow: hidden;
+	pointer-events: none;
+	user-select: none;
+}
+
+.anti-dian-promptbar-highlight.is-scrollable {
+	overflow-y: scroll;
+	scrollbar-color: transparent transparent;
+}
+
+.anti-dian-promptbar-highlight.is-scrollable::-webkit-scrollbar-thumb {
+	background: transparent;
+}
+
+/* Background + spread shadow give the chip padding without changing text layout. */
+.anti-dian-prompt-chip {
+	border-radius: 4px;
+	background: rgba(var(--interactive-accent-rgb), 0.2);
+	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+
+.anti-dian-prompt-chip.is-command {
+	background: rgba(var(--color-green-rgb), 0.18);
+	box-shadow: 0 0 0 2px rgba(var(--color-green-rgb), 0.18);
+}
+
+.anti-dian-prompt-chip.is-source {
+	background: rgba(var(--color-blue-rgb), 0.18);
+	box-shadow: 0 0 0 2px rgba(var(--color-blue-rgb), 0.18);
+}
+
 /* Bottom Controls */
 .anti-dian-promptbar-controls {
 	display: flex;
