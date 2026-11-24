@@ -12,6 +12,7 @@ import { ActiveContext } from '../../core/types/context';
 import { MediaInput } from '../../core/types/model';
 import type { PermissionMode } from '../../settings';
 import { MenuGlider, attachNativeMenuGlider } from './menu-glider';
+import { MediaPreviewModal } from './media-preview-modal';
 import {
 	PromptChip,
 	PromptChipKind,
@@ -838,6 +839,19 @@ export class PromptBarView {
 		this.updateSendButtonState();
 	}
 
+	private createMediaRemoveButton(parent: HTMLElement, cls: string, onRemove: () => void): void {
+		const removeBtn = parent.createEl('button', {
+			cls,
+			attr: { type: 'button', 'aria-label': 'Remove attachment' },
+		});
+		setIcon(removeBtn, 'x');
+		setTooltip(removeBtn, 'Remove attachment');
+		removeBtn.onclick = (e) => {
+			e.stopPropagation();
+			onRemove();
+		};
+	}
+
 	private renderMediaTray(): void {
 		if (!this.mediaTrayEl) return;
 		this.mediaTrayEl.empty();
@@ -852,41 +866,67 @@ export class PromptBarView {
 		for (let i = 0; i < this.stagedMedia.length; i++) {
 			const item = this.stagedMedia[i];
 			if (!item) continue;
-
-			const chip = this.mediaTrayEl.createDiv({
-				cls: 'anti-dian-promptbar-media-chip',
-			});
-
-			if (item.type === 'image' && item.data) {
-				chip.createEl('img', {
-					cls: 'anti-dian-promptbar-chip-thumb',
-					attr: { src: item.data },
-				});
-			} else {
-				const iconSpan = chip.createSpan({
-					cls: 'anti-dian-promptbar-chip-icon',
-				});
-				setIcon(iconSpan, item.type === 'video' ? 'video' : 'file');
-			}
-
-			chip.createSpan({
-				cls: 'anti-dian-promptbar-chip-name',
-				text: item.type === 'image' ? 'Image' : item.type,
-			});
-
-			const removeBtn = chip.createEl('button', {
-				cls: 'anti-dian-promptbar-chip-remove',
-				attr: { type: 'button' },
-			});
-			setIcon(removeBtn, 'x');
-			setTooltip(removeBtn, 'Remove attachment');
 			const idx = i;
-			removeBtn.onclick = (e) => {
-				e.stopPropagation();
+			const remove = () => {
 				this.stagedMedia.splice(idx, 1);
 				this.renderMediaTray();
 				this.updateSendButtonState();
 			};
+
+			// Images and videos get a preview tile; anything else a compact chip.
+			const previewable = Boolean(item.data) && (item.type === 'image' || item.type === 'video');
+			if (previewable && item.data) {
+				const tile = this.mediaTrayEl.createDiv({
+					cls: 'anti-dian-promptbar-media-tile',
+					attr: {
+						role: 'button',
+						tabindex: '0',
+						'aria-label': item.type === 'image' ? 'Preview image' : 'Preview video',
+					},
+				});
+				const openPreview = () => new MediaPreviewModal(this.app, item).open();
+				tile.addEventListener('click', openPreview);
+				tile.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						openPreview();
+					} else if (e.key === 'Delete' || e.key === 'Backspace') {
+						e.preventDefault();
+						remove();
+						this.inputEl.focus();
+					}
+				});
+				if (item.type === 'image') {
+					tile.createEl('img', {
+						cls: 'anti-dian-promptbar-media-preview',
+						attr: { src: item.data, alt: 'Attached image', draggable: 'false' },
+					});
+				} else {
+					const video = tile.createEl('video', {
+						cls: 'anti-dian-promptbar-media-preview',
+						attr: { src: item.data, preload: 'metadata', 'aria-label': 'Attached video' },
+					});
+					video.muted = true;
+					video.playsInline = true;
+					const badge = tile.createSpan({ cls: 'anti-dian-promptbar-media-badge' });
+					setIcon(badge, 'play');
+				}
+				this.createMediaRemoveButton(tile, 'anti-dian-promptbar-media-tile-remove', remove);
+				continue;
+			}
+
+			const chip = this.mediaTrayEl.createDiv({
+				cls: 'anti-dian-promptbar-media-chip',
+			});
+			const iconSpan = chip.createSpan({
+				cls: 'anti-dian-promptbar-chip-icon',
+			});
+			setIcon(iconSpan, item.type === 'video' ? 'video' : item.type === 'audio' ? 'audio-lines' : 'file');
+			chip.createSpan({
+				cls: 'anti-dian-promptbar-chip-name',
+				text: item.type === 'image' ? 'Image' : item.type,
+			});
+			this.createMediaRemoveButton(chip, 'anti-dian-promptbar-chip-remove', remove);
 		}
 	}
 
