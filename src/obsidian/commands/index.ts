@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian';
 import type AntiDianPlugin from '../../main';
+import { ANTI_DIAN_ICON } from '../icon';
 
 export function registerCommands(plugin: AntiDianPlugin): void {
 	plugin.addCommand({
@@ -9,6 +10,49 @@ export function registerCommands(plugin: AntiDianPlugin): void {
 			void plugin.activateView();
 		},
 	});
+
+	plugin.addCommand({
+		id: 'add-selection-to-chat',
+		name: 'Add selection to chat',
+		editorCheckCallback: (checking, editor, ctx) => {
+			const selected = editor.getSelection();
+			if (!selected || !selected.trim()) return false;
+			if (!checking) {
+				const from = editor.getCursor('from');
+				const to = editor.getCursor('to');
+				void plugin.addSelectionToChat({
+					text: selected,
+					filePath: ctx.file?.path,
+					startLine: from.line + 1,
+					endLine: to.line + 1,
+				});
+			}
+			return true;
+		},
+	});
+
+	plugin.registerEvent(
+		plugin.app.workspace.on('editor-menu', (menu, editor, info) => {
+			const selected = editor.getSelection();
+			if (!selected || !selected.trim()) return;
+			const from = editor.getCursor('from');
+			const to = editor.getCursor('to');
+			const filePath = info.file?.path;
+			menu.addItem((item) => {
+				item
+					.setTitle('Add to anti-dian')
+					.setIcon(ANTI_DIAN_ICON)
+					.onClick(() => {
+						void plugin.addSelectionToChat({
+							text: selected,
+							filePath,
+							startLine: from.line + 1,
+							endLine: to.line + 1,
+						});
+					});
+			});
+		}),
+	);
 
 	plugin.addCommand({
 		id: 'accept-inline-diff',

@@ -8,6 +8,7 @@ import {
 	ANTI_DIAN_VIEW_TYPE,
 	AntiDianView,
 } from './obsidian/views/antidian-view';
+import type { SelectionSnippet } from './obsidian/views/prompt-bar-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
 import { ObsidianSkillAdapter } from './obsidian/adapters/skills';
@@ -168,7 +169,7 @@ export default class AntiDianPlugin extends Plugin {
 		void this.antigravityProvider?.destroy();
 	}
 
-	async activateView(): Promise<void> {
+	async activateView(): Promise<AntiDianView | null> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(ANTI_DIAN_VIEW_TYPE)[0];
 
@@ -185,7 +186,14 @@ export default class AntiDianPlugin extends Plugin {
 
 		if (leaf) {
 			await workspace.revealLeaf(leaf);
+			return leaf.view instanceof AntiDianView ? leaf.view : null;
 		}
+		return null;
+	}
+
+	async addSelectionToChat(snippet: SelectionSnippet): Promise<void> {
+		const view = await this.activateView();
+		view?.addSelectionToPrompt(snippet);
 	}
 
 	async loadSettings(): Promise<void> {

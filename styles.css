@@ -2846,6 +2846,17 @@ button.anti-dian-msg-action-btn.is-copied {
 	outline: none;
 }
 
+/* ── Staged Markdown Selection Chip ───────────────────────────────────────── */
+
+.anti-dian-promptbar-selection-chip {
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.anti-dian-promptbar-selection-chip .anti-dian-promptbar-chip-icon {
+	color: var(--text-accent);
+}
+
 /* ── Pinned conversations ───────────────────────────────────────────────── */
 
 .anti-dian-session-group-label {
@@ -2870,4 +2881,56 @@ button.anti-dian-msg-action-btn.is-copied {
 
 .anti-dian-session-pin-icon svg {
 	transform: rotate(45deg);
+}
+
+/* ── Selection chips in a sent user message ────────────────────────────────── */
+
+.anti-dian-user-chip-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.anti-dian-user-chip-row:last-child {
+	margin-bottom: 0;
+}
+
+.anti-dian-user-selection-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	max-width: 100%;
+	height: 22px;
+	box-sizing: border-box;
+	padding: 0 7px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	user-select: none;
+}
+
+.anti-dian-user-selection-chip.is-link {
+	cursor: pointer;
+	transition: background-color 120ms ease;
+}
+
+.anti-dian-user-selection-chip.is-link:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+.anti-dian-user-selection-chip-icon {
+	display: flex;
+	flex-shrink: 0;
+	color: var(--text-accent);
+	--icon-size: 13px;
+}
+
+.anti-dian-user-selection-chip-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

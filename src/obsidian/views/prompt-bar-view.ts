@@ -35,6 +35,13 @@ import {
 	segmentPrompt,
 } from './prompt-chips';
 
+export interface SelectionSnippet {
+	text: string;
+	filePath?: string;
+	startLine?: number;
+	endLine?: number;
+}
+
 export interface PromptBarCallbacks {
 	onSend: (text: string, media: MediaInput[]) => void | Promise<void>;
 	onCancel?: () => void;
@@ -181,6 +188,7 @@ export class PromptBarView {
 	private menuRowEls: HTMLElement[] = [];
 
 	private stagedMedia: MediaInput[] = [];
+	private stagedSelections: SelectionSnippet[] = [];
 	/** Running collapse of the emptied media tray, if any. */
 	private trayCollapse: Animation | null = null;
 	/** Running open / grow of the media tray, if any. */
@@ -226,7 +234,31 @@ export class PromptBarView {
 
 	public clearStagedMedia(): void {
 		this.stagedMedia = [];
+		this.stagedSelections = [];
 		this.renderMediaTray();
+		this.updateSendButtonState();
+	}
+
+	public addSelection(snippet: SelectionSnippet): void {
+		const trimmed = snippet.text.trim();
+		if (!trimmed) return;
+		const normalized: SelectionSnippet = {
+			...snippet,
+			text: trimmed,
+		};
+		const duplicate = this.stagedSelections.some(
+			(s) =>
+				s.filePath === normalized.filePath &&
+				s.startLine === normalized.startLine &&
+				s.endLine === normalized.endLine &&
+				s.text === normalized.text,
+		);
+		if (!duplicate) {
+			this.stagedSelections.push(normalized);
+			this.renderMediaTray();
+			this.updateSendButtonState();
+		}
+		this.focus();
 	}
 
 	public getText(): string {
@@ -806,7 +838,11 @@ export class PromptBarView {
 
 	private canSend(): boolean {
 		const text = this.inputEl?.value.trim() ?? '';
-		return text.length > 0 || this.stagedMedia.length > 0;
+		return (
+			text.length > 0 ||
+			this.stagedMedia.length > 0 ||
+			this.stagedSelections.length > 0
+		);
 	}
 
 	private updateSendButtonState(): void {
@@ -852,19 +888,46 @@ export class PromptBarView {
 	private async triggerSend(): Promise<void> {
 		if (!this.canSend() || this.isSending) return;
 
-		const text = this.inputEl.value.trim();
+		const typedText = this.inputEl.value.trim();
 		const media = [...this.stagedMedia];
+		const selections = [...this.stagedSelections];
+
+		const text =
+			selections.length > 0
+				? [...selections.map((s) => this.formatSelectionBlock(s)), typedText]
+						.filter(Boolean)
+						.join('\n\n')
+				: typedText;
 
 		this.inputEl.value = '';
 		this.chips = [];
 		this.syncChips();
 		this.stagedMedia = [];
+		this.stagedSelections = [];
 		this.renderMediaTray();
 		this.adjustTextareaHeight();
 		this.closeAutocompleteMenu();
 		this.updateSendButtonState();
 
 		await this.callbacks.onSend(text, media);
+	}
+
+	private formatSelectionBlock(snippet: SelectionSnippet): string {
+		const noteName = snippet.filePath?.replace(/\.md$/, '').split('/').pop();
+		const lineRange =
+			snippet.startLine !== undefined
+				? snippet.endLine !== undefined && snippet.endLine !== snippet.startLine
+					? ` (L${snippet.startLine}-${snippet.endLine})`
+					: ` (L${snippet.startLine})`
+				: '';
+		const header = noteName
+			? `From [[${noteName}]]${lineRange}:`
+			: `Selected text${lineRange}:`;
+		const quoted = snippet.text
+			.split('\n')
+			.map((line) => `> ${line}`)
+			.join('\n');
+		return `${header}\n${quoted}`;
 	}
 
 	private toggleActiveNote(): void {
@@ -1120,7 +1183,7 @@ export class PromptBarView {
 		this.trayResize?.cancel();
 		this.trayResize = null;
 
-		if (this.stagedMedia.length === 0) {
+		if (this.stagedMedia.length === 0 && this.stagedSelections.length === 0) {
 			this.collapseMediaTray();
 			return;
 		}
@@ -1196,6 +1259,41 @@ export class PromptBarView {
 	}
 
 	private renderMediaTrayItems(): void {
+		for (let i = 0; i < this.stagedSelections.length; i++) {
+			const snippet = this.stagedSelections[i];
+			if (!snippet) continue;
+			const idx = i;
+			const noteName =
+				snippet.filePath?.replace(/\.md$/, '').split('/').pop() || 'Selection';
+			const lineRange =
+				snippet.startLine !== undefined
+					? snippet.endLine !== undefined && snippet.endLine !== snippet.startLine
+						? `:${snippet.startLine}-${snippet.endLine}`
+						: `:${snippet.startLine}`
+					: '';
+			const chip = this.mediaTrayEl.createDiv({
+				cls: 'anti-dian-promptbar-media-chip anti-dian-promptbar-selection-chip',
+			});
+			const iconSpan = chip.createSpan({
+				cls: 'anti-dian-promptbar-chip-icon',
+			});
+			setIcon(iconSpan, 'text-quote');
+			chip.createSpan({
+				cls: 'anti-dian-promptbar-chip-name',
+				text: `${noteName}${lineRange}`,
+			});
+			const preview =
+				snippet.text.length > 240
+					? `${snippet.text.slice(0, 240)}…`
+					: snippet.text;
+			setTooltip(chip, preview);
+			this.createMediaRemoveButton(chip, 'anti-dian-promptbar-chip-remove', () => {
+				this.stagedSelections.splice(idx, 1);
+				this.renderMediaTray();
+				this.updateSendButtonState();
+			});
+		}
+
 		for (let i = 0; i < this.stagedMedia.length; i++) {
 			const item = this.stagedMedia[i];
 			if (!item) continue;

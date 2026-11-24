@@ -27,6 +27,7 @@ import {
 import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
 import { StreamRenderLoop } from './stream-render-loop';
+import { parseUserMessage, selectionChipLabel, type SentSelection } from './user-message-format';
 import logoUrl from '../../../assets/logo-hero.png';
 import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
@@ -37,7 +38,7 @@ import {
 	storedTurnsToReplayedMessages,
 } from '../../core/sessions/transcript';
 import type { StoredTurnTrace } from '../../core/types/sessions';
-import { PromptBarView } from './prompt-bar-view';
+import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
 import { ANTI_DIAN_ICON } from '../icon';
@@ -141,6 +142,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 	getIcon(): string {
 		return ANTI_DIAN_ICON;
+	}
+
+	public addSelectionToPrompt(snippet: SelectionSnippet): void {
+		this.promptBar?.addSelection(snippet);
 	}
 
 	async onOpen(): Promise<void> {
@@ -495,7 +500,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const userMsg = turn.userGroupEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-user is-replayed',
 				});
-				userMsg.createEl('p', { text: message.text });
+				this.renderUserMessageBody(userMsg, message.text);
 				this.renderUserMetaRow(turn.userGroupEl, {
 					text: message.text,
 					timestamp: message.timestamp,
@@ -766,7 +771,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 
 		if (text) {
-			userMsg.createEl('p', { text });
+			this.renderUserMessageBody(userMsg, text);
 		}
 
 		this.renderUserMetaRow(turnRecord.userGroupEl, {
@@ -1095,6 +1100,49 @@ export class AntiDianView extends ItemView implements HoverParent {
 				.catch(() => {
 					new Notice('Could not copy message to clipboard.');
 				});
+		});
+	}
+
+	/** Typed text, with attached selections shown as chips above it. */
+	private renderUserMessageBody(userMsg: HTMLElement, text: string): void {
+		const { selections, body } = parseUserMessage(text);
+		if (selections.length > 0) {
+			const row = userMsg.createDiv({ cls: 'anti-dian-user-chip-row' });
+			for (const selection of selections) this.renderSentSelectionChip(row, selection);
+		}
+		if (body.trim()) userMsg.createEl('p', { text: body });
+	}
+
+	private renderSentSelectionChip(row: HTMLElement, selection: SentSelection): void {
+		const note = selection.note;
+		const chip = row.createDiv({
+			cls: 'anti-dian-user-selection-chip',
+			attr: note ? { role: 'button', tabindex: '0' } : {},
+		});
+		const icon = chip.createSpan({ cls: 'anti-dian-user-selection-chip-icon' });
+		setIcon(icon, 'text-quote');
+		chip.createSpan({
+			cls: 'anti-dian-user-selection-chip-name',
+			text: selectionChipLabel(selection),
+		});
+		const preview =
+			selection.text.length > 240 ? `${selection.text.slice(0, 240)}…` : selection.text;
+		setTooltip(chip, preview);
+		if (!note) return;
+		chip.addClass('is-link');
+		// Open the note at the selected line.
+		const open = () => {
+			const line = selection.startLine !== undefined ? selection.startLine - 1 : undefined;
+			void this.app.workspace.openLinkText(note, '', false, {
+				...(line !== undefined ? { eState: { line } } : {}),
+			});
+		};
+		chip.addEventListener('click', open);
+		chip.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				open();
+			}
 		});
 	}
 
