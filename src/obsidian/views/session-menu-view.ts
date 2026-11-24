@@ -26,6 +26,9 @@ export interface SessionMenuOptions {
 	/** Remembered drawer width in px (null = default). */
 	loadDrawerWidth?: () => number | null;
 	saveDrawerWidth?: (width: number | null) => void;
+	/** Pinned session IDs, in display order. */
+	getPinnedSessions?: () => string[];
+	setPinnedSessions?: (ids: string[]) => void;
 }
 
 const MIN_DRAWER_WIDTH = 200;
@@ -264,14 +267,6 @@ export class SessionMenuController {
 		// Keep the "New Conversation" item; session rows are rebuilt.
 		this.items = this.items.filter((item) => item.kind === 'new');
 
-		const folder = list.createDiv({ cls: 'anti-dian-session-folder' });
-		const folderIcon = folder.createSpan({ cls: 'anti-dian-session-folder-icon' });
-		setIcon(folderIcon, 'folder-open');
-		folder.createSpan({
-			cls: 'anti-dian-session-folder-name',
-			text: this.options.getVaultName(),
-		});
-
 		const query = this.searchEl?.value.trim() ?? '';
 		const all = this.sessions ?? [];
 		const forks = this.options.getSessionForks?.() ?? {};
@@ -283,6 +278,58 @@ export class SessionMenuController {
 			title: formatForkedTitle(s, forks[s.sessionId], customTitles[s.sessionId]),
 		}));
 		const hits = searchSessions(searchable, query);
+
+		const roots = query ? [] : buildSessionTree(all, forks, customTitles);
+		const nodesById = new Map<string, SessionTreeNode<AcpSessionSummary>>();
+		const collect = (node: SessionTreeNode<AcpSessionSummary>): void => {
+			nodesById.set(node.session.sessionId, node);
+			node.children.forEach(collect);
+		};
+		roots.forEach(collect);
+		const pinnedIds = this.getPinnedIds().filter((id) => nodesById.has(id));
+		const pinnedSet = new Set(pinnedIds);
+		const storedPins = new Set(this.getPinnedIds());
+
+		// A pinned session's own forks stay under it; other pinned sessions are
+		// listed once, in the pinned group, and skipped elsewhere.
+		const renderNode = (
+			node: SessionTreeNode<AcpSessionSummary>,
+			depth: number,
+		): void => {
+			const children = node.children.filter((c) => !pinnedSet.has(c.session.sessionId));
+			const hasChildren = children.length > 0;
+			const isExpanded =
+				hasChildren && !this.collapsedParents.has(node.session.sessionId);
+			this.renderSessionRow(list, {
+				session: node.session,
+				displayTitle: node.displayTitle,
+				ranges: [],
+				isCurrent: node.session.sessionId === currentId,
+				depth,
+				hasChildren,
+				isExpanded,
+				isPinned: depth === 0 && pinnedSet.has(node.session.sessionId),
+			});
+			if (isExpanded) {
+				for (const child of children) renderNode(child, depth + 1);
+			}
+		};
+
+		if (!query && pinnedIds.length > 0) {
+			list.createDiv({ cls: 'anti-dian-session-group-label', text: 'Pinned' });
+			for (const id of pinnedIds) {
+				const node = nodesById.get(id);
+				if (node) renderNode(node, 0);
+			}
+		}
+
+		const folder = list.createDiv({ cls: 'anti-dian-session-folder' });
+		const folderIcon = folder.createSpan({ cls: 'anti-dian-session-folder-icon' });
+		setIcon(folderIcon, 'folder-open');
+		folder.createSpan({
+			cls: 'anti-dian-session-folder-name',
+			text: this.options.getVaultName(),
+		});
 
 		if (this.sessions === null && this.loading) {
 			this.renderStatus(list, 'Loading…', true);
@@ -307,38 +354,16 @@ export class SessionMenuController {
 					depth: 0,
 					hasChildren: false,
 					isExpanded: false,
+					isPinned: storedPins.has(session.sessionId),
 				});
 			}
 		} else {
-			const roots = buildSessionTree(all, forks, customTitles);
-			totalCount = roots.length;
-			collapsed = !this.showAll && roots.length > COLLAPSED_SESSION_COUNT;
+			const unpinned = roots.filter((r) => !pinnedSet.has(r.session.sessionId));
+			totalCount = unpinned.length;
+			collapsed = !this.showAll && unpinned.length > COLLAPSED_SESSION_COUNT;
 			const visibleRoots = collapsed
-				? roots.slice(0, COLLAPSED_SESSION_COUNT)
-				: roots;
-
-			const renderNode = (
-				node: SessionTreeNode<AcpSessionSummary>,
-				depth: number,
-			): void => {
-				const hasChildren = node.children.length > 0;
-				const isExpanded =
-					hasChildren && !this.collapsedParents.has(node.session.sessionId);
-				this.renderSessionRow(list, {
-					session: node.session,
-					displayTitle: node.displayTitle,
-					ranges: [],
-					isCurrent: node.session.sessionId === currentId,
-					depth,
-					hasChildren,
-					isExpanded,
-				});
-				if (isExpanded) {
-					for (const child of node.children) {
-						renderNode(child, depth + 1);
-					}
-				}
-			};
+				? unpinned.slice(0, COLLAPSED_SESSION_COUNT)
+				: unpinned;
 
 			for (const root of visibleRoots) {
 				renderNode(root, 0);
@@ -381,6 +406,7 @@ export class SessionMenuController {
 			depth: number;
 			hasChildren: boolean;
 			isExpanded: boolean;
+			isPinned: boolean;
 		},
 	): void {
 		const row = list.createDiv({
@@ -388,6 +414,11 @@ export class SessionMenuController {
 			attr: { role: 'option', 'aria-selected': String(opts.isCurrent) },
 		});
 		if (opts.isCurrent) row.addClass('is-current');
+		if (opts.isPinned) {
+			row.addClass('is-pinned');
+			const pinIcon = row.createSpan({ cls: 'anti-dian-session-pin-icon' });
+			setIcon(pinIcon, 'pin');
+		}
 		if (opts.depth > 0) {
 			row.addClass('is-child');
 			row.setCssProps({
@@ -473,6 +504,17 @@ export class SessionMenuController {
 
 		const canRename = Boolean(this.options.onRenameSession);
 		const canDelete = Boolean(this.options.onDeleteSession);
+		// Forks are pinned via their own row only when they are top-level.
+		const canPin = Boolean(this.options.setPinnedSessions) && opts.depth === 0;
+		const togglePin = () => {
+			const pinned = this.getPinnedIds();
+			this.setPinnedIds(
+				opts.isPinned
+					? pinned.filter((id) => id !== sessionId)
+					: [...pinned.filter((id) => id !== sessionId), sessionId],
+			);
+			this.renderList();
+		};
 
 		if (!isEditing) {
 			if (isConfirmingDelete && canDelete) {
@@ -512,8 +554,23 @@ export class SessionMenuController {
 					text: formatRelativeTime(opts.session.updatedAt),
 				});
 
-				if (canRename || canDelete) {
+				if (canPin || canRename || canDelete) {
 					const actions = row.createSpan({ cls: 'anti-dian-session-actions' });
+					if (canPin) {
+						const pinBtn = actions.createEl('button', {
+							cls: 'anti-dian-session-action-btn',
+							attr: {
+								type: 'button',
+								'aria-label': opts.isPinned ? 'Unpin conversation' : 'Pin conversation',
+							},
+						});
+						setIcon(pinBtn, opts.isPinned ? 'pin-off' : 'pin');
+						setTooltip(pinBtn, opts.isPinned ? 'Unpin' : 'Pin');
+						pinBtn.addEventListener('click', (e) => {
+							e.stopPropagation();
+							togglePin();
+						});
+					}
 					if (canRename) {
 						const renameBtn = actions.createEl('button', {
 							cls: 'anti-dian-session-action-btn',
@@ -545,11 +602,19 @@ export class SessionMenuController {
 				}
 			}
 
-			if (canRename || canDelete) {
+			if (canPin || canRename || canDelete) {
 				row.addEventListener('contextmenu', (e) => {
 					e.preventDefault();
 					e.stopPropagation();
 					const menu = new Menu();
+					if (canPin) {
+						menu.addItem((item) =>
+							item
+								.setTitle(opts.isPinned ? 'Unpin' : 'Pin')
+								.setIcon(opts.isPinned ? 'pin-off' : 'pin')
+								.onClick(togglePin),
+						);
+					}
 					if (canRename) {
 						menu.addItem((item) =>
 							item
@@ -580,6 +645,14 @@ export class SessionMenuController {
 		}
 
 		this.bindItem({ kind: 'session', el: row, session: opts.session });
+	}
+
+	private getPinnedIds(): string[] {
+		return [...(this.options.getPinnedSessions?.() ?? [])];
+	}
+
+	private setPinnedIds(ids: string[]): void {
+		this.options.setPinnedSessions?.(ids);
 	}
 
 	private renderHighlighted(el: HTMLElement, text: string, ranges: MatchRange[]): void {

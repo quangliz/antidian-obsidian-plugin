@@ -238,6 +238,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.plugin.settings.sessionDrawerWidth = width ?? undefined;
 				void this.plugin.saveSettings();
 			},
+			getPinnedSessions: () => this.plugin.settings.pinnedSessions ?? [],
+			setPinnedSessions: (ids) => {
+				this.plugin.settings.pinnedSessions = ids.length > 0 ? ids : undefined;
+				void this.plugin.saveSettings();
+			},
 			onSelectSession: (session) => void this.switchSession(session),
 			onNewSession: () => this.startNewSession(),
 			onRenameSession: (sessionId, newTitle) =>
@@ -326,6 +331,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 			const titles = { ...this.plugin.settings.sessionTitles };
 			delete titles[sessionId];
 			this.plugin.settings.sessionTitles = titles;
+		}
+		if (this.plugin.settings.pinnedSessions?.includes(sessionId)) {
+			const pinned = this.plugin.settings.pinnedSessions.filter((id) => id !== sessionId);
+			this.plugin.settings.pinnedSessions = pinned.length > 0 ? pinned : undefined;
 		}
 		if (this.plugin.settings.sessionForks?.[sessionId]) {
 			const forks = { ...this.plugin.settings.sessionForks };

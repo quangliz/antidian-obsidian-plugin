@@ -2845,3 +2845,29 @@ button.anti-dian-msg-action-btn.is-copied {
 	border-radius: 4px;
 	outline: none;
 }
+
+/* ── Pinned conversations ───────────────────────────────────────────────── */
+
+.anti-dian-session-group-label {
+	padding: 5px 8px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	user-select: none;
+}
+
+/* The pin icon sits in the same 30px gutter the other rows indent by. */
+.anti-dian-session-item.is-pinned {
+	padding-left: 8px;
+}
+
+.anti-dian-session-pin-icon {
+	display: flex;
+	flex-shrink: 0;
+	width: 14px;
+	color: var(--text-faint);
+	--icon-size: 13px;
+}
+
+.anti-dian-session-pin-icon svg {
+	transform: rotate(45deg);
+}

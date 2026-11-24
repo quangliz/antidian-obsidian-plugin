@@ -43,6 +43,8 @@ export interface AntiDianSettings {
 	sessionTitles?: Record<string, string>;
 	/** Width in px of the conversation drawer, when the user resized it. */
 	sessionDrawerWidth?: number;
+	/** Pinned session IDs, in the order shown at the top of the conversation drawer. */
+	pinnedSessions?: string[];
 	/** Session IDs deleted by the user (filtered from the conversation list). */
 	deletedSessions?: string[];
 }
