@@ -16,6 +16,7 @@ import type { FileDiff } from '../../core/types/changes';
 import type { ApprovalDecision, ApprovalRequest } from '../../core/transactions';
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail } from './tool-detail';
+import { originalTextSize } from '../../core/sessions/trace';
 import { ANTI_DIAN_ICON } from '../icon';
 import { AgentStepEvent } from '../../core/agent';
 
@@ -837,6 +838,15 @@ export class ThinkingStateView {
 				});
 			}
 
+			// Compact inline stats for plain read_note calls (no expand button needed)
+			const readMeta = this.formatReadNoteInlineMeta(step);
+			if (readMeta) {
+				row.createSpan({
+					cls: 'anti-dian-thinking-row-secondary',
+					text: readMeta,
+				});
+			}
+
 			// Diff stats
 			if (step.add !== undefined || step.del !== undefined) {
 				const diffSpan = row.createSpan({
@@ -966,6 +976,32 @@ export class ThinkingStateView {
 	}
 
 	/** File name in a row: an internal link when the note exists, plain text otherwise. */
+	private formatReadNoteInlineMeta(step: ThinkingStep): string | null {
+		if (step.toolName !== 'read_note' || step.status !== 'done') return null;
+		if (!isRecord(step.output)) return null;
+		const content =
+			typeof step.output.content === 'string' ? step.output.content : undefined;
+		const size = originalTextSize(step.output, 'content');
+		if (content === undefined && !size) return null;
+
+		const lines =
+			size?.lines ?? (content ? content.split('\n').length : 0);
+		const chars = size?.chars ?? (content?.length ?? 0);
+		const heading =
+			typeof step.output.heading === 'string' && step.output.heading.trim()
+				? `#${step.output.heading.trim()}`
+				: undefined;
+		const parts: string[] = [];
+		if (heading) parts.push(heading);
+		parts.push(`${lines.toLocaleString()} line${lines === 1 ? '' : 's'}`);
+		if (chars > 0) {
+			const charLabel =
+				chars >= 1000 ? `${(chars / 1000).toFixed(1)}k` : String(chars);
+			parts.push(`${charLabel} chars`);
+		}
+		return `· ${parts.join(' · ')}`;
+	}
+
 	private renderFileLink(row: HTMLElement, path: unknown, label: string): void {
 		const file = this.resolveNote(path);
 		const el = row.createSpan({

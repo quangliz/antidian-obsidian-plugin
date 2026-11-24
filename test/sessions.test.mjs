@@ -432,6 +432,69 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		assert.equal(turns.length, 1);
 		assert.equal(turns[0].userText, 'hi');
 		assert.equal(turns[0].durationMs, 2000);
+
+		// Spilled output.txt inside brain/<sessionId>/.system_generated/steps/ is loaded cleanly
+		const stepDir = path.join(
+			tmpHome,
+			'.gemini',
+			'antigravity-anti-dian',
+			'brain',
+			'sess-456',
+			'.system_generated',
+			'steps',
+			'4',
+		);
+		const logs456 = path.join(
+			tmpHome,
+			'.gemini',
+			'antigravity-anti-dian',
+			'brain',
+			'sess-456',
+			'.system_generated',
+			'logs',
+		);
+		fs.mkdirSync(stepDir, { recursive: true });
+		fs.mkdirSync(logs456, { recursive: true });
+		const bigNote = 'line\n'.repeat(1200);
+		const spilledPath = path.join(stepDir, 'output.txt');
+		fs.writeFileSync(
+			spilledPath,
+			`Created At: 2026-11-24T12:00:01Z\nCompleted At: 2026-11-24T12:00:02Z\n${JSON.stringify({ path: 'big.md', content: bigNote })}`,
+		);
+		const { pathToFileURL } = await import('node:url');
+		fs.writeFileSync(
+			path.join(logs456, 'transcript.jsonl'),
+			[
+				JSON.stringify({
+					type: 'USER_INPUT',
+					created_at: '2026-11-24T12:00:00Z',
+					content: '<USER_REQUEST>\nread big\n</USER_REQUEST>',
+				}),
+				JSON.stringify({
+					type: 'PLANNER_RESPONSE',
+					created_at: '2026-11-24T12:00:01Z',
+					tool_calls: [{ name: 'mcp_anti-dian-vault_read_note', args: { path: '"big.md"' } }],
+				}),
+				JSON.stringify({
+					type: 'GENERIC',
+					status: 'DONE',
+					created_at: '2026-11-24T12:00:01Z',
+					content: `Created At: 2026-11-24T12:00:01Z\nCompleted At: 2026-11-24T12:00:02Z\nThe tool's output was truncated due to being too long. You can find the full output in a file at ${pathToFileURL(spilledPath).href}.\n\nHere is a preview with the middle of the output truncated:\n{"path":"big.md","content":"broken...`,
+				}),
+			].join('\n'),
+		);
+		const spilledTurns = await loadAgyTranscriptTurns(
+			'sess-456',
+			'antigravity-anti-dian',
+			tmpHome,
+		);
+		assert.equal(spilledTurns.length, 1);
+		const readTool = spilledTurns[0].events[0];
+		assert.equal(readTool.output.path, 'big.md');
+		assert.deepEqual(originalTextSize(readTool.output, 'content'), {
+			chars: bigNote.length,
+			lines: 1201,
+		});
 	} finally {
 		fs.rmSync(tmpHome, { recursive: true, force: true });
 	}
