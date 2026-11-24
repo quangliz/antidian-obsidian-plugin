@@ -5,6 +5,7 @@ import {
 	isAgyBinaryAvailable,
 	resolveAgyBinary,
 } from './core/models/antigravity-acp';
+import { getManagedAgyBinaryPath } from './core/models/agy-binary-manager';
 
 export type PermissionMode = 'ask' | 'plan' | 'auto';
 
@@ -37,25 +38,36 @@ export class AntiDianSettingTab extends PluginSettingTab {
 
 		const cliFound = isAgyBinaryAvailable(this.plugin.settings.cliPath);
 		const resolvedBin = resolveAgyBinary(this.plugin.settings.cliPath);
+		const hasCustomPath = Boolean(this.plugin.settings.cliPath?.trim());
 
 		const authSetting = new Setting(containerEl)
-			.setName('Antigravity CLI authentication')
+			.setName('Antigravity authentication')
 			.setDesc(
 				cliFound
-					? `Checking official Antigravity CLI (${resolvedBin})...`
-					: 'Antigravity CLI (agy) not found. Install it or set its path below.',
+					? `Checking Antigravity backend (${resolvedBin})...`
+					: hasCustomPath
+						? `Configured path not found: ${resolvedBin}`
+						: 'Preparing Antigravity backend (will download automatically if needed)...',
 			);
 
 		authSetting.addButton((button) => {
 			button
 				.setButtonText('Sign in with Google')
 				.setCta()
-				.setDisabled(!cliFound)
+				.setDisabled(hasCustomPath && !cliFound)
 				.onClick(async () => {
 					button.setDisabled(true);
-					button.setButtonText('Waiting for browser...');
+					button.setButtonText('Preparing...');
 					try {
-						await this.plugin.antigravityProvider.login();
+						await this.plugin.antigravityProvider.login((progress) => {
+							button.setButtonText(
+								progress.percent !== undefined
+									? `Downloading (${progress.percent}%)...`
+									: progress.message,
+							);
+							authSetting.setDesc(progress.message);
+						});
+						button.setButtonText('Waiting for browser...');
 						new Notice('Antigravity login successful');
 						this.display();
 					} catch (err) {
@@ -71,10 +83,10 @@ export class AntiDianSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Antigravity CLI path')
 			.setDesc(
-				'Optional path to the official agy binary. Leave blank to auto-detect from path or ~/.local/bin/agy.',
+				`Optional custom path to the agy binary. Leave blank to auto-download and manage it at ${getManagedAgyBinaryPath()} (shared with the Antigravity VS Code extension).`,
 			)
 			.addText((text) => {
-				text.setPlaceholder('/usr/local/bin/agy')
+				text.setPlaceholder(getManagedAgyBinaryPath())
 					.setValue(this.plugin.settings.cliPath ?? '')
 					.onChange(async (value) => {
 						this.plugin.settings.cliPath = value.trim();
@@ -114,20 +126,33 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					});
 			});
 
-		if (cliFound) {
+		if (!hasCustomPath || cliFound) {
 			const modelSetting = new Setting(containerEl)
 				.setName('Model')
-				.setDesc('Loading available models from antigravity CLI...');
+				.setDesc('Loading available models from antigravity...');
 
 			void this.plugin.antigravityProvider
-				.checkStatus()
+				.checkStatus((progress) => {
+					authSetting.setDesc(progress.message);
+				})
 				.then(async (status) => {
+					const activeBin = status.binaryPath ?? resolvedBin;
+					if (!status.cliFound) {
+						authSetting.setDesc(
+							`Could not prepare Antigravity backend: ${status.error ?? 'unknown error'}`,
+						);
+						modelSetting.setDesc(
+							'Antigravity backend is required to load available models.',
+						);
+						return;
+					}
+
 					if (status.authenticated) {
 						const tierLabel = status.tier?.tierName
 							? ` (${status.tier.tierName})`
 							: '';
 						authSetting.setDesc(
-							`Connected via official Antigravity CLI (${resolvedBin})${tierLabel}`,
+							`Connected via Antigravity backend (${activeBin})${tierLabel}`,
 						);
 
 						const { models, defaultModelId } =
@@ -166,7 +191,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 							`Not signed in (${status.error ?? 'click Sign in with Google'})`,
 						);
 						modelSetting.setDesc(
-							'Sign in with antigravity CLI to load available models.',
+							'Sign in with Google to load available models.',
 						);
 					}
 				})

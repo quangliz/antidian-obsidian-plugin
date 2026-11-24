@@ -1,4 +1,8 @@
 import type { MediaInput } from '../types/model';
+import type {
+	BinaryDownloadProgress,
+	EnsureAgyBinaryResult,
+} from './agy-binary-manager';
 import {
 	type AccountTierInfo,
 	type AcpPromptResult,
@@ -52,17 +56,28 @@ export class AntigravityProvider {
 		return this.client.fetchUserQuota(force);
 	}
 
-	async checkStatus(): Promise<{
+	async ensureBinary(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<EnsureAgyBinaryResult> {
+		return this.client.ensureBinary(onProgress);
+	}
+
+	async checkStatus(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<{
 		cliFound: boolean;
+		binaryPath?: string;
 		authenticated: boolean;
 		tier?: AccountTierInfo | null;
 		error?: string;
 	}> {
-		return this.client.checkStatus();
+		return this.client.checkStatus(onProgress);
 	}
 
-	async login(): Promise<void> {
-		return this.client.login();
+	async login(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<void> {
+		return this.client.login(onProgress);
 	}
 
 	async fetchAvailableModels(): Promise<AvailableModelsResponse> {

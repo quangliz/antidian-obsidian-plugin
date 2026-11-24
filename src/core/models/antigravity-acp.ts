@@ -9,6 +9,12 @@ import {
 	clearTimeout as nodeClearTimeout,
 } from 'timers';
 import type { MediaInput, TokenUsage } from '../types/model';
+import {
+	type BinaryDownloadProgress,
+	type EnsureAgyBinaryResult,
+	ensureAgyBinary,
+	getManagedAgyBinaryPath,
+} from './agy-binary-manager';
 import type { McpToolServer } from './mcp-tool-server';
 
 export interface AvailableModel {
@@ -207,8 +213,10 @@ export function resolveAgyBinary(customPath?: string): string {
 		return customPath.trim();
 	}
 
+	const binName = process.platform === 'win32' ? 'agy.exe' : 'agy';
 	const candidates = [
-		path.join(os.homedir(), '.local', 'bin', 'agy'),
+		getManagedAgyBinaryPath(),
+		path.join(os.homedir(), '.local', 'bin', binName),
 		'/usr/local/bin/agy',
 		'/opt/homebrew/bin/agy',
 	];
@@ -223,12 +231,12 @@ export function resolveAgyBinary(customPath?: string): string {
 		}
 	}
 
-	return 'agy';
+	return binName;
 }
 
 export function isAgyBinaryAvailable(customPath?: string): boolean {
 	const bin = resolveAgyBinary(customPath);
-	if (bin.includes(path.sep)) {
+	if (bin.includes(path.sep) || bin.includes('/')) {
 		try {
 			return fs.existsSync(bin);
 		} catch {
@@ -249,6 +257,12 @@ export function isAgyBinaryAvailable(customPath?: string): boolean {
 		}
 	}
 	return false;
+}
+
+export function findExistingAgyBinary(customPath?: string): string | null {
+	return isAgyBinaryAvailable(customPath)
+		? resolveAgyBinary(customPath)
+		: null;
 }
 
 interface PendingRpc {
@@ -444,18 +458,36 @@ export class AntigravityAcpClient {
 		}
 	}
 
-	async checkStatus(): Promise<{
+	async ensureBinary(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<EnsureAgyBinaryResult> {
+		return ensureAgyBinary(
+			{
+				customPath: this.cliPath,
+				onProgress,
+			},
+			findExistingAgyBinary,
+		);
+	}
+
+	async checkStatus(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<{
 		cliFound: boolean;
+		binaryPath?: string;
 		authenticated: boolean;
 		tier?: AccountTierInfo | null;
 		error?: string;
 	}> {
-		const cliFound = isAgyBinaryAvailable(this.cliPath);
-		if (!cliFound) {
+		let binaryPath: string;
+		try {
+			const ensured = await this.ensureBinary(onProgress);
+			binaryPath = ensured.binaryPath;
+		} catch (err) {
 			return {
 				cliFound: false,
 				authenticated: false,
-				error: 'Antigravity CLI (agy) not found in PATH or ~/.local/bin/agy.',
+				error: err instanceof Error ? err.message : String(err),
 			};
 		}
 
@@ -463,20 +495,24 @@ export class AntigravityAcpClient {
 			await this.ensureSession();
 			return {
 				cliFound: true,
+				binaryPath,
 				authenticated: true,
 				tier: this.cachedTier,
 			};
 		} catch (err) {
 			return {
 				cliFound: true,
+				binaryPath,
 				authenticated: false,
 				error: err instanceof Error ? err.message : String(err),
 			};
 		}
 	}
 
-	async login(): Promise<void> {
-		const bin = resolveAgyBinary(this.cliPath);
+	async login(
+		onProgress?: (progress: BinaryDownloadProgress) => void,
+	): Promise<void> {
+		const { binaryPath: bin } = await this.ensureBinary(onProgress);
 		await new Promise<void>((resolve, reject) => {
 			const args = ['acp', '--login', ...this.appDataDirArgs()];
 			const child = spawn(bin, args, {
@@ -793,6 +829,7 @@ export class AntigravityAcpClient {
 
 	private async ensureInitialized(): Promise<void> {
 		if (!this.proc || this.proc.killed) {
+			await this.ensureBinary();
 			this.spawnProcess();
 		}
 
@@ -922,11 +959,17 @@ export class AntigravityAcpClient {
 
 	private buildEnv(): NodeJS.ProcessEnv {
 		const env = { ...process.env };
-		const localBin = path.join(os.homedir(), '.local', 'bin');
-		const currentPath = env.PATH ?? '';
-		if (!currentPath.split(path.delimiter).includes(localBin)) {
-			env.PATH = `${localBin}${path.delimiter}${currentPath}`;
+		const extraBins = [
+			path.dirname(getManagedAgyBinaryPath()),
+			path.join(os.homedir(), '.local', 'bin'),
+		];
+		const parts = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+		for (const dir of extraBins.reverse()) {
+			if (!parts.includes(dir)) {
+				parts.unshift(dir);
+			}
 		}
+		env.PATH = parts.join(path.delimiter);
 		return env;
 	}
 
