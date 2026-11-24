@@ -22,4 +22,4 @@ data.json
 .DS_Store
 beautiful-ui-main/
 # Per-session turn traces saved by the plugin (contain note excerpts)
-sessions/
+/sessions/
