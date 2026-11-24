@@ -533,6 +533,27 @@ button.anti-dian-promptbar-btn-send:enabled:active {
 	transform: scale(0.94);
 }
 
+.anti-dian-promptbar-btn-send.is-stop,
+button.anti-dian-promptbar-btn-send.is-stop {
+	background: var(--text-normal) !important;
+	color: var(--background-primary) !important;
+	cursor: pointer;
+	opacity: 1;
+}
+
+.anti-dian-promptbar-btn-send.is-stop:hover,
+button.anti-dian-promptbar-btn-send.is-stop:hover {
+	background: var(--color-red) !important;
+	color: var(--text-on-accent) !important;
+	opacity: 1;
+}
+
+.anti-dian-promptbar-btn-send.is-stop svg {
+	width: 11px;
+	height: 11px;
+	fill: currentColor;
+}
+
 /* ------------------------------------------------------------- */
 /* Add Context Compact Popover (+ button, Antigravity style)     */
 /* ------------------------------------------------------------- */
@@ -1277,6 +1298,20 @@ button.anti-dian-thinking-header-btn:hover {
 	align-items: center;
 	color: var(--color-red);
 	flex-shrink: 0;
+}
+
+.anti-dian-thinking-row-cancelled {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.anti-dian-stopped-text {
+	margin: 4px 0 0 0;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-style: italic;
 }
 
 .anti-dian-thinking-row-primary {

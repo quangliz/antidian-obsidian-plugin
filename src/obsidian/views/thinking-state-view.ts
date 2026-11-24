@@ -38,7 +38,7 @@ export interface ThinkingStep {
 	mono?: boolean;
 	add?: number;
 	del?: number;
-	status: 'running' | 'done' | 'error';
+	status: 'running' | 'done' | 'error' | 'cancelled';
 	sources?: SourceItem[];
 	args?: Record<string, unknown>;
 	output?: unknown;
@@ -284,6 +284,9 @@ export class ThinkingStateView {
 			this.activeStatus = 'Thinking';
 			this.updateHeader();
 			this.renderSteps();
+		} else if (step.type === 'cancelled') {
+			this.activeStatus = 'Stopped';
+			this.updateHeader();
 		} else if (step.type === 'error') {
 			this.activeStatus = `Error: ${step.message}`;
 			this.updateHeader();
@@ -404,7 +407,29 @@ export class ThinkingStateView {
 		el.toggleClass('is-clamped', el.scrollHeight > el.clientHeight + 4);
 	}
 
-	public settle(): void {
+	public settle(options?: { cancelled?: boolean }): void {
+		const cancelled = options?.cancelled === true;
+		if (this.thoughtAnimationFrame !== null) {
+			window.cancelAnimationFrame(this.thoughtAnimationFrame);
+			this.thoughtAnimationFrame = null;
+		}
+		for (const phase of this.thoughtPhases) {
+			if (!cancelled && phase.displayedText.length < phase.receivedText.length) {
+				phase.displayedText = phase.receivedText;
+			}
+			phase.closed = true;
+		}
+		for (const resolve of this.thoughtWaiters.splice(0)) resolve();
+
+		if (cancelled) {
+			this.cancelPendingApprovals();
+			for (const step of this.steps) {
+				if (step.status === 'running') {
+					step.status = 'cancelled';
+				}
+			}
+		}
+
 		this.closeOpenPhase();
 		this.isSettled = true;
 		this.endTime = performance.now();
@@ -413,8 +438,14 @@ export class ThinkingStateView {
 			Math.round(((this.endTime - this.startTime) / 1000) * 10) / 10,
 		);
 
-		const parts = this.buildSummary();
-		parts.push({ text: parts.length ? ` (${durationSec}s)` : `Thought for ${durationSec}s` });
+		const parts = this.buildSummary(cancelled);
+		parts.push({
+			text: parts.length
+				? ` (${durationSec}s)`
+				: cancelled
+					? `Stopped (${durationSec}s)`
+					: `Thought for ${durationSec}s`,
+		});
 		this.summaryParts = parts;
 		this.activeStatus = parts.map((p) => p.text).join('');
 
@@ -438,7 +469,7 @@ export class ThinkingStateView {
 	 * Agent-style summary, e.g. "Read 2 notes, edited roadmap": one clause per
 	 * kind of work, naming the note when there is exactly one.
 	 */
-	private buildSummary(): { text: string; file?: boolean }[] {
+	private buildSummary(cancelled = false): { text: string; file?: boolean }[] {
 		const pathsOf = (names: string[]) => [
 			...new Set(
 				this.steps
@@ -506,6 +537,7 @@ export class ThinkingStateView {
 		});
 		if (rejected) parts.push({ text: ` · ${rejected} rejected` });
 		if (failed) parts.push({ text: ` · ${failed} failed` });
+		if (cancelled && parts.length > 0) parts.push({ text: ' · stopped' });
 		const first = parts[0];
 		if (first && !first.file) first.text = first.text.charAt(0).toUpperCase() + first.text.slice(1);
 		return parts;
@@ -672,7 +704,7 @@ export class ThinkingStateView {
 			const renderDetail = buildToolDetail(
 				{
 					toolName: step.toolName,
-					status: step.status,
+					status: step.status === 'cancelled' ? 'done' : step.status,
 					args: step.args,
 					output: step.output,
 					error: step.error,
@@ -702,6 +734,9 @@ export class ThinkingStateView {
 			} else if (step.status === 'done') {
 				const check = row.createSpan({ cls: 'anti-dian-thinking-row-check' });
 				setIcon(check, 'check');
+			} else if (step.status === 'cancelled') {
+				const stopIcon = row.createSpan({ cls: 'anti-dian-thinking-row-cancelled' });
+				setIcon(stopIcon, 'ban');
 			} else {
 				const errIcon = row.createSpan({ cls: 'anti-dian-thinking-row-err' });
 				setIcon(errIcon, 'alert-circle');

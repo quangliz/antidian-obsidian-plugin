@@ -1,15 +1,15 @@
-import { MediaInput } from '../types/model';
+import type { MediaInput } from '../types/model';
 import {
-	AccountTierInfo,
-	AcpPromptResult,
-	AcpStreamCallbacks,
+	type AccountTierInfo,
+	type AcpPromptResult,
+	type AcpStreamCallbacks,
 	AntigravityAcpClient,
-	AntigravityAcpOptions,
-	AvailableModelsResponse,
-	ContextWindowUsage,
-	UserQuotaResponse,
+	type AntigravityAcpOptions,
+	type AvailableModelsResponse,
+	type ContextWindowUsage,
+	type UserQuotaResponse,
 } from './antigravity-acp';
-import { McpToolServer } from './mcp-tool-server';
+import type { McpToolServer } from './mcp-tool-server';
 
 export type AntigravityProviderOptions = AntigravityAcpOptions;
 
@@ -71,12 +71,17 @@ export class AntigravityProvider {
 		return this.client.resetSession();
 	}
 
+	cancel(): void {
+		this.client.cancel();
+	}
+
 	async runTurn(
 		prompt: string,
 		media?: MediaInput[],
 		callbacks?: AcpStreamCallbacks,
+		signal?: AbortSignal,
 	): Promise<AcpPromptResult> {
-		return this.client.prompt(prompt, media, callbacks);
+		return this.client.prompt(prompt, media, callbacks, signal);
 	}
 
 	async destroy(): Promise<void> {

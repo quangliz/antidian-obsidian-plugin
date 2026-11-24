@@ -3,8 +3,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
-import { MediaInput, TokenUsage } from '../types/model';
-import { McpToolServer } from './mcp-tool-server';
+import {
+	setTimeout as nodeSetTimeout,
+	clearTimeout as nodeClearTimeout,
+} from 'timers';
+import type { MediaInput, TokenUsage } from '../types/model';
+import type { McpToolServer } from './mcp-tool-server';
 
 export interface AvailableModel {
 	id: string;
@@ -87,7 +91,17 @@ export interface AntigravityAcpOptions {
 	model?: string;
 	systemPrompt?: string;
 	mcpToolServer?: McpToolServer;
+	/**
+	 * Subdirectory of `~/.gemini` where `agy acp` stores conversations,
+	 * brain artifacts, and logs. Defaults to a dedicated directory so
+	 * Anti-dian sessions do not appear in the user's `agy` CLI `/resume`
+	 * list. Authentication is shared across data dirs.
+	 */
+	appDataDir?: string;
 }
+
+/** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
+export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
 
 const MCP_SERVER_NAME = 'anti-dian-vault';
 const MCP_TOOL_PREFIX = `mcp_${MCP_SERVER_NAME}_`;
@@ -264,6 +278,7 @@ export class AntigravityAcpClient {
 	private model?: string;
 	private systemPrompt?: string;
 	private mcpToolServer?: McpToolServer;
+	private appDataDir: string;
 
 	private proc: ChildProcess | null = null;
 	private rl: readline.Interface | null = null;
@@ -282,6 +297,10 @@ export class AntigravityAcpClient {
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
 	private startPromise: Promise<void> | null = null;
+	private promptInFlight = false;
+	private turnCancelled = false;
+	private activePromptRpcId: number | null = null;
+	private cancelFallbackTimer: ReturnType<typeof nodeSetTimeout> | null = null;
 
 	constructor(options: AntigravityAcpOptions = {}) {
 		this.cliPath = options.cliPath;
@@ -289,6 +308,7 @@ export class AntigravityAcpClient {
 		this.model = options.model;
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
+		this.appDataDir = options.appDataDir ?? ANTI_DIAN_APP_DATA_DIR;
 	}
 
 	setCliPath(cliPath?: string): void {
@@ -437,7 +457,8 @@ export class AntigravityAcpClient {
 	async login(): Promise<void> {
 		const bin = resolveAgyBinary(this.cliPath);
 		await new Promise<void>((resolve, reject) => {
-			const child = spawn(bin, ['acp', '--login'], {
+			const args = ['acp', '--login', ...this.appDataDirArgs()];
+			const child = spawn(bin, args, {
 				cwd: this.cwd,
 				stdio: ['ignore', 'pipe', 'pipe'],
 				env: this.buildEnv(),
@@ -497,50 +518,104 @@ export class AntigravityAcpClient {
 		}
 	}
 
+	cancel(): void {
+		if (!this.promptInFlight && !this.startPromise) {
+			return;
+		}
+		this.turnCancelled = true;
+		if (this.sessionId && this.proc?.stdin && !this.proc.killed) {
+			this.sendNotification('session/cancel', {
+				sessionId: this.sessionId,
+			});
+		}
+		// Safety net: if the CLI does not settle the cancelled prompt promptly,
+		// tear down the wedged process so the UI unblocks and the next turn starts fresh.
+		if (!this.cancelFallbackTimer) {
+			const promptId = this.activePromptRpcId;
+			this.cancelFallbackTimer = nodeSetTimeout(() => {
+				this.cancelFallbackTimer = null;
+				if (!this.turnCancelled) return;
+				if (promptId !== null && this.pending.has(promptId)) {
+					const entry = this.pending.get(promptId)!;
+					this.pending.delete(promptId);
+					entry.resolve({ stopReason: 'cancelled' });
+				}
+				if (this.promptInFlight || this.startPromise) {
+					this.destroyProcess();
+				}
+			}, 3000);
+		}
+	}
+
 	async prompt(
 		text: string,
 		media?: MediaInput[],
 		callbacks?: AcpStreamCallbacks,
+		signal?: AbortSignal,
 	): Promise<AcpPromptResult> {
-		await this.ensureSession();
-
-		if (this.model && this.activeModelId !== this.model) {
-			await this.applyModel(this.model);
+		if (signal?.aborted) {
+			return { answer: '', stopReason: 'cancelled' };
 		}
 
-		const promptBlocks: Record<string, unknown>[] = [];
-		if (text) {
-			promptBlocks.push({ type: 'text', text });
-		}
-		if (media) {
-			for (const m of media) {
-				if (m.type === 'image' && m.data) {
-					const mimeType =
-						m.mimeType ??
-						(m.data.startsWith('data:')
-							? m.data.split(';')[0]?.slice(5) || 'image/png'
-							: 'image/png');
-					const base64Data = m.data.includes(',')
-						? m.data.split(',')[1] || ''
-						: m.data;
-					promptBlocks.push({
-						type: 'image',
-						mimeType,
-						data: base64Data,
-					});
-				}
-			}
-		}
-
+		this.promptInFlight = true;
+		this.turnCancelled = false;
+		this.activePromptRpcId = null;
 		this.activeCallbacks = callbacks ?? null;
 		this.activeAnswerChunks = [];
 		this.activeToolNames.clear();
 
+		const onAbort = () => this.cancel();
+		signal?.addEventListener('abort', onAbort, { once: true });
+
 		try {
-			const result = (await this.sendRequest('session/prompt', {
-				sessionId: this.sessionId,
-				prompt: promptBlocks,
-			})) as AcpPromptResponse;
+			await this.ensureSession();
+
+			if (this.turnCancelled || signal?.aborted) {
+				return { answer: '', stopReason: 'cancelled' };
+			}
+
+			if (this.model && this.activeModelId !== this.model) {
+				await this.applyModel(this.model);
+			}
+
+			if (this.turnCancelled || signal?.aborted) {
+				return { answer: '', stopReason: 'cancelled' };
+			}
+
+			const promptBlocks: Record<string, unknown>[] = [];
+			if (text) {
+				promptBlocks.push({ type: 'text', text });
+			}
+			if (media) {
+				for (const m of media) {
+					if (m.type === 'image' && m.data) {
+						const mimeType =
+							m.mimeType ??
+							(m.data.startsWith('data:')
+								? m.data.split(';')[0]?.slice(5) || 'image/png'
+								: 'image/png');
+						const base64Data = m.data.includes(',')
+							? m.data.split(',')[1] || ''
+							: m.data;
+						promptBlocks.push({
+							type: 'image',
+							mimeType,
+							data: base64Data,
+						});
+					}
+				}
+			}
+
+			const result = (await this.sendRequest(
+				'session/prompt',
+				{
+					sessionId: this.sessionId,
+					prompt: promptBlocks,
+				},
+				(id) => {
+					this.activePromptRpcId = id;
+				},
+			)) as AcpPromptResponse;
 
 			const usage: TokenUsage | undefined = result?.usage
 				? {
@@ -553,14 +628,36 @@ export class AntigravityAcpClient {
 					}
 				: undefined;
 
+			const partial = this.activeAnswerChunks.join('').trim();
+			const cancelled =
+				this.turnCancelled ||
+				signal?.aborted === true ||
+				result?.stopReason === 'cancelled';
+
 			return {
-				answer:
-					this.activeAnswerChunks.join('').trim() ||
-					'(No response text generated)',
-				stopReason: result?.stopReason,
+				answer: cancelled
+					? partial
+					: partial || '(No response text generated)',
+				stopReason: cancelled ? 'cancelled' : result?.stopReason,
 				usage,
 			};
+		} catch (err) {
+			if (this.turnCancelled || signal?.aborted) {
+				return {
+					answer: this.activeAnswerChunks.join('').trim(),
+					stopReason: 'cancelled',
+				};
+			}
+			throw err;
 		} finally {
+			signal?.removeEventListener('abort', onAbort);
+			if (this.cancelFallbackTimer) {
+				nodeClearTimeout(this.cancelFallbackTimer);
+				this.cancelFallbackTimer = null;
+			}
+			this.promptInFlight = false;
+			this.turnCancelled = false;
+			this.activePromptRpcId = null;
 			this.activeCallbacks = null;
 			this.activeAnswerChunks = [];
 			this.activeToolNames.clear();
@@ -690,6 +787,10 @@ export class AntigravityAcpClient {
 		this.activeModelId = modelId;
 	}
 
+	private appDataDirArgs(): string[] {
+		return ['--app-data-dir', this.appDataDir];
+	}
+
 	private buildEnv(): NodeJS.ProcessEnv {
 		const env = { ...process.env };
 		const localBin = path.join(os.homedir(), '.local', 'bin');
@@ -702,7 +803,7 @@ export class AntigravityAcpClient {
 
 	private spawnProcess(): void {
 		const bin = resolveAgyBinary(this.cliPath);
-		this.proc = spawn(bin, ['acp'], {
+		this.proc = spawn(bin, ['acp', ...this.appDataDirArgs()], {
 			cwd: this.cwd,
 			stdio: ['pipe', 'pipe', 'pipe'],
 			env: this.buildEnv(),
@@ -763,6 +864,7 @@ export class AntigravityAcpClient {
 	private sendRequest(
 		method: string,
 		params: Record<string, unknown>,
+		onId?: (id: number) => void,
 	): Promise<unknown> {
 		if (!this.proc?.stdin || this.proc.killed) {
 			return Promise.reject(
@@ -771,6 +873,7 @@ export class AntigravityAcpClient {
 		}
 
 		const id = this.nextId++;
+		onId?.(id);
 		const payload = JSON.stringify({
 			jsonrpc: '2.0',
 			id,
@@ -787,6 +890,16 @@ export class AntigravityAcpClient {
 				}
 			});
 		});
+	}
+
+	private sendNotification(
+		method: string,
+		params: Record<string, unknown>,
+	): void {
+		if (!this.proc?.stdin || this.proc.killed) return;
+		this.proc.stdin.write(
+			`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`,
+		);
 	}
 
 	private sendResponse(id: number | string, result: unknown): void {
@@ -851,6 +964,10 @@ export class AntigravityAcpClient {
 		id: number | string,
 		params: Record<string, unknown>,
 	): void {
+		if (this.turnCancelled) {
+			this.sendResponse(id, { outcome: { outcome: 'cancelled' } });
+			return;
+		}
 		const toolCall = params.toolCall as
 			| { title?: string; name?: string; rawInput?: Record<string, unknown> }
 			| undefined;
@@ -914,6 +1031,7 @@ export class AntigravityAcpClient {
 		}
 
 		if (update.sessionUpdate === 'agent_thought_chunk') {
+			if (this.turnCancelled) return;
 			const text = update.content?.text;
 			if (text) {
 				this.activeCallbacks?.onThoughtDelta?.(text);
@@ -922,6 +1040,7 @@ export class AntigravityAcpClient {
 		}
 
 		if (update.sessionUpdate === 'agent_message_chunk') {
+			if (this.turnCancelled) return;
 			const text = update.content?.text;
 			if (text) {
 				this.activeAnswerChunks.push(text);
@@ -931,6 +1050,7 @@ export class AntigravityAcpClient {
 		}
 
 		if (update.sessionUpdate === 'tool_call') {
+			if (this.turnCancelled) return;
 			const rawName = update.name ?? '';
 			const displayName = rawName.startsWith(MCP_TOOL_PREFIX)
 				? rawName.slice(MCP_TOOL_PREFIX.length)

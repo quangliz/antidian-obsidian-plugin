@@ -201,12 +201,28 @@ export class McpToolServer {
 				return;
 			}
 
+			const turnContext = this.activeTurnContext;
+			if (turnContext?.signal?.aborted) {
+				this.sendResult(res, msg.id, {
+					content: [
+						{
+							type: 'text',
+							text: JSON.stringify({
+								cancelled: true,
+								message: 'Turn cancelled by user.',
+							}),
+						},
+					],
+				});
+				return;
+			}
+
 			const callId = `mcp-${++this.callCounter}`;
 			this.onToolStart?.({ callId, toolName: name, toolArgs: args });
 
 			if (
 				tool.mutates &&
-				this.activeTurnContext?.permissionMode === 'plan'
+				turnContext?.permissionMode === 'plan'
 			) {
 				const blockedOutput = {
 					staged: false,
@@ -231,11 +247,17 @@ export class McpToolServer {
 			}
 
 			try {
-				const turnContext = this.activeTurnContext;
 				let output = await tool.execute(args, turnContext);
-				// Mutations are reviewed per call (approve/apply or reject) before
-				// the model sees the result.
-				if (tool.mutates && turnContext?.reviewMutation) {
+				if (turnContext?.signal?.aborted) {
+					output = {
+						staged: false,
+						applied: false,
+						cancelled: true,
+						message: 'Turn cancelled by user.',
+					};
+				} else if (tool.mutates && turnContext?.reviewMutation) {
+					// Mutations are reviewed per call (approve/apply or reject) before
+					// the model sees the result.
 					output = await turnContext.reviewMutation({
 						callId,
 						toolName: name,

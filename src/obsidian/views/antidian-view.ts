@@ -49,6 +49,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private modelGroups: ModelGroup[] = [];
 	private history: Message[] = [];
 	private isRunning = false;
+	private turnToken = 0;
 
 	// Live session usage tracking
 	private sessionPromptTokens = 0;
@@ -129,12 +130,20 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 		});
 
+		this.registerDomEvent(this.rootEl, 'keydown', (evt: KeyboardEvent) => {
+			if (evt.key === 'Escape' && this.isRunning && !evt.defaultPrevented) {
+				evt.preventDefault();
+				this.handleCancel();
+			}
+		});
+
 		void this.loadModels();
 	}
 
 	async onClose(): Promise<void> {
-		// A write waiting for approval must not hang the agent after the view is gone.
-		this.activeThinking?.cancelPendingApprovals();
+		// Cancel any active run and pending write approvals so nothing hangs after close.
+		this.turnToken++;
+		this.handleCancel();
 		if (this.unsubscribeContext) {
 			this.unsubscribeContext();
 			this.unsubscribeContext = null;
@@ -207,6 +216,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.plugin,
 			{
 				onSend: (text, media) => this.handleSend(text, media),
+				onCancel: () => this.handleCancel(),
 				onOpenModelMenu: (anchorEl) =>
 					this.modelMenuController.toggleMenu(anchorEl),
 				onPermissionChange: (mode) => {
@@ -232,8 +242,21 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.promptBar?.playRainbowSweep();
 	}
 
-	private startNewSession(): void {
+	private handleCancel(): void {
+		if (!this.isRunning) return;
 		this.activeThinking?.cancelPendingApprovals();
+		this.agent.cancel();
+	}
+
+	private startNewSession(): void {
+		this.turnToken++;
+		if (this.isRunning) {
+			this.handleCancel();
+			this.isRunning = false;
+			this.promptBar?.setRunning(false);
+		} else {
+			this.activeThinking?.cancelPendingApprovals();
+		}
 		this.history = [];
 		void this.agent.resetSession();
 		this.promptBar?.clearStagedMedia();
@@ -275,8 +298,9 @@ export class AntiDianView extends ItemView implements HoverParent {
 			return;
 		}
 
+		const myToken = ++this.turnToken;
 		this.isRunning = true;
-		this.promptBar.setDisabled(true);
+		this.promptBar.setRunning(true);
 
 		if (this.rootEl) {
 			this.rootEl.removeClass('is-empty-session');
@@ -459,22 +483,59 @@ export class AntiDianView extends ItemView implements HoverParent {
 				(request) => thinkingState.requestApproval(request),
 			);
 
-			this.history = result.updatedHistory;
-			thinkingState.settle();
-			streamSourceEnded = true;
-			await waitForTextStream();
-			streamingFinished = true;
-			streamRenderVersion++;
-			answerEl.empty();
+			if (myToken !== this.turnToken) {
+				if (streamAnimationFrame !== null) {
+					window.cancelAnimationFrame(streamAnimationFrame);
+					streamAnimationFrame = null;
+				}
+				return;
+			}
 
-			await MarkdownRenderer.render(
-				this.app,
-				result.answer,
-				answerEl,
-				activeCtx.activeFile ?? '',
-				this,
-			);
-			linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
+			this.history = result.updatedHistory;
+
+			if (result.cancelled) {
+				thinkingState.settle({ cancelled: true });
+				streamingFinished = true;
+				if (streamAnimationFrame !== null) {
+					window.cancelAnimationFrame(streamAnimationFrame);
+					streamAnimationFrame = null;
+				}
+				streamRenderVersion++;
+				answerEl.empty();
+
+				const partialAnswer = result.answer || streamedMarkdown.trim();
+				if (partialAnswer) {
+					await MarkdownRenderer.render(
+						this.app,
+						partialAnswer,
+						answerEl,
+						activeCtx.activeFile ?? '',
+						this,
+					);
+					linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
+				}
+				answerEl.createEl('p', {
+					text: 'Stopped',
+					cls: 'anti-dian-stopped-text',
+				});
+			} else {
+				thinkingState.settle();
+				streamSourceEnded = true;
+				await waitForTextStream();
+				if (myToken !== this.turnToken) return;
+				streamingFinished = true;
+				streamRenderVersion++;
+				answerEl.empty();
+
+				await MarkdownRenderer.render(
+					this.app,
+					result.answer,
+					answerEl,
+					activeCtx.activeFile ?? '',
+					this,
+				);
+				linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
+			}
 
 			if (result.contextUsed && result.contextUsed.length > 0) {
 				thinkingState.setAmbientContext(result.contextUsed);
@@ -490,6 +551,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.renderUsageFooter(agentMsg, result.usage);
 			}
 		} catch (err) {
+			if (myToken !== this.turnToken) return;
 			thinkingState.settle();
 			streamingFinished = true;
 			if (streamAnimationFrame !== null) {
@@ -503,9 +565,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 				cls: 'anti-dian-error-text',
 			});
 		} finally {
-			this.isRunning = false;
-			this.promptBar.setDisabled(false);
-			this.scrollToBottom();
+			if (myToken === this.turnToken) {
+				this.isRunning = false;
+				this.promptBar.setRunning(false);
+				this.scrollToBottom();
+			}
 		}
 	}
 

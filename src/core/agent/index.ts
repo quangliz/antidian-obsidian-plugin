@@ -1,10 +1,10 @@
-import { ActiveContext, ContextReference } from '../types/context';
-import { Message, MediaInput } from '../types/model';
-import { ChangeSet } from '../types/changes';
-import { HarnessPermissionMode, Tool, ToolRegistry } from '../tools';
-import { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
+import type { ActiveContext, ContextReference } from '../types/context';
+import type { Message, MediaInput } from '../types/model';
+import type { ChangeSet } from '../types/changes';
+import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
+import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import { ContextCompiler } from '../context/compiler';
-import { AntigravityProvider } from '../models/antigravity-provider';
+import type { AntigravityProvider } from '../models/antigravity-provider';
 
 export interface AgentOptions {
 	provider: AntigravityProvider;
@@ -35,10 +35,12 @@ export type AgentStepEvent =
 			contextUsed?: ContextReference[];
 			changeSet?: ChangeSet;
 	  }
+	| { type: 'cancelled' }
 	| { type: 'error'; message: string };
 
 export interface AgentRunResult {
 	answer: string;
+	cancelled?: boolean;
 	updatedHistory: Message[];
 	contextUsed: ContextReference[];
 	changeSet?: ChangeSet;
@@ -81,6 +83,7 @@ export class Agent {
 	private stagingManager?: ChangeStagingManager;
 	private mutationGate?: MutationGate;
 	private contextCompiler: ContextCompiler;
+	private activeTurnController: AbortController | null = null;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
@@ -108,7 +111,13 @@ export class Agent {
 		return this.stagingManager;
 	}
 
+	cancel(): void {
+		this.activeTurnController?.abort();
+		this.provider.cancel();
+	}
+
 	async resetSession(): Promise<void> {
+		this.cancel();
 		this.contextCompiler.reset();
 		await this.provider.resetSession();
 	}
@@ -122,10 +131,22 @@ export class Agent {
 		beforeTool?: () => Promise<void>,
 		permissionMode: HarnessPermissionMode = 'ask',
 		requestApproval?: ApprovalHandler,
+		signal?: AbortSignal,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
 		const activeTurnChangeSet = this.stagingManager?.startTurn();
+
+		const turnController = new AbortController();
+		this.activeTurnController = turnController;
+		const onExternalAbort = () => turnController.abort();
+		if (signal) {
+			if (signal.aborted) {
+				turnController.abort();
+			} else {
+				signal.addEventListener('abort', onExternalAbort, { once: true });
+			}
+		}
 
 		const compiled = await this.contextCompiler.compile(
 			userMessage,
@@ -144,6 +165,20 @@ export class Agent {
 			},
 		];
 
+		if (turnController.signal.aborted) {
+			if (this.activeTurnController === turnController) {
+				this.activeTurnController = null;
+			}
+			signal?.removeEventListener('abort', onExternalAbort);
+			onStep?.({ type: 'cancelled' });
+			return {
+				answer: '',
+				cancelled: true,
+				updatedHistory: currentMessages,
+				contextUsed: this.deduplicateContext(rawContextUsed),
+			};
+		}
+
 		onStep?.({ type: 'thinking' });
 		onStep?.({ type: 'answer_start' });
 
@@ -152,6 +187,7 @@ export class Agent {
 			{
 				context,
 				permissionMode,
+				signal: turnController.signal,
 				recordContext: (ref: ContextReference) => {
 					rawContextUsed.push(ref);
 				},
@@ -181,47 +217,40 @@ export class Agent {
 		);
 
 		try {
-			const result = await this.provider.runTurn(fullUserPrompt, media, {
-				onThoughtDelta: (text) =>
-					onStep?.({ type: 'thought_delta', text }),
-				onAnswerDelta: (text) =>
-					onStep?.({ type: 'answer_delta', text }),
-				onToolStart: (toolName, toolArgs, callId) => {
-					void beforeTool?.();
-					onStep?.({
-						type: 'tool_start',
-						toolName,
-						toolArgs,
-						callId: callId ? `acp-${callId}` : undefined,
-					});
+			const result = await this.provider.runTurn(
+				fullUserPrompt,
+				media,
+				{
+					onThoughtDelta: (text) =>
+						onStep?.({ type: 'thought_delta', text }),
+					onAnswerDelta: (text) =>
+						onStep?.({ type: 'answer_delta', text }),
+					onToolStart: (toolName, toolArgs, callId) => {
+						void beforeTool?.();
+						onStep?.({
+							type: 'tool_start',
+							toolName,
+							toolArgs,
+							callId: callId ? `acp-${callId}` : undefined,
+						});
+					},
+					onToolEnd: (toolName, toolOutput, callId) => {
+						onStep?.({
+							type: 'tool_end',
+							toolName,
+							toolOutput,
+							callId: callId ? `acp-${callId}` : undefined,
+						});
+					},
 				},
-				onToolEnd: (toolName, toolOutput, callId) => {
-					onStep?.({
-						type: 'tool_end',
-						toolName,
-						toolOutput,
-						callId: callId ? `acp-${callId}` : undefined,
-					});
-				},
-			});
+				turnController.signal,
+			);
 
 			const contextUsed = this.deduplicateContext(rawContextUsed);
 			const finalChangeSet =
 				activeTurnChangeSet && activeTurnChangeSet.operations.length > 0
 					? activeTurnChangeSet
 					: undefined;
-
-			onStep?.({
-				type: 'answer',
-				text: result.answer,
-				contextUsed,
-				changeSet: finalChangeSet,
-			});
-
-			currentMessages.push({
-				role: 'assistant',
-				text: result.answer,
-			});
 
 			const usage = result.usage
 				? {
@@ -237,6 +266,36 @@ export class Agent {
 					}
 				: undefined;
 
+			if (result.stopReason === 'cancelled' || turnController.signal.aborted) {
+				onStep?.({ type: 'cancelled' });
+				if (result.answer) {
+					currentMessages.push({
+						role: 'assistant',
+						text: result.answer,
+					});
+				}
+				return {
+					answer: result.answer,
+					cancelled: true,
+					updatedHistory: currentMessages,
+					contextUsed,
+					changeSet: finalChangeSet,
+					usage,
+				};
+			}
+
+			onStep?.({
+				type: 'answer',
+				text: result.answer,
+				contextUsed,
+				changeSet: finalChangeSet,
+			});
+
+			currentMessages.push({
+				role: 'assistant',
+				text: result.answer,
+			});
+
 			return {
 				answer: result.answer,
 				updatedHistory: currentMessages,
@@ -245,6 +304,15 @@ export class Agent {
 				usage,
 			};
 		} catch (err) {
+			if (turnController.signal.aborted) {
+				onStep?.({ type: 'cancelled' });
+				return {
+					answer: '',
+					cancelled: true,
+					updatedHistory: currentMessages,
+					contextUsed: this.deduplicateContext(rawContextUsed),
+				};
+			}
 			const errMsg = err instanceof Error ? err.message : String(err);
 			onStep?.({ type: 'error', message: errMsg });
 			return {
@@ -253,6 +321,10 @@ export class Agent {
 				contextUsed: this.deduplicateContext(rawContextUsed),
 			};
 		} finally {
+			if (this.activeTurnController === turnController) {
+				this.activeTurnController = null;
+			}
+			signal?.removeEventListener('abort', onExternalAbort);
 			mcpServer?.clearTurnContext();
 		}
 	}

@@ -17,6 +17,8 @@ export type HarnessPermissionMode = 'ask' | 'plan' | 'auto';
 export interface ToolContext {
 	context?: ActiveContext;
 	permissionMode?: HarnessPermissionMode;
+	/** Aborted when the user cancels/interrupts the active turn. */
+	signal?: AbortSignal;
 	recordContext?: (ref: ContextReference) => void;
 	recordReadMtime?: (path: string, mtime: number) => void;
 	getReadMtime?: (path: string) => number | undefined;

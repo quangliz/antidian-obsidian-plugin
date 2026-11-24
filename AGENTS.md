@@ -73,6 +73,7 @@ AntiDianView (Obsidian UI)
 ```
 
 Key invariants:
+- `agy acp` is spawned with `--app-data-dir antigravity-anti-dian` (`ANTI_DIAN_APP_DATA_DIR`), so Anti-dian conversations live in `~/.gemini/antigravity-anti-dian/` and never show up in the user's `agy` CLI `/resume` list. Login is shared across data dirs.
 - Vault operations MUST go through the `anti-dian-vault` MCP tools; the model must never bypass Obsidian via raw CLI filesystem/shell tools.
 - `McpToolServer` binds per-turn `ToolContext` (active context, `permissionMode`, read mtimes, context recording) and enforces Plan Mode by rejecting mutating tools (`tool.mutates === true`).
 - Three permission modes are supported (`src/settings.ts`):

@@ -10,6 +10,7 @@ import {
 } from '../src/core/tools/index.ts';
 import { ChangeStagingManager } from '../src/core/transactions/index.ts';
 import { McpToolServer } from '../src/core/models/mcp-tool-server.ts';
+import { Agent } from '../src/core/agent/index.ts';
 
 test('ContextCompiler deduplicates active note across turns and injects skills once', async () => {
 	const compiler = new ContextCompiler({
@@ -177,7 +178,69 @@ test('McpToolServer blocks mutating tools in plan mode and allows read tools', a
 		const skills = await callTool('list_skills', {});
 		assert.equal(skills.length, 1);
 		assert.equal(skills[0].name, 'test-skill');
+
+		// Aborted turn signal short-circuits tool execution
+		const abortController = new AbortController();
+		abortController.abort();
+		server.setTurnContext({
+			permissionMode: 'auto',
+			signal: abortController.signal,
+		});
+		const cancelled = await callTool('create_note', {
+			path: 'Cancelled.md',
+			content: 'nope',
+		});
+		assert.equal(cancelled.cancelled, true);
+		assert.equal(staging.getActive()?.operations.length, 0);
 	} finally {
 		await server.stop();
 	}
+});
+
+test('Agent.cancel aborts active turn, forwards cancel to provider, and preserves partial answer', async () => {
+	let providerCancelled = false;
+	let signalAborted = false;
+	let markTurnStarted;
+	const turnStarted = new Promise((resolve) => {
+		markTurnStarted = resolve;
+	});
+	const steps = [];
+
+	const fakeProvider = {
+		getMcpToolServer: () => undefined,
+		cancel() {
+			providerCancelled = true;
+		},
+		async resetSession() {},
+		runTurn(_prompt, _media, callbacks, signal) {
+			return new Promise((resolve) => {
+				callbacks?.onAnswerDelta?.('Partial answer');
+				signal?.addEventListener('abort', () => {
+					signalAborted = true;
+					resolve({ answer: 'Partial answer', stopReason: 'cancelled' });
+				});
+				markTurnStarted();
+			});
+		},
+	};
+
+	const agent = new Agent({ provider: fakeProvider });
+	const runPromise = agent.run('Write a long essay', undefined, [], (evt) => {
+		steps.push(evt);
+	});
+
+	await turnStarted;
+	agent.cancel();
+
+	const result = await runPromise;
+	assert.equal(providerCancelled, true);
+	assert.equal(signalAborted, true);
+	assert.equal(result.cancelled, true);
+	assert.equal(result.answer, 'Partial answer');
+	assert.ok(steps.some((s) => s.type === 'cancelled'));
+	assert.equal(
+		steps.some((s) => s.type === 'error'),
+		false,
+	);
+	assert.equal(result.updatedHistory[result.updatedHistory.length - 1]?.text, 'Partial answer');
 });

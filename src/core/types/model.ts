@@ -1,4 +1,4 @@
-import { ToolDeclaration } from '../tools';
+import type { ToolDeclaration } from '../tools';
 
 export interface ToolCall {
 	id: string;

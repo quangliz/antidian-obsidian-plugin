@@ -14,6 +14,7 @@ import type { PermissionMode } from '../../settings';
 
 export interface PromptBarCallbacks {
 	onSend: (text: string, media: MediaInput[]) => void | Promise<void>;
+	onCancel?: () => void;
 	onOpenModelMenu: (anchorEl: HTMLElement) => void;
 	onPermissionChange: (mode: PermissionMode) => void;
 	getCurrentModelLabel: () => string;
@@ -180,13 +181,23 @@ export class PromptBarView {
 		this.inputEl?.focus();
 	}
 
-	public setDisabled(disabled: boolean): void {
-		this.isSending = disabled;
-		if (this.sendBtnEl) {
-			this.sendBtnEl.disabled = disabled || !this.canSend();
-		}
-		if (this.inputEl) {
-			this.inputEl.disabled = disabled;
+	public setRunning(running: boolean): void {
+		this.isSending = running;
+		if (!this.sendBtnEl) return;
+		this.sendBtnEl.empty();
+		if (running) {
+			this.sendBtnEl.addClass('is-stop');
+			this.sendBtnEl.removeClass('is-active');
+			this.sendBtnEl.disabled = false;
+			setIcon(this.sendBtnEl, 'square');
+			setTooltip(this.sendBtnEl, 'Stop generating (Esc)');
+			this.sendBtnEl.setAttribute('aria-label', 'Stop generating');
+		} else {
+			this.sendBtnEl.removeClass('is-stop');
+			setIcon(this.sendBtnEl, 'arrow-right');
+			setTooltip(this.sendBtnEl, 'Send message');
+			this.sendBtnEl.setAttribute('aria-label', 'Send message');
+			this.updateSendButtonState();
 		}
 	}
 
@@ -535,15 +546,19 @@ export class PromptBarView {
 			}
 		};
 
-		// Circular Send button
+		// Circular Send / Stop button
 		this.sendBtnEl = rightControls.createEl('button', {
 			cls: 'anti-dian-promptbar-btn-send',
-			attr: { type: 'button', disabled: 'true' },
+			attr: { type: 'button', disabled: 'true', 'aria-label': 'Send message' },
 		});
 		setIcon(this.sendBtnEl, 'arrow-right');
 		setTooltip(this.sendBtnEl, 'Send message');
 		this.sendBtnEl.onclick = () => {
-			void this.triggerSend();
+			if (this.isSending) {
+				this.callbacks.onCancel?.();
+			} else {
+				void this.triggerSend();
+			}
 		};
 
 		this.updateSendButtonState();
@@ -604,9 +619,17 @@ export class PromptBarView {
 				}
 			}
 
+			if (e.key === 'Escape' && this.isSending) {
+				e.preventDefault();
+				this.callbacks.onCancel?.();
+				return;
+			}
+
 			if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 				e.preventDefault();
-				void this.triggerSend();
+				if (!this.isSending) {
+					void this.triggerSend();
+				}
 			}
 		});
 
@@ -696,8 +719,8 @@ export class PromptBarView {
 	}
 
 	private updateSendButtonState(): void {
-		if (!this.sendBtnEl) return;
-		const ready = this.canSend() && !this.isSending;
+		if (!this.sendBtnEl || this.isSending) return;
+		const ready = this.canSend();
 		this.sendBtnEl.disabled = !ready;
 		if (ready) {
 			this.sendBtnEl.addClass('is-active');
