@@ -1452,10 +1452,50 @@ button.anti-dian-promptbar-menu-row {
 	box-shadow: none;
 }
 
+.anti-dian-answer-body {
+	font-size: var(--font-ui-small);
+	line-height: 1.55;
+}
+
 .anti-dian-answer-body p {
 	margin: 0 0 var(--size-4-2) 0;
 	font-size: var(--font-ui-small);
 	line-height: 1.55;
+}
+
+/* Headings scaled to the compact chat body instead of note-sized h1/h2. */
+.anti-dian-answer-body :is(h1, h2, h3, h4, h5, h6) {
+	margin: 1.1em 0 0.45em;
+	line-height: 1.35;
+	font-weight: var(--font-semibold);
+	font-variant: normal;
+	letter-spacing: normal;
+	color: var(--text-normal);
+}
+
+.anti-dian-answer-body h1 {
+	font-size: 1.3em;
+}
+
+.anti-dian-answer-body h2 {
+	font-size: 1.2em;
+}
+
+.anti-dian-answer-body h3 {
+	font-size: 1.08em;
+}
+
+.anti-dian-answer-body :is(h4, h5, h6) {
+	font-size: 1em;
+}
+
+.anti-dian-answer-body > :first-child :is(h1, h2, h3, h4, h5, h6),
+.anti-dian-answer-body > :is(h1, h2, h3, h4, h5, h6):first-child {
+	margin-top: 0;
+}
+
+.anti-dian-answer-body :is(ul, ol) {
+	margin: 0.3em 0 var(--size-4-2);
 }
 
 .anti-dian-answer-body p:last-child {
