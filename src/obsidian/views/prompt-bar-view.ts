@@ -34,11 +34,22 @@ interface AutocompleteItem {
 
 const MAX_AT_ITEMS = 8;
 
-const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string }[] = [
-	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied' },
-	{ value: 'plan', label: 'Plan', desc: 'Read-only proposals' },
-	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically' },
+const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string; icon: string }[] = [
+	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied', icon: 'lock' },
+	{ value: 'plan', label: 'Plan', desc: 'Read-only proposals', icon: 'shield' },
+	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically', icon: 'unlock' },
 ];
+
+const MODEL_EFFORT_PATTERN = /^(.+?)\s+(Low|Medium|High|Minimal|Max|Thinking)$/;
+
+interface ContextMenuItem {
+	key: string;
+	label: string;
+	icon: string;
+	badge?: string;
+	disabled?: boolean;
+	action: () => void;
+}
 
 /* Violet palette sampled from assets/logo.png */
 const OBSIDIAN_CRYSTAL_STOPS = [
@@ -80,11 +91,19 @@ export class PromptBarView {
 	private activeNotePillEl!: HTMLElement;
 	private activeNoteLabelEl!: HTMLElement;
 	private permissionPillEl!: HTMLElement;
+	private permissionIconEl!: HTMLElement;
 	private permissionLabelEl!: HTMLElement;
 	private permissionMenu: Menu | null = null;
 	private permissionMenuHiddenAt = 0;
 	private onDocPointerDown = (e: PointerEvent): void => {
 		const target = e.target as HTMLElement;
+		if (
+			this.contextMenuEl &&
+			!target.closest('.anti-dian-context-menu') &&
+			!target.closest('.anti-dian-promptbar-btn-plus')
+		) {
+			this.closePlusMenu();
+		}
 		if (
 			this.menuContainerEl &&
 			!target.closest('.anti-dian-promptbar-autocomplete') &&
@@ -95,12 +114,12 @@ export class PromptBarView {
 	};
 	private sendBtnEl!: HTMLButtonElement;
 
+	private contextMenuEl: HTMLElement | null = null;
 	private menuContainerEl: HTMLElement | null = null;
 	private gliderEl: HTMLElement | null = null;
 	private menuRowEls: HTMLElement[] = [];
 
 	private stagedMedia: MediaInput[] = [];
-	private isPlusMenuOpen = false;
 	private isMenuDismissed = false;
 	private activeRowIndex = 0;
 	private isGliderEngaged = false;
@@ -131,6 +150,7 @@ export class PromptBarView {
 			this.animFrameId = null;
 		}
 		this.rootEl.doc.removeEventListener('pointerdown', this.onDocPointerDown);
+		this.closePlusMenu();
 		this.closeAutocompleteMenu();
 		this.closePermissionMenu();
 	}
@@ -171,8 +191,24 @@ export class PromptBarView {
 	}
 
 	public updateModelLabel(label?: string): void {
-		if (this.modelPillLabelEl) {
-			this.modelPillLabelEl.setText(label ?? this.callbacks.getCurrentModelLabel());
+		if (!this.modelPillLabelEl) return;
+		const fullLabel = label ?? this.callbacks.getCurrentModelLabel();
+		this.modelPillLabelEl.empty();
+		const match = MODEL_EFFORT_PATTERN.exec(fullLabel);
+		if (match && match[1] && match[2]) {
+			this.modelPillLabelEl.createSpan({
+				cls: 'anti-dian-promptbar-model-base',
+				text: match[1],
+			});
+			this.modelPillLabelEl.createSpan({
+				cls: 'anti-dian-promptbar-model-effort',
+				text: match[2],
+			});
+		} else {
+			this.modelPillLabelEl.createSpan({
+				cls: 'anti-dian-promptbar-model-base',
+				text: fullLabel,
+			});
 		}
 	}
 
@@ -341,8 +377,46 @@ export class PromptBarView {
 			}
 		};
 
+		// Outer shell (Antigravity-style context strip + composer card)
+		const shellEl = this.composerAnchorEl.createDiv({
+			cls: 'anti-dian-promptbar-shell',
+		});
+
+		// Top context bar (active note toggle)
+		const contextBarEl = shellEl.createDiv({
+			cls: 'anti-dian-promptbar-context-bar',
+		});
+		this.activeNotePillEl = contextBarEl.createDiv({
+			cls: 'anti-dian-promptbar-note-pill',
+			attr: {
+				role: 'button',
+				tabindex: '0',
+				'aria-label': 'Toggle active note context',
+			},
+		});
+		const noteIcon = this.activeNotePillEl.createSpan({
+			cls: 'anti-dian-promptbar-note-icon',
+		});
+		setIcon(noteIcon, 'file-text');
+		this.activeNoteLabelEl = this.activeNotePillEl.createSpan({
+			cls: 'anti-dian-promptbar-note-label',
+			text: 'No note',
+		});
+		this.activeNotePillEl.onclick = (e) => {
+			e.stopPropagation();
+			this.toggleActiveNote();
+		};
+		this.activeNotePillEl.onkeydown = (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				this.toggleActiveNote();
+			}
+		};
+
+		this.updateActiveNotePill();
+
 		// The PromptBar Composer Card
-		this.cardEl = this.composerAnchorEl.createDiv({
+		this.cardEl = shellEl.createDiv({
 			cls: 'anti-dian-promptbar-card',
 		});
 
@@ -386,10 +460,10 @@ export class PromptBarView {
 		// Plus button (+)
 		this.plusBtnEl = leftControls.createEl('button', {
 			cls: 'anti-dian-promptbar-btn-plus',
-			attr: { type: 'button' },
+			attr: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
 		});
 		setIcon(this.plusBtnEl, 'plus');
-		setTooltip(this.plusBtnEl, 'Add attachments and sources');
+		setTooltip(this.plusBtnEl, 'Add context');
 		this.plusBtnEl.onclick = (e) => {
 			e.stopPropagation();
 			this.togglePlusMenu();
@@ -406,41 +480,18 @@ export class PromptBarView {
 		});
 		this.modelPillLabelEl = this.modelPillEl.createSpan({
 			cls: 'anti-dian-promptbar-model-name',
-			text: this.callbacks.getCurrentModelLabel(),
 		});
+		this.updateModelLabel();
 		const modelChevron = this.modelPillEl.createSpan({
 			cls: 'anti-dian-promptbar-chevron',
 		});
 		setIcon(modelChevron, 'chevron-down');
 		this.modelPillEl.onclick = (e) => {
 			e.stopPropagation();
+			this.closePlusMenu();
 			this.closeAutocompleteMenu();
 			this.callbacks.onOpenModelMenu(this.modelPillEl);
 		};
-
-		// Active note pill
-		this.activeNotePillEl = leftControls.createDiv({
-			cls: 'anti-dian-promptbar-note-pill',
-			attr: {
-				role: 'button',
-				tabindex: '0',
-				'aria-label': 'Toggle active note context',
-			},
-		});
-		const noteIcon = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-promptbar-note-icon',
-		});
-		setIcon(noteIcon, 'file-text');
-		this.activeNoteLabelEl = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-promptbar-note-label',
-			text: 'No note',
-		});
-		this.activeNotePillEl.onclick = (e) => {
-			e.stopPropagation();
-			this.toggleActiveNote();
-		};
-
-		this.updateActiveNotePill();
 
 		// --- Right Controls ---
 		const rightControls = this.controlsRowEl.createDiv({
@@ -458,16 +509,20 @@ export class PromptBarView {
 				'aria-expanded': 'false',
 			},
 		});
+		this.permissionIconEl = this.permissionPillEl.createSpan({
+			cls: 'anti-dian-promptbar-perm-icon',
+		});
 		this.permissionLabelEl = this.permissionPillEl.createSpan({
 			cls: 'anti-dian-promptbar-model-name',
-			text: this.getPermissionLabel(),
 		});
+		this.updatePermissionPill();
 		const permissionChevron = this.permissionPillEl.createSpan({
 			cls: 'anti-dian-promptbar-chevron',
 		});
 		setIcon(permissionChevron, 'chevron-down');
 		this.permissionPillEl.onclick = (e) => {
 			e.stopPropagation();
+			this.closePlusMenu();
 			this.closeAutocompleteMenu();
 			this.togglePermissionMenu();
 		};
@@ -480,12 +535,12 @@ export class PromptBarView {
 			}
 		};
 
-		// Tactile Send button
+		// Circular Send button
 		this.sendBtnEl = rightControls.createEl('button', {
 			cls: 'anti-dian-promptbar-btn-send',
 			attr: { type: 'button', disabled: 'true' },
 		});
-		setIcon(this.sendBtnEl, 'arrow-up');
+		setIcon(this.sendBtnEl, 'arrow-right');
 		setTooltip(this.sendBtnEl, 'Send message');
 		this.sendBtnEl.onclick = () => {
 			void this.triggerSend();
@@ -497,13 +552,18 @@ export class PromptBarView {
 	private setupEventListeners(): void {
 		this.inputEl.addEventListener('input', () => {
 			this.isMenuDismissed = false;
-			this.isPlusMenuOpen = false;
+			this.closePlusMenu();
 			this.adjustTextareaHeight();
 			this.updateSendButtonState();
 			this.checkAndRenderAutocomplete();
 		});
 
 		this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+			if (this.contextMenuEl && e.key === 'Escape') {
+				e.preventDefault();
+				this.closePlusMenu();
+				return;
+			}
 			if (this.menuContainerEl) {
 				const rowsCount = this.menuRowEls.length;
 				if (e.key === 'ArrowDown') {
@@ -569,9 +629,17 @@ export class PromptBarView {
 		this.rootEl.doc.addEventListener('pointerdown', this.onDocPointerDown);
 	}
 
-	private getPermissionLabel(): string {
+	private updatePermissionPill(): void {
 		const mode = this.plugin.settings.permissionMode ?? 'ask';
-		return PERMISSION_MODES.find((option) => option.value === mode)?.label ?? 'Ask';
+		const option = PERMISSION_MODES.find((o) => o.value === mode) ?? PERMISSION_MODES[0];
+		if (!option) return;
+		if (this.permissionLabelEl) {
+			this.permissionLabelEl.setText(option.label);
+		}
+		if (this.permissionIconEl) {
+			this.permissionIconEl.empty();
+			setIcon(this.permissionIconEl, option.icon);
+		}
 	}
 
 	private togglePermissionMenu(): void {
@@ -592,10 +660,11 @@ export class PromptBarView {
 				title.createDiv({ cls: 'anti-dian-menu-item-desc', text: option.desc });
 				item
 					.setTitle(title)
+					.setIcon(option.icon)
 					.setChecked(option.value === currentMode)
 					.onClick(() => {
 						this.plugin.settings.permissionMode = option.value;
-						this.permissionLabelEl.setText(option.label);
+						this.updatePermissionPill();
 						this.callbacks.onPermissionChange(option.value);
 					});
 			});
@@ -778,12 +847,140 @@ export class PromptBarView {
 	}
 
 	private togglePlusMenu(): void {
-		if (this.isPlusMenuOpen) {
-			this.closeAutocompleteMenu();
+		if (this.contextMenuEl) {
+			this.closePlusMenu();
 		} else {
-			this.isPlusMenuOpen = true;
-			this.isMenuDismissed = false;
-			this.renderAutocomplete('at', '');
+			this.closeAutocompleteMenu();
+			this.closePermissionMenu();
+			this.renderPlusMenu();
+		}
+	}
+
+	private closePlusMenu(): void {
+		if (this.contextMenuEl) {
+			this.contextMenuEl.remove();
+			this.contextMenuEl = null;
+		}
+		this.plusBtnEl?.setAttribute('aria-expanded', 'false');
+	}
+
+	private insertTriggerAndOpen(trigger: '@' | '/'): void {
+		this.closePlusMenu();
+		const current = this.inputEl.value;
+		const needsSpace = current.length > 0 && !/\s$/.test(current);
+		this.inputEl.value = `${current}${needsSpace ? ' ' : ''}${trigger}`;
+		this.isMenuDismissed = false;
+		this.adjustTextareaHeight();
+		this.updateSendButtonState();
+		this.inputEl.focus();
+		this.inputEl.setSelectionRange(this.inputEl.value.length, this.inputEl.value.length);
+		this.checkAndRenderAutocomplete();
+	}
+
+	private renderPlusMenu(): void {
+		this.closePlusMenu();
+
+		const ctx = this.callbacks.getActiveContext();
+		const hasActiveNote = Boolean(ctx.activeFile);
+
+		const items: ContextMenuItem[] = [
+			{
+				key: 'files',
+				label: 'Files',
+				icon: 'paperclip',
+				action: () => {
+					this.closePlusMenu();
+					this.fileInputEl.click();
+				},
+			},
+			{
+				key: 'mentions',
+				label: 'Mentions',
+				icon: 'at-sign',
+				action: () => this.insertTriggerAndOpen('@'),
+			},
+			{
+				key: 'actions',
+				label: 'Actions',
+				icon: 'square-pen',
+				action: () => this.insertTriggerAndOpen('/'),
+			},
+			{
+				key: 'active-note',
+				label: 'Active note',
+				icon: 'file-text',
+				badge: hasActiveNote ? (this.includeActiveNote ? 'On' : 'Off') : 'None',
+				disabled: !hasActiveNote,
+				action: () => {
+					this.toggleActiveNote();
+					this.closePlusMenu();
+				},
+			},
+			{
+				key: 'web',
+				label: 'Web search',
+				icon: 'globe',
+				action: () => {
+					this.closePlusMenu();
+					const current = this.inputEl.value;
+					const needsSpace = current.length > 0 && !/\s$/.test(current);
+					this.inputEl.value = `${current}${needsSpace ? ' ' : ''}@Web search `;
+					this.adjustTextareaHeight();
+					this.updateSendButtonState();
+					this.inputEl.focus();
+				},
+			},
+		];
+
+		const menuEl = this.composerAnchorEl.createDiv({
+			cls: 'anti-dian-context-menu',
+			attr: { role: 'menu', 'aria-label': 'Add context' },
+		});
+		this.contextMenuEl = menuEl;
+		this.plusBtnEl.setAttribute('aria-expanded', 'true');
+
+		menuEl.createDiv({
+			cls: 'anti-dian-context-menu-header',
+			text: 'Add context',
+		});
+
+		const listEl = menuEl.createDiv({
+			cls: 'anti-dian-context-menu-list',
+		});
+
+		for (const item of items) {
+			const rowBtn = listEl.createEl('button', {
+				cls: 'anti-dian-context-menu-row',
+				attr: {
+					type: 'button',
+					role: 'menuitem',
+					...(item.disabled ? { disabled: 'true' } : {}),
+				},
+			});
+
+			const iconEl = rowBtn.createSpan({
+				cls: 'anti-dian-context-menu-icon',
+			});
+			setIcon(iconEl, item.icon);
+
+			rowBtn.createSpan({
+				cls: 'anti-dian-context-menu-label',
+				text: item.label,
+			});
+
+			if (item.badge) {
+				rowBtn.createSpan({
+					cls: `anti-dian-context-menu-badge${item.badge === 'On' ? ' is-on' : ''}`,
+					text: item.badge,
+				});
+			}
+
+			rowBtn.onclick = (e) => {
+				e.stopPropagation();
+				if (!item.disabled) {
+					item.action();
+				}
+			};
 		}
 	}
 
@@ -795,11 +992,7 @@ export class PromptBarView {
 
 		const token = this.parseToken(this.inputEl.value);
 		if (!token) {
-			if (this.isPlusMenuOpen) {
-				this.renderAutocomplete('at', '');
-			} else {
-				this.closeAutocompleteMenu();
-			}
+			this.closeAutocompleteMenu();
 			return;
 		}
 
@@ -887,14 +1080,14 @@ export class PromptBarView {
 		this.activeRowIndex = 0;
 		this.isGliderEngaged = false;
 
-		// Gliding highlight element
-		this.gliderEl = this.menuContainerEl.createSpan({
-			cls: 'anti-dian-promptbar-glider',
-			attr: { 'aria-hidden': 'true' },
-		});
-
 		const listEl = this.menuContainerEl.createDiv({
 			cls: 'anti-dian-promptbar-menu-list',
+		});
+
+		// Gliding highlight element (inside listEl so offsetTop aligns 1:1 with rows)
+		this.gliderEl = listEl.createSpan({
+			cls: 'anti-dian-promptbar-glider',
+			attr: { 'aria-hidden': 'true' },
 		});
 
 		if (items.length === 0) {
@@ -1022,7 +1215,6 @@ export class PromptBarView {
 			this.menuContainerEl.remove();
 			this.menuContainerEl = null;
 		}
-		this.isPlusMenuOpen = false;
 		this.menuRowEls = [];
 	}
 }
