@@ -119,6 +119,20 @@ export class SessionMenuController {
 			cls: 'anti-dian-session-list',
 			attr: { role: 'listbox' },
 		});
+		// Hide the highlight only when leaving the list, so it slides between rows
+		// instead of vanishing in the gap between them.
+		this.listEl.addEventListener('mouseleave', () => {
+			if (this.items[this.activeIndex]?.kind === 'session') {
+				this.activeIndex = -1;
+				this.highlight();
+			}
+		});
+		newBtn.addEventListener('mouseleave', () => {
+			if (this.items[this.activeIndex]?.kind === 'new') {
+				this.activeIndex = -1;
+				this.highlight();
+			}
+		});
 
 		this.renderList();
 		window.setTimeout(() => {
@@ -241,8 +255,12 @@ export class SessionMenuController {
 				text: `See all (${hits.length})`,
 				attr: { role: 'button' },
 			});
-			seeAll.addEventListener('mouseenter', () => this.glider?.moveTo(seeAll));
-			seeAll.addEventListener('mouseleave', () => this.glider?.hide());
+			seeAll.addEventListener('mouseenter', () => {
+				// Slide straight from the hovered row instead of hiding first.
+				this.activeIndex = -1;
+				this.items.forEach((item) => item.el.removeClass('is-highlighted'));
+				this.glider?.moveTo(seeAll);
+			});
 			seeAll.addEventListener('click', (e) => {
 				e.stopPropagation();
 				this.showAll = true;
@@ -278,12 +296,6 @@ export class SessionMenuController {
 			const index = this.items.indexOf(item);
 			if (index !== -1 && this.activeIndex !== index) {
 				this.activeIndex = index;
-				this.highlight();
-			}
-		});
-		item.el.addEventListener('mouseleave', () => {
-			if (this.items[this.activeIndex] === item) {
-				this.activeIndex = -1;
 				this.highlight();
 			}
 		});

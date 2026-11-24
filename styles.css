@@ -1040,9 +1040,15 @@ button.anti-dian-context-menu-row:disabled {
 }
 
 /* Native menus: the glider replaces Obsidian's per-item highlight. */
-body .menu.anti-dian-glide-menu .menu-item.selected:not(.is-disabled):not(.is-label),
-body .menu.anti-dian-glide-menu .menu-item:hover:not(.is-disabled):not(.is-label) {
+body .menu.anti-dian-glide-menu .menu-item.selected,
+body .menu.anti-dian-glide-menu .menu-item:hover {
 	background-color: transparent;
+}
+
+/* Label rows ("Model", "Permission") are headings, not choices. */
+body .menu.anti-dian-glide-menu .menu-item.is-label {
+	cursor: default;
+	pointer-events: none;
 }
 
 .menu.anti-dian-glide-menu .anti-dian-glider {
