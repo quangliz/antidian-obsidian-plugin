@@ -1,14 +1,20 @@
-import { ChangeSet } from '../../core/types/changes';
+import { ChangeSet, ChangeSetDiff } from '../../core/types/changes';
 import { ChangeSetValidator } from '../../core/transactions';
 import type AntiDianPlugin from '../../main';
-import { DiffTableView } from './diff-table-view';
+import { ChangeApprovalBar } from './change-approval-view';
 
+/**
+ * Validate and diff a turn's ChangeSet, then render its approval bar.
+ * Returns the diff so the caller can show it on the trace's tool rows,
+ * or null when validation failed (errors are rendered instead).
+ */
 export async function renderChangeSet(
 	parent: HTMLElement,
 	changeSet: ChangeSet,
 	plugin: AntiDianPlugin,
+	onReview: () => void,
 	validator?: ChangeSetValidator,
-): Promise<void> {
+): Promise<ChangeSetDiff | null> {
 	if (validator) {
 		const valRes = await validator.validate(changeSet);
 		if (!valRes.valid) {
@@ -21,18 +27,17 @@ export async function renderChangeSet(
 					cls: 'anti-dian-changeset-error-item',
 				});
 			}
-			return;
+			return null;
 		}
 	}
 
-	let diff = null;
+	let diff: ChangeSetDiff;
 	try {
 		diff = await plugin.diffGenerator.generate(changeSet);
 	} catch {
-		// fallback
+		return null;
 	}
 
-	if (!diff) return;
-
-	new DiffTableView(parent, changeSet, diff, plugin);
+	new ChangeApprovalBar(parent, changeSet, diff, plugin, onReview);
+	return diff;
 }

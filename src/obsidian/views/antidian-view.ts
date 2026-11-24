@@ -470,12 +470,19 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 
 			if (result.changeSet && result.changeSet.operations.length > 0) {
-				await renderChangeSet(
+				const diff = await renderChangeSet(
 					agentMsg,
 					result.changeSet,
 					this.plugin,
+					() => thinkingState.revealChanges(),
 					this.validator,
 				);
+				if (diff) {
+					// Diffs live on the tool rows; keep them open while awaiting approval.
+					const awaitingApproval =
+						(this.plugin.settings.permissionMode ?? 'ask') === 'ask';
+					thinkingState.attachChangeSetDiff(diff, awaitingApproval);
+				}
 			}
 
 			if (result.usage) {

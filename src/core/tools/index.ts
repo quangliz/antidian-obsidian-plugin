@@ -322,6 +322,8 @@ export function createCreateNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'create',
 					path,
@@ -394,6 +396,8 @@ export function createPatchNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'patch-section',
 					path,
@@ -467,6 +471,8 @@ export function createReplaceBlockTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'replace-block',
 					path,
@@ -542,6 +548,8 @@ export function createAppendNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'append',
 					path,
@@ -621,6 +629,8 @@ export function createUpdateFrontmatterTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'update-frontmatter',
 					path,
@@ -685,6 +695,8 @@ export function createEditNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
+				// Position in the ChangeSet, so the UI can pair this call with its diff.
+				operationIndex: changeSet.operations.length - 1,
 				operation: {
 					type: 'edit',
 					path,

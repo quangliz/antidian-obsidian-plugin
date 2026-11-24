@@ -1,4 +1,6 @@
 import { App, HoverParent } from 'obsidian';
+import { FileDiff } from '../../core/types/changes';
+import { renderFileDiff } from './diff-lines';
 import { bindNoteLink } from './note-link';
 
 /** What the detail renderer needs to know about one tool call. */
@@ -8,6 +10,8 @@ export interface ToolDetailInput {
 	args?: Record<string, unknown>;
 	output?: unknown;
 	error?: string;
+	/** The staged change's diff, attached once the turn's ChangeSet is diffed. */
+	fileDiff?: FileDiff;
 	/** Search tools already list their sources under the row. */
 	sourceCount: number;
 }
@@ -111,15 +115,17 @@ function rawData(el: HTMLElement, input: ToolDetailInput): void {
 /* ------------------------------------------------------------------ */
 
 /**
- * Staged edits are reviewed in the change card under the reply, so their rows
- * show no preview of their own; only a Plan-mode block needs explaining.
+ * A staged edit shows its real diff (from the ChangeSet diff, attached when
+ * the reply finishes); this is the one place changes are reviewed.
  */
 function mutationDetail(input: ToolDetailInput): Renderer | null {
 	const output = isRecord(input.output) ? input.output : undefined;
 	if (output?.blockedByPlanMode) {
 		return (el) => meta(el, 'Not staged: Plan mode is read-only.');
 	}
-	return null;
+	const fileDiff = input.fileDiff;
+	if (!fileDiff) return null;
+	return (el) => renderFileDiff(el, fileDiff);
 }
 
 /** Detail for read/list tools, from their output (only once finished). */

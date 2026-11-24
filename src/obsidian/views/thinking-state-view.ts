@@ -9,6 +9,7 @@ import {
 	setTooltip,
 } from 'obsidian';
 import type { ContextReference } from '../../core/types/context';
+import type { ChangeSetDiff, FileDiff } from '../../core/types/changes';
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail, isStagedMutation } from './tool-detail';
 import { AgentStepEvent } from '../../core/agent';
@@ -22,6 +23,8 @@ export interface SourceItem {
 
 export interface ThinkingStep {
 	id: string;
+	/** Diff of the change this call staged (mutating tools only). */
+	fileDiff?: FileDiff;
 	callId?: string;
 	toolName: string;
 	kind: 'search' | 'code' | 'step';
@@ -632,6 +635,7 @@ export class ThinkingStateView {
 					args: step.args,
 					output: step.output,
 					error: step.error,
+					fileDiff: step.fileDiff,
 					sourceCount: step.sources?.length ?? 0,
 				},
 				{
@@ -691,28 +695,6 @@ export class ThinkingStateView {
 				if (step.del !== undefined) {
 					diffSpan.createSpan({ cls: 'diff-del', text: ` −${step.del}` });
 				}
-			}
-
-			// Staged edits are reviewed in the change card: jump there instead
-			// of repeating the diff in the trace.
-			if (isStagedMutation(step.toolName, step.output)) {
-				const jump = row.createSpan({
-					cls: 'anti-dian-thinking-row-jump clickable-icon',
-					attr: { role: 'button', tabindex: '0' },
-				});
-				setIcon(jump, 'file-diff');
-				setTooltip(jump, 'View in changes');
-				const reveal = (e: Event) => {
-					e.preventDefault();
-					e.stopPropagation();
-					if (!this.revealChanges()) {
-						new Notice('Changes appear when the reply finishes.');
-					}
-				};
-				jump.onclick = reveal;
-				jump.onkeydown = (e) => {
-					if (e.key === 'Enter' || e.key === ' ') reveal(e);
-				};
 			}
 
 			// Only rows with something to show are expandable.
@@ -829,18 +811,37 @@ export class ThinkingStateView {
 		}
 	}
 
-	/** Scroll to this turn's change card (rendered after the reply finishes). */
-	private revealChanges(): boolean {
-		const card = this.containerEl.parentElement?.querySelector<HTMLElement>(
-			'.anti-dian-diff-summary-card',
-		);
-		if (!card) return false;
-		card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-		card.removeClass('is-flash');
-		// Restart the highlight animation.
-		void card.offsetWidth;
-		card.addClass('is-flash');
-		return true;
+	/**
+	 * Attach each staged change's diff to the tool row that staged it and open
+	 * those rows. With `expand`, the trace stays open so changes awaiting
+	 * approval are visible without extra clicks.
+	 */
+	public attachChangeSetDiff(diff: ChangeSetDiff, expand: boolean): void {
+		const staged = this.steps.filter((s) => isStagedMutation(s.toolName, s.output));
+		staged.forEach((step, ordinal) => {
+			const index =
+				isRecord(step.output) && typeof step.output.operationIndex === 'number'
+					? step.output.operationIndex
+					: ordinal;
+			const fileDiff = diff.files[index];
+			if (!fileDiff) return;
+			step.fileDiff = fileDiff;
+			if (expand) this.openStepIds.add(step.id);
+		});
+		if (expand) this.isExpanded = true;
+		this.updateHeader();
+		this.renderSteps();
+	}
+
+	/** Open the trace and every staged change, and scroll it into view. */
+	public revealChanges(): void {
+		for (const step of this.steps) {
+			if (step.fileDiff) this.openStepIds.add(step.id);
+		}
+		this.isExpanded = true;
+		this.updateHeader();
+		this.renderSteps();
+		this.containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 	}
 
 	private renderThoughtPhases(afterStep: number): void {

@@ -1,290 +1,145 @@
 import { App, ButtonComponent, Modal, Setting, setIcon } from 'obsidian';
-import { bindNoteLink } from './note-link';
-import { ChangeSet, ChangeSetDiff, FileDiff } from '../../core/types/changes';
+import { ChangeSet, ChangeSetDiff } from '../../core/types/changes';
 import type AntiDianPlugin from '../../main';
 
-export class DiffTableView {
+/**
+ * Approval bar for a turn's ChangeSet. The diffs themselves live in the
+ * thinking trace, on the tool row that staged each change; this bar only
+ * summarizes them and holds Apply / Reject / Undo.
+ */
+export class ChangeApprovalBar {
 	private plugin: AntiDianPlugin;
 	private changeSet: ChangeSet;
 	private diff: ChangeSetDiff;
+	private onReview: () => void;
 	private containerEl: HTMLElement;
-	private isExpanded = true;
-	private isAccepted = false;
-	private isRejected = false;
-	private expandedFileIndex: number | null = null;
+	private state: 'pending' | 'applying' | 'applied' | 'rejected' = 'pending';
+	private appliedAutomatically = false;
+	private error: string | null = null;
 
 	constructor(
 		parentEl: HTMLElement,
 		changeSet: ChangeSet,
 		diff: ChangeSetDiff,
 		plugin: AntiDianPlugin,
+		onReview: () => void,
 	) {
-		this.containerEl = parentEl.createDiv({
-			cls: 'anti-dian-diff-summary-card',
-		});
+		this.containerEl = parentEl.createDiv({ cls: 'anti-dian-change-bar' });
 		this.changeSet = changeSet;
 		this.diff = diff;
 		this.plugin = plugin;
+		this.onReview = onReview;
 
-		void this.handleAutoMode();
 		this.render();
+		if ((this.plugin.settings.permissionMode ?? 'ask') === 'auto') {
+			this.appliedAutomatically = true;
+			void this.apply();
+		}
 	}
 
-	private async handleAutoMode(): Promise<void> {
-		const mode = this.plugin.settings.permissionMode ?? 'ask';
-		if (mode === 'auto') {
-			try {
-				await this.plugin.applicator.apply(this.changeSet);
-				this.isAccepted = true;
-				this.render();
-			} catch {
-				this.render();
-			}
+	private get fileCount(): number {
+		return new Set(this.diff.files.map((f) => f.path)).size;
+	}
+
+	private async apply(): Promise<void> {
+		this.state = 'applying';
+		this.error = null;
+		this.render();
+		try {
+			await this.plugin.applicator.apply(this.changeSet);
+			this.state = 'applied';
+		} catch (err) {
+			this.state = 'pending';
+			this.appliedAutomatically = false;
+			this.error = err instanceof Error ? err.message : String(err);
 		}
+		this.render();
 	}
 
 	private render(): void {
-		this.containerEl.empty();
+		const el = this.containerEl;
+		el.empty();
+		el.toggleClass('is-settled', this.state === 'applied' || this.state === 'rejected');
 
-		// Header Row: "4 files changed +195 -87 ˅" and "[📄 Review]"
-		const headerRow = this.containerEl.createDiv({
-			cls: 'anti-dian-diff-card-header',
-		});
-
-		const leftSummaryBtn = headerRow.createEl('button', {
-			cls: 'anti-dian-diff-summary-btn',
+		// Summary: "1 file changed +2 -1" — clicking reveals the diffs in the trace.
+		const summary = el.createEl('button', {
+			cls: 'anti-dian-change-bar-summary',
 			attr: { type: 'button' },
 		});
-
-		const filesCount = this.diff.files.length;
-		leftSummaryBtn.createSpan({
-			cls: 'anti-dian-diff-files-count',
-			text: `${filesCount} ${filesCount === 1 ? 'file' : 'files'} changed`,
-		});
-
+		const icon = summary.createSpan({ cls: 'anti-dian-change-bar-icon' });
+		setIcon(icon, 'file-diff');
+		const files = this.fileCount;
+		summary.createSpan({ text: `${files} ${files === 1 ? 'file' : 'files'} changed` });
 		if (this.diff.totalAdditions > 0) {
-			leftSummaryBtn.createSpan({
-				cls: 'anti-dian-diff-stat-add',
-				text: `+${this.diff.totalAdditions}`,
-			});
+			summary.createSpan({ cls: 'anti-dian-diff-stat-add', text: `+${this.diff.totalAdditions}` });
 		}
-
 		if (this.diff.totalDeletions > 0) {
-			leftSummaryBtn.createSpan({
-				cls: 'anti-dian-diff-stat-del',
-				text: `-${this.diff.totalDeletions}`,
-			});
+			summary.createSpan({ cls: 'anti-dian-diff-stat-del', text: `-${this.diff.totalDeletions}` });
 		}
-
-		const chevron = leftSummaryBtn.createSpan({
-			cls: `anti-dian-diff-chevron collapse-icon ${this.isExpanded ? '' : 'is-collapsed'}`,
-		});
-		setIcon(chevron, 'right-triangle');
-
-		leftSummaryBtn.onclick = (e) => {
+		summary.onclick = (e) => {
 			e.stopPropagation();
-			this.isExpanded = !this.isExpanded;
-			this.render();
+			this.onReview();
 		};
 
-		// Right Action Button
-		const rightActions = headerRow.createDiv({
-			cls: 'anti-dian-diff-header-actions',
-		});
+		const actions = el.createDiv({ cls: 'anti-dian-change-bar-actions' });
 
-		if (this.isAccepted) {
-			const undoBtn = rightActions.createEl('button', {
-				cls: 'anti-dian-diff-btn-review',
-				attr: { type: 'button' },
+		if (this.state === 'applied') {
+			actions.createSpan({
+				cls: 'anti-dian-change-bar-status is-applied',
+				text: this.appliedAutomatically ? 'Applied automatically' : 'Applied',
 			});
-			const undoIcon = undoBtn.createSpan({ cls: 'anti-dian-diff-btn-icon' });
-			setIcon(undoIcon, 'undo');
-			undoBtn.createSpan({ text: 'Undo' });
+			new ButtonComponent(actions)
+				.setIcon('undo')
+				.setTooltip('Undo')
+				.setClass('anti-dian-change-bar-undo')
+				.onClick(() => void this.undo());
+			return;
+		}
 
-			undoBtn.onclick = async (e) => {
-				e.stopPropagation();
-				const confirmed = await confirmAction(this.plugin.app, {
-					title: 'Undo applied changes?',
-					message: `This restores ${filesCount} ${filesCount === 1 ? 'file' : 'files'} to the state before these changes were applied.`,
-					cta: 'Undo',
-				});
-				if (!confirmed) return;
-				undoBtn.disabled = true;
-				try {
-					await this.plugin.applicator.rollback(this.changeSet.id);
-					this.isAccepted = false;
-					this.isRejected = true;
-					this.render();
-				} catch {
-					undoBtn.disabled = false;
-				}
-			};
-		} else if (this.isRejected) {
-			rightActions.createSpan({
-				cls: 'anti-dian-diff-rejected-badge',
-				text: 'Rejected',
-			});
-		} else {
-			const reviewBtn = rightActions.createEl('button', {
-				cls: 'anti-dian-diff-btn-review',
-				attr: { type: 'button' },
-			});
-			const reviewIcon = reviewBtn.createSpan({ cls: 'anti-dian-diff-btn-icon' });
-			setIcon(reviewIcon, 'file-text');
-			reviewBtn.createSpan({ text: 'Review' });
+		if (this.state === 'rejected') {
+			actions.createSpan({ cls: 'anti-dian-change-bar-status', text: 'Rejected' });
+			return;
+		}
 
-			reviewBtn.onclick = (e) => {
-				e.stopPropagation();
-				this.isExpanded = true;
-				// Toggle all diffs expansion
-				this.expandedFileIndex = this.expandedFileIndex === null ? 0 : null;
+		if (this.error) {
+			el.createDiv({ cls: 'anti-dian-change-bar-error', text: this.error });
+		}
+
+		const busy = this.state === 'applying';
+		const changes = this.diff.files.length;
+		new ButtonComponent(actions)
+			.setButtonText('Reject')
+			.setDisabled(busy)
+			.onClick(() => {
+				this.plugin.stagingManager.setStatus(this.changeSet.id, 'rejected');
+				this.state = 'rejected';
 				this.render();
-			};
-		}
-
-		// File list container
-		if (this.isExpanded) {
-			const filesList = this.containerEl.createDiv({
-				cls: 'anti-dian-diff-files-list',
 			});
-
-			for (let i = 0; i < this.diff.files.length; i++) {
-				const file = this.diff.files[i];
-				if (!file) continue;
-
-				const fileRow = filesList.createDiv({
-					cls: `anti-dian-diff-file-row ${this.expandedFileIndex === i ? 'is-selected' : ''}`,
-				});
-
-				// Left File Icon
-				const iconSpan = fileRow.createSpan({
-					cls: 'anti-dian-diff-file-icon',
-				});
-				setIcon(iconSpan, 'file-text');
-
-				// File Name
-				const noteName = file.path.replace(/\.md$/, '').split('/').pop() || file.path;
-				const nameEl = fileRow.createSpan({
-					cls: 'anti-dian-diff-file-name',
-					text: noteName,
-				});
-				// Hover previews the note and Ctrl/Cmd-click opens it; a plain
-				// click keeps toggling the inline diff. New files don't exist yet.
-				if (file.operationType !== 'create') {
-					bindNoteLink(this.plugin.app, nameEl, {
-						path: file.path,
-						onPlainClick: () => this.toggleFile(i),
-					});
-				}
-
-				// Truncated Folder / Directory Subtitle
-				const folder = file.path.includes('/')
-					? `.../${file.path.split('/').slice(0, -1).join('/')}`
-					: '';
-				if (folder) {
-					fileRow.createSpan({
-						cls: 'anti-dian-diff-file-path-sub',
-						text: folder,
-					});
-				}
-
-				// Right Diff Counts (+55 -32)
-				const countsSpan = fileRow.createSpan({
-					cls: 'anti-dian-diff-file-counts',
-				});
-				if (file.additions > 0) {
-					countsSpan.createSpan({
-						cls: 'diff-add',
-						text: `+${file.additions}`,
-					});
-				}
-				if (file.deletions > 0) {
-					countsSpan.createSpan({
-						cls: 'diff-del',
-						text: `-${file.deletions}`,
-					});
-				}
-
-				fileRow.onclick = (e) => {
-					e.stopPropagation();
-					this.toggleFile(i);
-				};
-
-				// Inline diff preview if clicked
-				if (this.expandedFileIndex === i) {
-					this.renderInlineFileDiff(filesList, file);
-				}
-			}
-
-			// If in manual 'ask' mode (not read-only 'plan'), provide Apply & Reject buttons at bottom
-			const mode = this.plugin.settings.permissionMode ?? 'ask';
-			if (!this.isAccepted && !this.isRejected && mode !== 'plan') {
-				const bottomBar = this.containerEl.createDiv({
-					cls: 'anti-dian-diff-bottom-bar',
-				});
-
-				const applyLabel = `Apply ${filesCount} ${filesCount === 1 ? 'change' : 'changes'}`;
-
-				const rejectBtn = new ButtonComponent(bottomBar)
-					.setClass('anti-dian-btn-reject')
-					.setButtonText('Reject')
-					.onClick(() => {
-						this.plugin.stagingManager.setStatus(this.changeSet.id, 'rejected');
-						this.isRejected = true;
-						this.render();
-					});
-
-				const applyBtn = new ButtonComponent(bottomBar)
-					.setClass('anti-dian-btn-apply')
-					.setCta()
-					.setButtonText(applyLabel)
-					.onClick(async () => {
-						applyBtn.setDisabled(true).setButtonText('Applying...');
-						rejectBtn.setDisabled(true);
-
-						try {
-							await this.plugin.applicator.apply(this.changeSet);
-							this.isAccepted = true;
-							this.render();
-						} catch {
-							applyBtn.setDisabled(false).setButtonText(applyLabel);
-							rejectBtn.setDisabled(false);
-						}
-					});
-			}
-		}
+		new ButtonComponent(actions)
+			.setCta()
+			.setDisabled(busy)
+			.setButtonText(
+				busy ? 'Applying…' : `Apply ${changes} ${changes === 1 ? 'change' : 'changes'}`,
+			)
+			.onClick(() => void this.apply());
 	}
 
-	private toggleFile(index: number): void {
-		this.expandedFileIndex = this.expandedFileIndex === index ? null : index;
-		this.render();
-	}
-
-	private renderInlineFileDiff(container: HTMLElement, file: FileDiff): void {
-		const diffBox = container.createDiv({
-			cls: 'anti-dian-diff-inline-box',
+	private async undo(): Promise<void> {
+		const files = this.fileCount;
+		const confirmed = await confirmAction(this.plugin.app, {
+			title: 'Undo applied changes?',
+			message: `This restores ${files} ${files === 1 ? 'file' : 'files'} to the state before these changes were applied.`,
+			cta: 'Undo',
 		});
-
-		for (const hunk of file.hunks) {
-			if (hunk.header) {
-				diffBox.createDiv({
-					text: hunk.header,
-					cls: 'anti-dian-diff-line diff-hunk-header',
-				});
-			}
-			for (const line of hunk.lines) {
-				const lineEl = diffBox.createDiv({
-					cls: `anti-dian-diff-line diff-${line.type}`,
-				});
-				const prefix =
-					line.type === 'added'
-						? '+'
-						: line.type === 'removed'
-							? '-'
-							: ' ';
-				lineEl.setText(`${prefix} ${line.content}`);
-			}
+		if (!confirmed) return;
+		try {
+			await this.plugin.applicator.rollback(this.changeSet.id);
+			this.state = 'rejected';
+			this.error = null;
+		} catch (err) {
+			this.error = err instanceof Error ? err.message : String(err);
 		}
+		this.render();
 	}
 }
 
@@ -302,9 +157,7 @@ function confirmAction(app: App, opts: ConfirmOptions): Promise<boolean> {
 		modal.setTitle(opts.title);
 		modal.contentEl.createEl('p', { text: opts.message });
 		new Setting(modal.contentEl)
-			.addButton((btn) =>
-				btn.setButtonText('Cancel').onClick(() => modal.close()),
-			)
+			.addButton((btn) => btn.setButtonText('Cancel').onClick(() => modal.close()))
 			.addButton((btn) =>
 				btn
 					.setButtonText(opts.cta)
