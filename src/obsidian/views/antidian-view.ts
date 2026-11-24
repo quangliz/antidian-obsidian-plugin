@@ -41,6 +41,7 @@ interface RenderedTurn {
 	userGroupEl: HTMLElement;
 	agentEl?: HTMLElement;
 	userText: string;
+	agentText?: string;
 	historyStartIndex: number;
 	thinkingState?: ThinkingStateView;
 }
@@ -346,6 +347,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const lastTurn = this.renderedTurns[this.renderedTurns.length - 1];
 				if (lastTurn && !lastTurn.agentEl) {
 					lastTurn.agentEl = agentMsg;
+					lastTurn.agentText = message.text;
 				}
 				if (message.events && message.events.length > 0) {
 					this.renderReplayedTrace(agentMsg, message.events, message.durationMs);
@@ -357,6 +359,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 					copyText: message.text,
 					timestamp: message.timestamp,
 					usage: message.usage,
+					onFork: lastTurn ? () => void this.forkFromTurn(lastTurn) : undefined,
 				});
 			}
 		}
@@ -847,6 +850,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			const finalAnswerText = result.cancelled
 				? result.answer || streamedMarkdown.trim()
 				: result.answer;
+			turnRecord.agentText = finalAnswerText;
 
 			if (result.usage) {
 				this.sessionPromptTokens += result.usage.promptTokens;
@@ -861,6 +865,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				copyText: finalAnswerText,
 				timestamp: new Date().toISOString(),
 				usage: result.usage,
+				onFork: () => void this.forkFromTurn(turnRecord),
 			});
 		} catch (err) {
 			if (myToken !== this.turnToken) return;
@@ -965,6 +970,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		opts: {
 			copyText?: string;
 			timestamp?: string;
+			onFork?: () => void;
 			usage?: {
 				promptTokens: number;
 				candidatesTokens: number;
@@ -977,12 +983,25 @@ export class AntiDianView extends ItemView implements HoverParent {
 	): void {
 		const hasCopy = Boolean(opts.copyText?.trim());
 		const rel = this.formatRelativeTimestamp(opts.timestamp);
-		if (!hasCopy && !rel && !opts.usage) return;
+		if (!hasCopy && !opts.onFork && !rel && !opts.usage) return;
 
 		const row = parent.createDiv({ cls: 'anti-dian-message-meta is-agent' });
 		const left = row.createDiv({ cls: 'anti-dian-message-meta-left' });
 		if (hasCopy && opts.copyText) {
 			this.createCopyButton(left, opts.copyText);
+		}
+		if (opts.onFork) {
+			const onFork = opts.onFork;
+			const forkBtn = left.createEl('button', {
+				cls: 'anti-dian-msg-action-btn',
+				attr: { type: 'button', 'aria-label': 'Fork conversation from here' },
+			});
+			setIcon(forkBtn, 'git-fork');
+			setTooltip(forkBtn, 'Fork conversation from here');
+			forkBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				onFork();
+			});
 		}
 		if (rel) {
 			const timeEl = left.createSpan({
@@ -997,6 +1016,70 @@ export class AntiDianView extends ItemView implements HoverParent {
 		if (opts.usage) {
 			this.renderUsageFooter(row, opts.usage);
 		}
+	}
+
+	/**
+	 * Forks a brand-new conversation starting right after `target`'s response,
+	 * preserving turns `0..idx` as context while leaving the parent session intact.
+	 */
+	private async forkFromTurn(target: RenderedTurn): Promise<void> {
+		const idx = this.renderedTurns.indexOf(target);
+		if (idx === -1) return;
+
+		this.turnToken++;
+		if (this.isRunning) {
+			this.handleCancel();
+			this.isRunning = false;
+			this.promptBar?.setRunning(false);
+		} else {
+			this.activeThinking?.cancelPendingApprovals();
+		}
+
+		const keptTurns = this.renderedTurns.slice(0, idx + 1);
+		const droppedTurns = this.renderedTurns.slice(idx + 1);
+		for (const turn of droppedTurns) {
+			turn.userGroupEl.remove();
+			turn.agentEl?.remove();
+		}
+		this.renderedTurns = keptTurns;
+
+		// Remove any previous fork dividers before placing the new branch marker
+		this.messagesEl
+			?.querySelectorAll('.anti-dian-fork-divider')
+			.forEach((el) => el.remove());
+
+		const forkedHistory = keptTurns.map((t) => ({
+			userText: t.userText,
+			agentText: t.agentText ?? '',
+		}));
+		this.history = [];
+		for (const t of forkedHistory) {
+			if (t.userText) this.history.push({ role: 'user', text: t.userText });
+			if (t.agentText) {
+				this.history.push({ role: 'assistant', text: t.agentText });
+			}
+		}
+
+		const parentTitle =
+			this.plugin.antigravityProvider.getSessionTitle() ?? this.resumedTitle;
+		this.resetSessionStats();
+		this.resumedTitle = parentTitle ? `Fork · ${parentTitle}` : null;
+
+		await this.agent.forkSession(forkedHistory);
+		this.updateSessionTitle();
+
+		if (this.messagesEl) {
+			const divider = this.messagesEl.createDiv({
+				cls: 'anti-dian-fork-divider',
+			});
+			const icon = divider.createSpan({ cls: 'anti-dian-fork-divider-icon' });
+			setIcon(icon, 'git-fork');
+			divider.createSpan({ text: 'Forked into new conversation' });
+		}
+
+		this.promptBar?.focus();
+		this.scrollToBottom();
+		new Notice('Forked into a new conversation.');
 	}
 
 	/**

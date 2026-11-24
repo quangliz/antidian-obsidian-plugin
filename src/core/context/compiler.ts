@@ -13,12 +13,22 @@ export interface CompiledTurnPrompt {
 	contextRefs: ContextReference[];
 }
 
+export interface ForkedTurn {
+	userText: string;
+	agentText: string;
+}
+
+const FORK_BLOCK_START = '[Forked Conversation Context:\n';
+const FORK_BLOCK_END = '\n</forked-context>]';
+const MAX_FORK_CONTEXT_CHARS = 24_000;
+
 export class ContextCompiler {
 	private vaultService?: Pick<VaultService, 'getNoteOutline'>;
 	private skillService?: SkillService;
 	private lastActiveFile: string | undefined;
 	private lastSelection: string | undefined;
 	private skillsInjectedInSession = false;
+	private pendingForkTurns: ForkedTurn[] | null = null;
 
 	constructor(options: ContextCompilerOptions = {}) {
 		this.vaultService = options.vaultService;
@@ -29,6 +39,20 @@ export class ContextCompiler {
 		this.lastActiveFile = undefined;
 		this.lastSelection = undefined;
 		this.skillsInjectedInSession = false;
+		this.pendingForkTurns = null;
+	}
+
+	/**
+	 * Prepares a brand-new session forked from an earlier conversation: the
+	 * parent turns are injected once on the next prompt so the model continues
+	 * seamlessly from the fork point.
+	 */
+	seedForkedHistory(turns: ForkedTurn[]): void {
+		this.reset();
+		const nonEmpty = turns.filter(
+			(t) => t.userText.trim().length > 0 || t.agentText.trim().length > 0,
+		);
+		this.pendingForkTurns = nonEmpty.length > 0 ? nonEmpty : null;
 	}
 
 	/**
@@ -65,6 +89,16 @@ export class ContextCompiler {
 				}
 			} catch {
 				// Ignore skill discovery errors
+			}
+		}
+
+		// 1b. If this session was forked from a previous conversation, inject its prefix once.
+		if (this.pendingForkTurns && this.pendingForkTurns.length > 0) {
+			const turns = this.pendingForkTurns;
+			this.pendingForkTurns = null;
+			const formatted = this.formatForkedTurns(turns);
+			if (formatted) {
+				blocks.push(`${FORK_BLOCK_START}${formatted}${FORK_BLOCK_END}`);
 			}
 		}
 
@@ -128,6 +162,26 @@ export class ContextCompiler {
 		};
 	}
 
+	private formatForkedTurns(turns: ForkedTurn[]): string {
+		const segments: string[] = [];
+		let total = 0;
+		for (let i = turns.length - 1; i >= 0; i--) {
+			const t = turns[i]!;
+			const parts: string[] = [];
+			if (t.userText.trim()) parts.push(`User: ${t.userText.trim()}`);
+			if (t.agentText.trim()) parts.push(`Assistant: ${t.agentText.trim()}`);
+			if (parts.length === 0) continue;
+			const block = parts.join('\n');
+			if (total + block.length > MAX_FORK_CONTEXT_CHARS && segments.length > 0) {
+				break;
+			}
+			segments.push(block);
+			total += block.length + 2;
+		}
+		segments.reverse();
+		return segments.join('\n\n').slice(-MAX_FORK_CONTEXT_CHARS);
+	}
+
 	private formatOutlineHint(outline: NoteOutline): string {
 		const parts: string[] = [];
 		if (outline.tags.length > 0) {
@@ -168,6 +222,9 @@ function compiledBlockEnd(text: string): number | null {
 		'[Vault Skills: none configured]',
 		'[Mode: Plan (read-only).',
 	];
+	if (text.startsWith(FORK_BLOCK_START)) {
+		return endAfter(text, `${FORK_BLOCK_END}\n\n`);
+	}
 	if (text.startsWith('[Available Vault Skills')) {
 		return endAfter(text, '\n]\n\n');
 	}

@@ -499,3 +499,22 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		fs.rmSync(tmpHome, { recursive: true, force: true });
 	}
 });
+
+test('ContextCompiler.seedForkedHistory injects parent turns once and strips cleanly on replay', async () => {
+	const compiler = new ContextCompiler();
+	compiler.seedForkedHistory([
+		{
+			userText: 'summarize [[Note A]]',
+			agentText: 'Summary with [brackets]\n]\nand code.',
+		},
+	]);
+
+	const first = await compiler.compile('now expand section 2');
+	assert.match(first.prompt, /^\[Forked Conversation Context:/);
+	assert.match(first.prompt, /User: summarize \[\[Note A\]\]/);
+	assert.match(first.prompt, /Assistant: Summary with \[brackets\]/);
+	assert.equal(stripCompiledContext(first.prompt), 'now expand section 2');
+
+	const second = await compiler.compile('follow up');
+	assert.equal(second.prompt, 'follow up');
+});

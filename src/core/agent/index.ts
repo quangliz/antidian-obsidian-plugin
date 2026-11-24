@@ -3,7 +3,11 @@ import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
-import { ContextCompiler, stripCompiledContext } from '../context/compiler';
+import {
+	ContextCompiler,
+	type ForkedTurn,
+	stripCompiledContext,
+} from '../context/compiler';
 import type { AntigravityProvider } from '../models/antigravity-provider';
 import type {
 	AcpSessionSummary,
@@ -124,6 +128,13 @@ export class Agent {
 		this.cancel();
 		this.contextCompiler.reset();
 		await this.provider.resetSession();
+	}
+
+	/** Starts a new session seeded with turns from a parent conversation. */
+	async forkSession(turns: ForkedTurn[]): Promise<void> {
+		this.cancel();
+		await this.provider.resetSession();
+		this.contextCompiler.seedForkedHistory(turns);
 	}
 
 	async listSessions(): Promise<AcpSessionSummary[]> {

@@ -2659,3 +2659,32 @@ button.anti-dian-msg-action-btn.is-copied {
 	width: 14px;
 	height: 14px;
 }
+
+.anti-dian-fork-divider {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	margin: 10px 0 4px;
+	padding: 4px 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.anti-dian-fork-divider::before,
+.anti-dian-fork-divider::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: var(--background-modifier-border);
+}
+
+.anti-dian-fork-divider-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.anti-dian-fork-divider-icon svg {
+	width: 12px;
+	height: 12px;
+}
