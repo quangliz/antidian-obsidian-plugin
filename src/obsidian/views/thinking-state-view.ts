@@ -16,7 +16,11 @@ import type { FileDiff } from '../../core/types/changes';
 import type { ApprovalDecision, ApprovalRequest } from '../../core/transactions';
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail } from './tool-detail';
+import { ANTI_DIAN_ICON } from '../icon';
 import { AgentStepEvent } from '../../core/agent';
+
+/** One revolution of the thinking logo, in ms. */
+const LOGO_SPIN_MS = 1200;
 
 export interface SourceItem {
 	title: string;
@@ -100,6 +104,8 @@ export class ThinkingStateView {
 	private containerEl: HTMLElement;
 	private headerBtnEl!: HTMLButtonElement;
 	private sparkleIconEl!: HTMLElement;
+	/** Infinite logo spin while running; eased to a stop when the turn settles. */
+	private logoSpin: Animation | null = null;
 	private statusTextEl!: HTMLElement;
 	private chevronIconEl!: HTMLElement;
 	private traceWrapperEl!: HTMLElement;
@@ -631,7 +637,8 @@ export class ThinkingStateView {
 		this.sparkleIconEl = this.headerBtnEl.createSpan({
 			cls: 'anti-dian-thinking-sparkle-icon',
 		});
-		setIcon(this.sparkleIconEl, 'sparkles');
+		// Anti-dian logo; spins around its vertical axis while the turn is running.
+		setIcon(this.sparkleIconEl, ANTI_DIAN_ICON);
 
 		this.statusTextEl = this.headerBtnEl.createSpan({
 			cls: 'anti-dian-thinking-status-text is-shimmer',
@@ -671,10 +678,58 @@ export class ThinkingStateView {
 		this.updateHeader();
 	}
 
+	private startLogoSpin(): void {
+		if (this.logoSpin?.playState === 'running') return;
+		const svg = this.sparkleIconEl.querySelector('svg');
+		if (!svg || svg.win.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		this.logoSpin?.cancel();
+		this.logoSpin = svg.animate(
+			[
+				{ transform: `perspective(120px) rotateY(0deg)` },
+				{ transform: `perspective(120px) rotateY(360deg)` },
+			],
+			{ duration: LOGO_SPIN_MS, iterations: Infinity, easing: 'linear' },
+		);
+	}
+
+	/**
+	 * Replace the endless spin with one that starts at the current angle and speed
+	 * and decelerates to rest facing front.
+	 */
+	private spinDownLogo(): void {
+		const spin = this.logoSpin;
+		this.logoSpin = null;
+		if (!spin || spin.playState !== 'running') {
+			spin?.cancel();
+			return;
+		}
+		const svg = this.sparkleIconEl.querySelector('svg');
+		const elapsed = Number(spin.currentTime ?? 0);
+		spin.cancel();
+		// Traces replayed from a resumed session settle right away: no spin-down.
+		if (!svg || elapsed < 250) return;
+
+		const angle = ((elapsed % LOGO_SPIN_MS) / LOGO_SPIN_MS) * 360;
+		let remaining = 360 - angle;
+		// Too little left to slow down gracefully: coast through one more turn.
+		if (remaining < 180) remaining += 360;
+		// The easing starts at slope 2, so this duration matches the spin speed at handoff.
+		const degPerMs = 360 / LOGO_SPIN_MS;
+		const duration = (2 * remaining) / degPerMs;
+		svg.animate(
+			[
+				{ transform: `perspective(120px) rotateY(${angle}deg)` },
+				{ transform: `perspective(120px) rotateY(${angle + remaining}deg)` },
+			],
+			{ duration, easing: 'cubic-bezier(0.25, 0.5, 0.25, 1)' },
+		);
+	}
+
 	private updateHeader(): void {
 		this.headerBtnEl.setAttribute('aria-expanded', String(this.isExpanded));
 
 		if (this.isSettled) {
+			this.spinDownLogo();
 			this.sparkleIconEl.removeClass('is-active');
 			this.sparkleIconEl.addClass('is-settled');
 			this.statusTextEl.removeClass('is-shimmer');
@@ -688,6 +743,7 @@ export class ThinkingStateView {
 				}
 			}
 		} else {
+			this.startLogoSpin();
 			this.sparkleIconEl.addClass('is-active');
 			this.sparkleIconEl.removeClass('is-settled');
 			this.statusTextEl.addClass('is-shimmer');

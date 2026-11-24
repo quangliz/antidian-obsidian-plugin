@@ -1558,6 +1558,8 @@ button.anti-dian-thinking-header-btn:hover {
 	color: var(--interactive-accent);
 }
 
+/* The logo's spin and spin-down are driven from thinking-state-view.ts (Web Animations). */
+
 .anti-dian-thinking-sparkle-icon.is-settled {
 	color: var(--text-muted);
 }
