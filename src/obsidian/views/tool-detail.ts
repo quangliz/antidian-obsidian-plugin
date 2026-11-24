@@ -16,14 +16,11 @@ export interface ToolDetailOptions {
 	app: App;
 	hoverParent?: HoverParent;
 	showRaw: boolean;
-	/** Scrolls to this turn's change card; returns false when there is none yet. */
-	revealChanges: () => boolean;
 }
 
 type Renderer = (el: HTMLElement) => void;
 
 const PREVIEW_CHARS = 160;
-const CONTEXT_CHARS = 32;
 const MAX_LIST_ITEMS = 8;
 const RAW_MAX_CHARS = 4000;
 
@@ -74,59 +71,6 @@ function meta(el: HTMLElement, text: string): void {
 	el.createDiv({ cls: 'anti-dian-tool-detail-meta', text });
 }
 
-/** Old → new with only the changed span highlighted, trimmed to nearby context. */
-function inlineChange(el: HTMLElement, oldText: string, newText: string): void {
-	let start = 0;
-	const maxStart = Math.min(oldText.length, newText.length);
-	while (start < maxStart && oldText[start] === newText[start]) start++;
-	let end = 0;
-	while (
-		end < maxStart - start &&
-		oldText[oldText.length - 1 - end] === newText[newText.length - 1 - end]
-	) {
-		end++;
-	}
-
-	const prefix = oldText.slice(0, start);
-	const suffix = oldText.slice(oldText.length - end);
-	const removed = oldText.slice(start, oldText.length - end);
-	const added = newText.slice(start, newText.length - end);
-
-	const box = el.createDiv({ cls: 'anti-dian-tool-detail-change' });
-	if (prefix) {
-		box.createSpan({
-			cls: 'anti-dian-tool-detail-context',
-			text: prefix.length > CONTEXT_CHARS ? `…${prefix.slice(-CONTEXT_CHARS)}` : prefix,
-		});
-	}
-	if (removed) {
-		box.createEl('del', { text: truncate(removed, PREVIEW_CHARS) });
-	}
-	if (added) {
-		box.createEl('ins', { text: truncate(added, PREVIEW_CHARS) });
-	}
-	if (suffix) {
-		box.createSpan({
-			cls: 'anti-dian-tool-detail-context',
-			text: suffix.length > CONTEXT_CHARS ? `${suffix.slice(0, CONTEXT_CHARS)}…` : suffix,
-		});
-	}
-}
-
-/** First few lines of new content, shown as an addition. */
-function addedPreview(el: HTMLElement, content: string): void {
-	const lines = content.split('\n');
-	const shown = lines.slice(0, 3).join('\n');
-	const box = el.createDiv({ cls: 'anti-dian-tool-detail-change is-block' });
-	box.createEl('ins', { text: truncate(shown, PREVIEW_CHARS * 2) });
-	if (lines.length > 3) {
-		box.createDiv({
-			cls: 'anti-dian-tool-detail-context',
-			text: `+${plural(lines.length - 3, 'more line')}`,
-		});
-	}
-}
-
 function noteList(
 	el: HTMLElement,
 	paths: string[],
@@ -149,21 +93,6 @@ function noteList(
 	}
 }
 
-function changesLink(el: HTMLElement, opts: ToolDetailOptions): void {
-	const link = el.createEl('a', {
-		cls: 'anti-dian-tool-detail-link',
-		text: 'View in changes',
-		attr: { href: '#' },
-	});
-	link.onclick = (e) => {
-		e.preventDefault();
-		e.stopPropagation();
-		if (!opts.revealChanges()) {
-			link.setText('Changes appear when the reply finishes');
-		}
-	};
-}
-
 function rawData(el: HTMLElement, input: ToolDetailInput): void {
 	const pre = el.createEl('pre', { cls: 'anti-dian-tool-detail-raw' });
 	const payload: Record<string, unknown> = { args: input.args ?? {} };
@@ -181,76 +110,16 @@ function rawData(el: HTMLElement, input: ToolDetailInput): void {
 /* Per-tool summaries                                                  */
 /* ------------------------------------------------------------------ */
 
-/** Detail for a staged edit, from its args (available while still running). */
+/**
+ * Staged edits are reviewed in the change card under the reply, so their rows
+ * show no preview of their own; only a Plan-mode block needs explaining.
+ */
 function mutationDetail(input: ToolDetailInput): Renderer | null {
-	const args = input.args ?? {};
 	const output = isRecord(input.output) ? input.output : undefined;
-
 	if (output?.blockedByPlanMode) {
 		return (el) => meta(el, 'Not staged: Plan mode is read-only.');
 	}
-
-	switch (input.toolName) {
-		case 'replace_block': {
-			const oldText = str(args.oldText);
-			const newText = str(args.newText);
-			if (oldText === undefined || newText === undefined) return null;
-			return (el) => inlineChange(el, oldText, newText);
-		}
-		case 'patch_note': {
-			const content = str(args.content);
-			const heading = str(args.heading);
-			if (content === undefined) return null;
-			return (el) => {
-				if (heading) meta(el, `Replace section #${heading}`);
-				addedPreview(el, content);
-			};
-		}
-		case 'append_note': {
-			const content = str(args.content);
-			const heading = str(args.heading);
-			if (content === undefined) return null;
-			return (el) => {
-				meta(el, heading ? `Append under #${heading}` : 'Append to end of note');
-				addedPreview(el, content);
-			};
-		}
-		case 'create_note': {
-			const content = str(args.content);
-			if (content === undefined) return null;
-			return (el) => {
-				meta(el, `New file · ${plural(lineCount(content), 'line')}`);
-				addedPreview(el, content);
-			};
-		}
-		case 'edit_note': {
-			const content = str(args.content);
-			if (content === undefined) return null;
-			return (el) => meta(el, `Rewrite whole file · ${plural(lineCount(content), 'line')}`);
-		}
-		case 'update_frontmatter': {
-			const set = isRecord(args.set) ? args.set : {};
-			const remove = Array.isArray(args.remove)
-				? args.remove.filter((k): k is string => typeof k === 'string')
-				: [];
-			if (Object.keys(set).length === 0 && remove.length === 0) return null;
-			return (el) => {
-				const box = el.createDiv({ cls: 'anti-dian-tool-detail-props' });
-				for (const [key, value] of Object.entries(set)) {
-					const row = box.createDiv({ cls: 'anti-dian-tool-detail-prop' });
-					row.createSpan({ cls: 'anti-dian-tool-detail-prop-key', text: key });
-					row.createEl('ins', { text: truncate(formatValue(value), PREVIEW_CHARS) });
-				}
-				for (const key of remove) {
-					const row = box.createDiv({ cls: 'anti-dian-tool-detail-prop' });
-					row.createEl('del', { cls: 'anti-dian-tool-detail-prop-key', text: key });
-					row.createSpan({ cls: 'anti-dian-tool-detail-context', text: 'removed' });
-				}
-			};
-		}
-		default:
-			return null;
-	}
+	return null;
 }
 
 /** Detail for read/list tools, from their output (only once finished). */
@@ -390,9 +259,6 @@ export function buildToolDetail(
 			: KNOWN_TOOLS.has(input.toolName)
 				? resultDetail(input, opts)
 				: fallbackDetail(input);
-	const staged =
-		isMutation && isRecord(input.output) && input.output.staged === true;
-
 	if (!input.error && !summary && !opts.showRaw) return null;
 
 	return (el) => {
@@ -400,7 +266,11 @@ export function buildToolDetail(
 			el.createDiv({ cls: 'anti-dian-tool-detail-error', text: input.error });
 		}
 		summary?.(el);
-		if (staged) changesLink(el, opts);
 		if (opts.showRaw) rawData(el, input);
 	};
+}
+
+/** True when a mutating tool call was staged for review in the change card. */
+export function isStagedMutation(toolName: string, output: unknown): boolean {
+	return MUTATING_TOOLS.has(toolName) && isRecord(output) && output.staged === true;
 }

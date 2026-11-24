@@ -67,7 +67,7 @@ Recommended vault workflow:
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
 
 Formatting:
-- Cite vault notes with \`[[Note Name]]\` wikilink syntax.
+- Cite vault notes as plain wikilinks, e.g. [[Note Name]] or [[Note Name#Heading]]. Never put wikilinks inside backticks or code formatting, or they won't be clickable.
 - Keep responses helpful, accurate, and concise.`;
 
 export class Agent {
@@ -244,7 +244,9 @@ export class Agent {
 		const result: ContextReference[] = [];
 
 		for (const ref of refs) {
-			const key = `${ref.path}#${ref.heading ?? ''}`;
+			// The editor selection is its own reference, not a duplicate of the note.
+			const kind = ref.reason === 'Selection' ? '#selection' : '';
+			const key = `${ref.path}#${ref.heading ?? ''}${kind}`;
 			if (!seen.has(key)) {
 				seen.add(key);
 				result.push(ref);

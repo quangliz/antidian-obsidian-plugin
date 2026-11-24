@@ -1,6 +1,16 @@
-import { App, Component, HoverParent, MarkdownRenderer, setIcon } from 'obsidian';
-import { bindNoteLink } from './note-link';
-import { buildToolDetail } from './tool-detail';
+import {
+	App,
+	Component,
+	HoverParent,
+	MarkdownRenderer,
+	Notice,
+	TFile,
+	setIcon,
+	setTooltip,
+} from 'obsidian';
+import type { ContextReference } from '../../core/types/context';
+import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
+import { buildToolDetail, isStagedMutation } from './tool-detail';
 import { AgentStepEvent } from '../../core/agent';
 
 export interface SourceItem {
@@ -52,6 +62,9 @@ const basename = (path: unknown): string | undefined =>
 		? path.replace(/\.md$/, '').split('/').pop() || path
 		: undefined;
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	typeof v === 'object' && v !== null && !Array.isArray(v);
+
 const quoted = (value: unknown): string | undefined =>
 	typeof value === 'string' && value ? `"${value}"` : undefined;
 
@@ -78,6 +91,10 @@ export class ThinkingStateView {
 	private thoughtPhases: ThoughtPhase[] = [];
 	private thoughtAnimationFrame: number | null = null;
 	private thoughtWaiters: (() => void)[] = [];
+	/** Context the turn used without a tool call (active note, selection). */
+	private ambient: { path: string; selection?: string } | null = null;
+	/** Settled header summary; file names are rendered as emphasized spans. */
+	private summaryParts: { text: string; file?: boolean }[] | null = null;
 	/** Steps whose detail panel is open (errors open automatically). */
 	private openStepIds = new Set<string>();
 	private getShowRawToolData: () => boolean;
@@ -341,9 +358,10 @@ export class ThinkingStateView {
 		el.scrollTop = 0;
 		const child = new Component();
 		this.component.addChild(child);
-		void MarkdownRenderer.render(this.app, phase.displayedText, el, '', child).then(
-			() => this.updateClamp(phase),
-		);
+		void MarkdownRenderer.render(this.app, phase.displayedText, el, '', child).then(() => {
+			linkifyCodeWikilinks(this.app, el, '');
+			this.updateClamp(phase);
+		});
 	}
 
 	/** Long finished phases are clamped; clicking toggles the full text. */
@@ -368,26 +386,91 @@ export class ThinkingStateView {
 			Math.round(((this.endTime - this.startTime) / 1000) * 10) / 10,
 		);
 
-		if (this.steps.length > 0) {
-			const searchCount = this.steps.filter((s) => s.kind === 'search').length;
-			const codeCount = this.steps.filter((s) => s.kind === 'code').length;
-
-			if (searchCount > 0 && codeCount === 0) {
-				const totalSources = this.steps.reduce((acc, s) => acc + (s.sources?.length || 0), 0);
-				this.activeStatus = totalSources > 0
-					? `Searched ${totalSources} ${totalSources === 1 ? 'source' : 'sources'} (${durationSec}s)`
-					: `Searched (${durationSec}s)`;
-			} else {
-				const toolCount = this.steps.length;
-				this.activeStatus = `Ran ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'} (${durationSec}s)`;
-			}
-		} else {
-			this.activeStatus = `Thought for ${durationSec}s`;
-		}
+		const parts = this.buildSummary();
+		parts.push({ text: parts.length ? ` (${durationSec}s)` : `Thought for ${durationSec}s` });
+		this.summaryParts = parts;
+		this.activeStatus = parts.map((p) => p.text).join('');
 
 		this.isExpanded = false;
 		this.updateHeader();
 		this.renderSteps();
+	}
+
+	/** Show context the model got without a tool call, at the top of the trace. */
+	public setAmbientContext(refs: ContextReference[]): void {
+		const active = refs.find((r) => r.reason === 'Active note');
+		if (!active) return;
+		const selection = refs.find(
+			(r) => r.reason === 'Selection' && r.path === active.path,
+		);
+		this.ambient = { path: active.path, selection: selection?.snippet };
+		this.renderSteps();
+	}
+
+	/**
+	 * Agent-style summary, e.g. "Read 2 notes, edited roadmap": one clause per
+	 * kind of work, naming the note when there is exactly one.
+	 */
+	private buildSummary(): { text: string; file?: boolean }[] {
+		const pathsOf = (names: string[]) => [
+			...new Set(
+				this.steps
+					.filter((s) => names.includes(s.toolName))
+					.map((s) => (typeof s.args?.path === 'string' ? s.args.path : s.secondary ?? ''))
+					.filter(Boolean),
+			),
+		];
+		const count = (names: string[]) =>
+			this.steps.filter((s) => names.includes(s.toolName)).length;
+
+		const clauses: { text: string; file?: boolean }[][] = [];
+		const fileClause = (verb: string, paths: string[], noun = 'note') => {
+			if (paths.length === 0) return;
+			if (paths.length === 1) {
+				clauses.push([{ text: `${verb} ` }, { text: basename(paths[0]) ?? '', file: true }]);
+			} else {
+				clauses.push([{ text: `${verb} ${paths.length} ${noun}s` }]);
+			}
+		};
+
+		const searches = count(['search_notes']);
+		if (searches) clauses.push([{ text: searches === 1 ? 'searched notes' : `searched notes ${searches} times` }]);
+		const webSearches = count(['web_search', 'search_web']);
+		if (webSearches) clauses.push([{ text: webSearches === 1 ? 'searched the web' : `searched the web ${webSearches} times` }]);
+		if (count(['list_notes'])) clauses.push([{ text: 'listed notes' }]);
+		fileClause('read', pathsOf(['read_note', 'get_note_outline']));
+		fileClause('created', pathsOf(['create_note']));
+		fileClause('edited', pathsOf(['edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter']));
+		const skills = this.steps
+			.filter((s) => s.toolName === 'load_skill' && typeof s.args?.name === 'string')
+			.map((s) => String(s.args?.name));
+		if (skills.length === 1) clauses.push([{ text: 'loaded skill ' }, { text: skills[0] ?? '', file: true }]);
+		else if (skills.length > 1) clauses.push([{ text: `loaded ${skills.length} skills` }]);
+
+		const known = new Set([
+			'search_notes', 'web_search', 'search_web', 'list_notes', 'read_note', 'get_note_outline',
+			'create_note', 'edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter',
+			'load_skill', 'list_skills',
+		]);
+		const other = this.steps.filter((s) => !known.has(s.toolName)).length;
+		if (other) clauses.push([{ text: `ran ${other} ${other === 1 ? 'tool' : 'tools'}` }]);
+
+		const failed = this.steps.filter((s) => s.status === 'error').length;
+		const parts: { text: string; file?: boolean }[] = [];
+		clauses.forEach((clause, i) => {
+			if (i > 0) parts.push({ text: ', ' });
+			parts.push(...clause);
+		});
+		if (failed) parts.push({ text: ` · ${failed} failed` });
+		const first = parts[0];
+		if (first && !first.file) first.text = first.text.charAt(0).toUpperCase() + first.text.slice(1);
+		return parts;
+	}
+
+	/** Resolve a model-supplied path to an existing vault note, if any. */
+	private resolveNote(path: unknown): TFile | null {
+		if (typeof path !== 'string' || !path) return null;
+		return this.app.metadataCache.getFirstLinkpathDest(path.replace(/\.md$/, ''), '');
 	}
 
 	private formatToolStep(
@@ -508,7 +591,14 @@ export class ThinkingStateView {
 			this.sparkleIconEl.addClass('is-settled');
 			this.statusTextEl.removeClass('is-shimmer');
 			this.statusTextEl.addClass('is-settled');
-			this.statusTextEl.setText(this.activeStatus);
+			this.statusTextEl.empty();
+			for (const part of this.summaryParts ?? [{ text: this.activeStatus }]) {
+				if (part.file) {
+					this.statusTextEl.createSpan({ cls: 'anti-dian-thinking-status-file', text: part.text });
+				} else {
+					this.statusTextEl.appendText(part.text);
+				}
+			}
 		} else {
 			this.sparkleIconEl.addClass('is-active');
 			this.sparkleIconEl.removeClass('is-settled');
@@ -523,6 +613,7 @@ export class ThinkingStateView {
 
 	private renderSteps(): void {
 		this.rowsContainerEl.empty();
+		this.renderAmbientRow();
 
 		if (this.steps.length === 0) {
 			this.renderThoughtPhases(0);
@@ -547,7 +638,6 @@ export class ThinkingStateView {
 					app: this.app,
 					hoverParent: this.hoverParent,
 					showRaw: this.getShowRawToolData(),
-					revealChanges: () => this.revealChanges(),
 				},
 			);
 			const isOpen = renderDetail !== null && this.openStepIds.has(step.id);
@@ -574,8 +664,16 @@ export class ThinkingStateView {
 				text: step.primary,
 			});
 
-			// Secondary details (e.g. search query or target file)
-			if (step.secondary) {
+			// Secondary details: target note (as a link) or search query.
+			const targetPath =
+				typeof step.args?.path === 'string'
+					? step.args.path
+					: isRecord(step.output) && typeof step.output.path === 'string'
+						? step.output.path
+						: undefined;
+			if (step.secondary && targetPath && step.mono) {
+				this.renderFileLink(row, targetPath, step.secondary);
+			} else if (step.secondary) {
 				row.createSpan({
 					cls: `anti-dian-thinking-row-secondary ${step.mono ? 'is-mono' : ''}`,
 					text: step.secondary,
@@ -593,6 +691,28 @@ export class ThinkingStateView {
 				if (step.del !== undefined) {
 					diffSpan.createSpan({ cls: 'diff-del', text: ` −${step.del}` });
 				}
+			}
+
+			// Staged edits are reviewed in the change card: jump there instead
+			// of repeating the diff in the trace.
+			if (isStagedMutation(step.toolName, step.output)) {
+				const jump = row.createSpan({
+					cls: 'anti-dian-thinking-row-jump clickable-icon',
+					attr: { role: 'button', tabindex: '0' },
+				});
+				setIcon(jump, 'file-diff');
+				setTooltip(jump, 'View in changes');
+				const reveal = (e: Event) => {
+					e.preventDefault();
+					e.stopPropagation();
+					if (!this.revealChanges()) {
+						new Notice('Changes appear when the reply finishes.');
+					}
+				};
+				jump.onclick = reveal;
+				jump.onkeydown = (e) => {
+					if (e.key === 'Enter' || e.key === ' ') reveal(e);
+				};
 			}
 
 			// Only rows with something to show are expandable.
@@ -678,6 +798,35 @@ export class ThinkingStateView {
 
 		}
 		this.renderThoughtPhases(this.steps.length);
+	}
+
+	private renderAmbientRow(): void {
+		if (!this.ambient) return;
+		const row = this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-row' });
+		const icon = row.createSpan({ cls: 'anti-dian-thinking-row-icon' });
+		setIcon(icon, 'file-text');
+		row.createSpan({ cls: 'anti-dian-thinking-row-primary', text: 'Active note' });
+		this.renderFileLink(row, this.ambient.path, basename(this.ambient.path) ?? this.ambient.path);
+		if (this.ambient.selection) {
+			const sel = row.createSpan({
+				cls: 'anti-dian-thinking-row-tag',
+				text: '+ selection',
+			});
+			setTooltip(sel, this.ambient.selection, { placement: 'top' });
+		}
+	}
+
+	/** File name in a row: an internal link when the note exists, plain text otherwise. */
+	private renderFileLink(row: HTMLElement, path: unknown, label: string): void {
+		const file = this.resolveNote(path);
+		const el = row.createSpan({
+			cls: 'anti-dian-thinking-row-secondary is-mono',
+			text: label,
+		});
+		if (file) {
+			el.addClass('is-link');
+			bindNoteLink(this.app, el, { path: file.path, hoverParent: this.hoverParent });
+		}
 	}
 
 	/** Scroll to this turn's change card (rendered after the reply finishes). */

@@ -100,6 +100,13 @@ export class ContextCompiler {
 				path: activeFile,
 				reason: 'Active note',
 			});
+			if (selection) {
+				contextRefs.push({
+					path: activeFile,
+					reason: 'Selection',
+					snippet: selection.length > 200 ? `${selection.slice(0, 200)}…` : selection,
+				});
+			}
 		}
 
 		this.lastActiveFile = activeFile;

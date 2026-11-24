@@ -10,7 +10,6 @@ import {
 import type AntiDianPlugin from '../../main';
 import {
 	ActiveContext,
-	ContextReference,
 	ContextService,
 } from '../../core/types/context';
 import { Agent, AgentStepEvent } from '../../core/agent';
@@ -22,10 +21,10 @@ import {
 	ModelGroup,
 } from '../../core/models/antigravity-acp';
 import { renderChangeSet } from './changeset-view';
-import { ContextCardsView } from './context-cards-view';
 import { ModelMenuController } from './model-menu-view';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
+import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
 import { ANTI_DIAN_ICON } from '../icon';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
@@ -184,6 +183,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.messagesEl = this.rootEl.createDiv({
 			cls: 'anti-dian-messages',
 		});
+		// Wikilinks in rendered answers and thoughts open notes like in the editor.
+		registerInternalLinkHandlers(this, this.app, this.messagesEl, () => '', this);
 	}
 
 	private renderInputCard(): void {
@@ -352,6 +353,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 						if (!streamingFinished) renderStreamedMarkdown();
 						return;
 					}
+					linkifyCodeWikilinks(this.app, rendered, renderSourcePath);
 					answerEl.replaceChildren(...Array.from(rendered.childNodes));
 					appendStreamCaret();
 					this.scrollToBottom();
@@ -461,9 +463,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 				activeCtx.activeFile ?? '',
 				this,
 			);
+			linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
 
 			if (result.contextUsed && result.contextUsed.length > 0) {
-				this.renderContextUsed(agentMsg, result.contextUsed);
+				thinkingState.setAmbientContext(result.contextUsed);
 			}
 
 			if (result.changeSet && result.changeSet.operations.length > 0) {
@@ -500,13 +503,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.promptBar.setDisabled(false);
 			this.scrollToBottom();
 		}
-	}
-
-	private renderContextUsed(
-		parent: HTMLElement,
-		contextUsed: ContextReference[],
-	): void {
-		new ContextCardsView(parent, this.app, contextUsed);
 	}
 
 	private renderUsageFooter(
