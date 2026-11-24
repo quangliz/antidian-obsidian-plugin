@@ -1114,7 +1114,7 @@ export async function ensureAgyBinary(
  * 1h failure backoff) and installs or stages it as `agy.next` if locked.
  */
 export async function checkAndStageAgyUpdate(
-	options: EnsureAgyBinaryOptions = {},
+	options: EnsureAgyBinaryOptions & { force?: boolean } = {},
 ): Promise<BackgroundUpdateResult> {
 	if (options.customPath?.trim()) {
 		return { status: 'up_to_date' };
@@ -1132,6 +1132,7 @@ export async function checkAndStageAgyUpdate(
 	const sidecar = await readValidBinarySidecar(targetPath);
 
 	if (
+		!options.force &&
 		sidecar?.lastCheckAt !== undefined &&
 		now >= sidecar.lastCheckAt &&
 		now - sidecar.lastCheckAt < MANIFEST_CHECK_TTL_MS
@@ -1140,6 +1141,7 @@ export async function checkAndStageAgyUpdate(
 	}
 
 	if (
+		!options.force &&
 		sidecar?.lastDownloadFailureAt !== undefined &&
 		now >= sidecar.lastDownloadFailureAt &&
 		now - sidecar.lastDownloadFailureAt < DOWNLOAD_FAILURE_BACKOFF_MS
