@@ -76,9 +76,9 @@ Key invariants:
 - Vault operations MUST go through the `anti-dian-vault` MCP tools; the model must never bypass Obsidian via raw CLI filesystem/shell tools.
 - `McpToolServer` binds per-turn `ToolContext` (active context, `permissionMode`, read mtimes, context recording) and enforces Plan Mode by rejecting mutating tools (`tool.mutates === true`).
 - Three permission modes are supported (`src/settings.ts`):
-  - `ask` (default): free reads; writes are staged for diff inspection and explicit approval.
+  - `ask` (default): free reads; each write tool call pauses for per-call approval (diff + Approve/Reject on its tool row) before the tool returns, so the model learns the outcome immediately.
   - `plan`: read-only; mutating tools are blocked at the MCP boundary.
-  - `auto`: valid staged ChangeSets are auto-applied after validation, still capturing before-state snapshots for rollback.
+  - `auto`: each valid write is applied as soon as its tool call stages it, still capturing a before-state snapshot for per-call undo.
 
 ## Obsidian Layer
 `src/obsidian/` may use the Obsidian SDK.
@@ -111,7 +111,7 @@ Implemented foundation:
 - Active note + selection tracking (`ObsidianWorkspaceAdapter` + `ObsidianEditorAdapter`)
 - `ContextCompiler` with session-level skill injection, Plan Mode notice, and deduplicated active note outline + selection
 - 12 MCP tools: `list_notes`, `get_note_outline`, `search_notes`, `read_note`, `create_note`, `patch_note`, `replace_block`, `append_note`, `update_frontmatter`, `edit_note`, `list_skills`, `load_skill`
-- Transactional mutation pipeline: `ChangeStagingManager` → `StagedVaultOverlay` (read-your-own-writes within a turn) → `ChangeSetValidator` → `ChangeSetDiffGenerator` → diff UI & approval → `ChangeSetApplicator` (with before-state snapshot & rollback)
+- Transactional mutation pipeline: `ChangeStagingManager` → `StagedVaultOverlay` (read-your-own-writes within a turn) → `ChangeSetValidator` → `ChangeSetDiffGenerator` → per-call review in `MutationGate` (approve/reject in the tool trace) → `ChangeSetApplicator` (with before-state snapshot & per-call undo)
 - Vault Skills loaded from `.anti-dian/skills/`
 
 Next priorities:
@@ -162,9 +162,13 @@ tool request
 → overlay reads within turn (StagedVaultOverlay)
 → validate (ChangeSetValidator: path boundary, stale mtime, conflicts, target checks)
 → diff (ChangeSetDiffGenerator)
-→ approve (in `ask` mode; auto-applied if valid in `auto` mode; blocked in `plan` mode)
-→ capture snapshot & apply (ChangeSetApplicator + ObsidianVaultAdapter)
-→ rollback via snapshot when requested
+→ per-call review (MutationGate, invoked by McpToolServer via ToolContext.reviewMutation):
+    ask  → the tool call waits for Approve / Reject on its row in the thinking trace
+    auto → approved automatically when valid
+    plan → never staged (blocked at the MCP boundary)
+→ capture snapshot & apply that single operation immediately (ChangeSetApplicator + ObsidianVaultAdapter)
+→ tool result tells the model `applied` or `rejectedByUser` (UI-only fields like `_diff` are stripped)
+→ undo per call via snapshot when requested
 ```
 
 Do not silently perform unvalidated or high-impact writes in default (`ask`) mode.

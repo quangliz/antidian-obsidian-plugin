@@ -13,9 +13,9 @@ Anti-dian works with your existing vault without forcing a specific note-taking 
   - Vault skills: `list_skills`, `load_skill`
 - **Staged mutations, diff & rollback**: Write operations are staged into a `ChangeSet`, reflected immediately to subsequent reads within the same turn (`StagedVaultOverlay`), validated for path safety and stale edits, rendered as a diff, and backed by before-state snapshots for rollback.
 - **Permission modes**:
-  - `Ask` (default): Free reads; writes require review and approval.
+  - `Ask` (default): Free reads; each write pauses for your approval when the agent makes it (diff + Approve/Reject on the tool row), and the agent continues with the outcome.
   - `Plan`: Read-only analysis; write tools are blocked at the MCP layer.
-  - `Auto`: Valid staged mutations are auto-applied (snapshots are still captured for rollback).
+  - `Auto`: Each valid write is applied as soon as the agent makes it (snapshots are still captured, so every change can be undone).
 - **Vault Skills**: Add reusable Markdown workflows in `.anti-dian/skills/` without modifying plugin code.
 
 ## Requirements
