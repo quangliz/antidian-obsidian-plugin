@@ -26,6 +26,7 @@ import {
 } from '../../core/models/antigravity-acp';
 import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
+import logoUrl from '../../../assets/logo-hero.png';
 import { UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
 import { loadAgyTranscriptTurns } from '../../core/sessions/transcript';
@@ -56,6 +57,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private activeThinking: ThinkingStateView | null = null;
 
 	private rootEl: HTMLElement | null = null;
+	private heroTitleEl: HTMLElement | null = null;
 	private topNavEl: HTMLElement | null = null;
 	private centerContainerEl: HTMLElement | null = null;
 	private messagesEl: HTMLElement | null = null;
@@ -366,7 +368,27 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.messagesEl?.empty();
 	}
 
+	/** Pick a fresh empty-state greeting (time-of-day aware). */
+	private refreshGreeting(): void {
+		if (!this.heroTitleEl) return;
+		const hour = new Date().getHours();
+		const timed =
+			hour < 5 ? 'Late night thoughts?'
+			: hour < 12 ? 'Good morning. What\'s on your mind?'
+			: hour < 18 ? 'Good afternoon. What are we noting?'
+			: 'Good evening. Anything to capture?';
+		const greetings = [
+			timed,
+			'What\'s worth writing down?',
+			'Capture a thought, grow a note.',
+			'What are you thinking about?',
+			'Let\'s turn ideas into notes.',
+		];
+		this.heroTitleEl.setText(greetings[Math.floor(Math.random() * greetings.length)] ?? timed);
+	}
+
 	private resetEmptyState(): void {
+		this.refreshGreeting();
 		this.clearMessages();
 		if (this.rootEl) {
 			this.rootEl.removeClass('has-chat');
@@ -402,6 +424,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.centerContainerEl = this.rootEl.createDiv({
 			cls: 'anti-dian-center-card-container',
 		});
+
+		// Empty-state hero above the prompt bar (hidden once a chat starts).
+		const heroEl = this.centerContainerEl.createDiv({ cls: 'anti-dian-empty-hero' });
+		heroEl.createEl('img', {
+			cls: 'anti-dian-empty-logo',
+			attr: { src: logoUrl, alt: '', draggable: 'false' },
+		});
+		this.heroTitleEl = heroEl.createDiv({ cls: 'anti-dian-empty-title' });
+		this.refreshGreeting();
 
 		this.promptBar = new PromptBarView(
 			this.centerContainerEl,

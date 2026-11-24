@@ -356,12 +356,61 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 .anti-dian-sidebar-container.is-empty-session .anti-dian-center-card-container {
+	container-type: inline-size;
 	flex: 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	width: 100%;
+}
+
+.anti-dian-empty-hero {
+	display: none;
+}
+
+.anti-dian-sidebar-container.is-empty-session .anti-dian-empty-hero {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 18px;
+	margin-bottom: 28px;
+	user-select: none;
+	animation: anti-dian-hero-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-empty-logo {
+	width: 112px;
+	height: auto;
+	pointer-events: none;
+}
+
+.anti-dian-empty-title {
+	font-size: 22px;
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+	text-align: center;
+}
+
+@container (max-width: 300px) {
+	.anti-dian-empty-logo {
+		width: 72px;
+	}
+
+	.anti-dian-empty-title {
+		font-size: 18px;
+	}
+}
+
+@keyframes anti-dian-hero-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .anti-dian-sidebar-container.has-chat .anti-dian-messages {
