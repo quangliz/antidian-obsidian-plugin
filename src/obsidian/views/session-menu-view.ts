@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { Menu, setIcon, setTooltip } from 'obsidian';
 import type { AcpSessionSummary } from '../../core/models/antigravity-acp';
 import {
 	MatchRange,
@@ -18,8 +18,11 @@ export interface SessionMenuOptions {
 	listSessions: () => Promise<AcpSessionSummary[]>;
 	getCurrentSessionId: () => string | null;
 	getSessionForks?: () => Record<string, SessionForkRelation>;
+	getSessionTitles?: () => Record<string, string>;
 	onSelectSession: (session: AcpSessionSummary) => void;
 	onNewSession: () => void;
+	onRenameSession?: (sessionId: string, newTitle: string) => void | Promise<void>;
+	onDeleteSession?: (sessionId: string) => void | Promise<void>;
 }
 
 export interface SessionDrawerOpenOptions {
@@ -52,6 +55,8 @@ export class SessionMenuController {
 	private loadToken = 0;
 	private showAll = false;
 	private collapsedParents = new Set<string>();
+	private editingSessionId: string | null = null;
+	private confirmDeleteSessionId: string | null = null;
 	private triggerEl: HTMLElement | null = null;
 
 	constructor(
@@ -159,6 +164,8 @@ export class SessionMenuController {
 		this.searchEl = null;
 		this.items = [];
 		this.activeIndex = -1;
+		this.editingSessionId = null;
+		this.confirmDeleteSessionId = null;
 		if (this.triggerEl) {
 			this.triggerEl.setAttribute('aria-expanded', 'false');
 			this.triggerEl.removeClass('is-active');
@@ -220,11 +227,12 @@ export class SessionMenuController {
 		const query = this.searchEl?.value.trim() ?? '';
 		const all = this.sessions ?? [];
 		const forks = this.options.getSessionForks?.() ?? {};
+		const customTitles = this.options.getSessionTitles?.() ?? {};
 		const currentId = this.options.getCurrentSessionId();
 
 		const searchable = all.map((s) => ({
 			...s,
-			title: formatForkedTitle(s, forks[s.sessionId]),
+			title: formatForkedTitle(s, forks[s.sessionId], customTitles[s.sessionId]),
 		}));
 		const hits = searchSessions(searchable, query);
 
@@ -254,7 +262,7 @@ export class SessionMenuController {
 				});
 			}
 		} else {
-			const roots = buildSessionTree(all, forks);
+			const roots = buildSessionTree(all, forks, customTitles);
 			totalCount = roots.length;
 			collapsed = !this.showAll && roots.length > COLLAPSED_SESSION_COUNT;
 			const visibleRoots = collapsed
@@ -339,36 +347,190 @@ export class SessionMenuController {
 			});
 		}
 
-		const titleWrap = row.createSpan({ cls: 'anti-dian-session-item-main' });
-		const titleEl = titleWrap.createSpan({
-			cls: 'anti-dian-session-item-title',
-			attr: { title: opts.displayTitle },
-		});
-		this.renderHighlighted(titleEl, opts.displayTitle, opts.ranges);
+		const sessionId = opts.session.sessionId;
+		const isEditing = this.editingSessionId === sessionId;
+		const isConfirmingDelete = this.confirmDeleteSessionId === sessionId;
+		if (isEditing) row.addClass('is-editing');
+		if (isConfirmingDelete) row.addClass('is-confirming-delete');
 
-		if (opts.hasChildren) {
-			const toggleBtn = titleWrap.createEl('button', {
-				cls: 'anti-dian-session-chevron',
-				attr: {
-					type: 'button',
-					'aria-label': opts.isExpanded ? 'Collapse forks' : 'Expand forks',
-					'aria-expanded': String(opts.isExpanded),
-				},
+		const titleWrap = row.createSpan({ cls: 'anti-dian-session-item-main' });
+		if (isEditing) {
+			const input = titleWrap.createEl('input', {
+				type: 'text',
+				cls: 'anti-dian-session-rename-input',
+				value: opts.displayTitle,
+				attr: { 'aria-label': 'Rename conversation', spellcheck: 'false' },
 			});
-			setIcon(toggleBtn, opts.isExpanded ? 'chevron-down' : 'chevron-right');
-			toggleBtn.addEventListener('click', (e) => {
-				e.stopPropagation();
-				const id = opts.session.sessionId;
-				if (this.collapsedParents.has(id)) this.collapsedParents.delete(id);
-				else this.collapsedParents.add(id);
+			let settled = false;
+			const commit = () => {
+				if (settled) return;
+				settled = true;
+				const next = input.value.trim();
+				this.editingSessionId = null;
+				if (next && next !== opts.displayTitle) {
+					void this.options.onRenameSession?.(sessionId, next);
+				}
 				this.renderList();
+			};
+			const cancel = () => {
+				if (settled) return;
+				settled = true;
+				this.editingSessionId = null;
+				this.renderList();
+			};
+			input.addEventListener('click', (e) => e.stopPropagation());
+			input.addEventListener('keydown', (e) => {
+				e.stopPropagation();
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					commit();
+				} else if (e.key === 'Escape') {
+					e.preventDefault();
+					cancel();
+				}
 			});
+			input.addEventListener('blur', () => commit());
+			window.setTimeout(() => {
+				input.focus();
+				input.select();
+			}, 0);
+		} else {
+			const titleEl = titleWrap.createSpan({
+				cls: 'anti-dian-session-item-title',
+				attr: { title: opts.displayTitle },
+			});
+			this.renderHighlighted(titleEl, opts.displayTitle, opts.ranges);
+
+			if (opts.hasChildren) {
+				const toggleBtn = titleWrap.createEl('button', {
+					cls: 'anti-dian-session-chevron',
+					attr: {
+						type: 'button',
+						'aria-label': opts.isExpanded ? 'Collapse forks' : 'Expand forks',
+						'aria-expanded': String(opts.isExpanded),
+					},
+				});
+				setIcon(toggleBtn, opts.isExpanded ? 'chevron-down' : 'chevron-right');
+				toggleBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					if (this.collapsedParents.has(sessionId)) {
+						this.collapsedParents.delete(sessionId);
+					} else {
+						this.collapsedParents.add(sessionId);
+					}
+					this.renderList();
+				});
+			}
 		}
 
-		row.createSpan({
-			cls: 'anti-dian-session-item-time',
-			text: formatRelativeTime(opts.session.updatedAt),
-		});
+		const canRename = Boolean(this.options.onRenameSession);
+		const canDelete = Boolean(this.options.onDeleteSession);
+
+		if (!isEditing) {
+			if (isConfirmingDelete && canDelete) {
+				const actions = row.createSpan({
+					cls: 'anti-dian-session-actions is-visible',
+				});
+				const confirmBtn = actions.createEl('button', {
+					cls: 'anti-dian-session-action-btn is-danger',
+					attr: { type: 'button', 'aria-label': 'Confirm delete' },
+				});
+				setIcon(confirmBtn, 'check');
+				setTooltip(confirmBtn, 'Confirm delete');
+				confirmBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.confirmDeleteSessionId = null;
+					this.sessions = (this.sessions ?? []).filter(
+						(s) => s.sessionId !== sessionId,
+					);
+					void this.options.onDeleteSession?.(sessionId);
+					this.renderList();
+				});
+
+				const cancelBtn = actions.createEl('button', {
+					cls: 'anti-dian-session-action-btn',
+					attr: { type: 'button', 'aria-label': 'Cancel delete' },
+				});
+				setIcon(cancelBtn, 'x');
+				setTooltip(cancelBtn, 'Cancel');
+				cancelBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.confirmDeleteSessionId = null;
+					this.renderList();
+				});
+			} else {
+				row.createSpan({
+					cls: 'anti-dian-session-item-time',
+					text: formatRelativeTime(opts.session.updatedAt),
+				});
+
+				if (canRename || canDelete) {
+					const actions = row.createSpan({ cls: 'anti-dian-session-actions' });
+					if (canRename) {
+						const renameBtn = actions.createEl('button', {
+							cls: 'anti-dian-session-action-btn',
+							attr: { type: 'button', 'aria-label': 'Rename conversation' },
+						});
+						setIcon(renameBtn, 'pencil');
+						setTooltip(renameBtn, 'Rename');
+						renameBtn.addEventListener('click', (e) => {
+							e.stopPropagation();
+							this.confirmDeleteSessionId = null;
+							this.editingSessionId = sessionId;
+							this.renderList();
+						});
+					}
+					if (canDelete) {
+						const deleteBtn = actions.createEl('button', {
+							cls: 'anti-dian-session-action-btn is-danger-hover',
+							attr: { type: 'button', 'aria-label': 'Delete conversation' },
+						});
+						setIcon(deleteBtn, 'trash-2');
+						setTooltip(deleteBtn, 'Delete');
+						deleteBtn.addEventListener('click', (e) => {
+							e.stopPropagation();
+							this.editingSessionId = null;
+							this.confirmDeleteSessionId = sessionId;
+							this.renderList();
+						});
+					}
+				}
+			}
+
+			if (canRename || canDelete) {
+				row.addEventListener('contextmenu', (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const menu = new Menu();
+					if (canRename) {
+						menu.addItem((item) =>
+							item
+								.setTitle('Rename')
+								.setIcon('pencil')
+								.onClick(() => {
+									this.confirmDeleteSessionId = null;
+									this.editingSessionId = sessionId;
+									this.renderList();
+								}),
+						);
+					}
+					if (canDelete) {
+						menu.addItem((item) =>
+							item
+								.setTitle('Delete')
+								.setIcon('trash-2')
+								.onClick(() => {
+									this.editingSessionId = null;
+									this.confirmDeleteSessionId = sessionId;
+									this.renderList();
+								}),
+						);
+					}
+					menu.showAtMouseEvent(e);
+				});
+			}
+		}
+
 		this.bindItem({ kind: 'session', el: row, session: opts.session });
 	}
 
@@ -412,12 +574,27 @@ export class SessionMenuController {
 	}
 
 	private choose(item: DrawerItem): void {
+		if (
+			item.kind === 'session' &&
+			(this.editingSessionId === item.session.sessionId ||
+				this.confirmDeleteSessionId === item.session.sessionId)
+		) {
+			return;
+		}
 		this.close();
 		if (item.kind === 'new') this.options.onNewSession();
 		else this.options.onSelectSession(item.session);
 	}
 
 	private onKeyDown(e: KeyboardEvent): void {
+		if (this.editingSessionId) return;
+		if (e.key === 'Escape' && this.confirmDeleteSessionId) {
+			e.preventDefault();
+			e.stopPropagation();
+			this.confirmDeleteSessionId = null;
+			this.renderList();
+			return;
+		}
 		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
 			e.preventDefault();
 			if (this.items.length === 0) return;

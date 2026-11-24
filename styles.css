@@ -290,7 +290,11 @@ button.anti-dian-session-drawer-close:hover {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 6px 8px 6px 30px;
+	/* Fixed height: swapping the time for the hover actions (22px buttons) or the
+	   rename input (24px) must not resize the row. */
+	height: 32px;
+	box-sizing: border-box;
+	padding: 0 8px 0 30px;
 	border-radius: 6px;
 	cursor: pointer;
 	font-size: var(--font-ui-small);
@@ -2741,4 +2745,67 @@ button.anti-dian-msg-action-btn.is-copied {
 .anti-dian-session-list button.anti-dian-session-chevron svg {
 	width: 14px;
 	height: 14px;
+}
+
+/* ── Session Row Actions (Rename / Delete) ────────────────────────────────── */
+
+.anti-dian-session-actions {
+	display: none;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.anti-dian-session-actions.is-visible,
+.anti-dian-session-item:hover .anti-dian-session-actions,
+.anti-dian-session-item.is-highlighted .anti-dian-session-actions {
+	display: inline-flex;
+}
+
+.anti-dian-session-item:hover .anti-dian-session-item-time,
+.anti-dian-session-item.is-highlighted .anti-dian-session-item-time {
+	display: none;
+}
+
+.anti-dian-session-list button.anti-dian-session-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.anti-dian-session-list button.anti-dian-session-action-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.anti-dian-session-list button.anti-dian-session-action-btn.is-danger,
+.anti-dian-session-list button.anti-dian-session-action-btn.is-danger-hover:hover {
+	color: var(--text-error);
+}
+
+.anti-dian-session-list button.anti-dian-session-action-btn svg {
+	width: 13px;
+	height: 13px;
+}
+
+.anti-dian-session-rename-input {
+	width: 100%;
+	height: 24px;
+	padding: 2px 6px;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 1px solid var(--interactive-accent);
+	border-radius: 4px;
+	outline: none;
 }

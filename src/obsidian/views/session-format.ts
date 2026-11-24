@@ -352,7 +352,10 @@ export interface SessionTreeNode<T extends SessionLike> {
 export function formatForkedTitle(
 	session: SessionLike,
 	fork?: SessionForkRelation,
+	customTitle?: string,
 ): string {
+	const custom = customTitle?.trim();
+	if (custom) return custom;
 	const raw = session.title?.trim();
 	if (!fork) return raw || UNTITLED_SESSION;
 	if (!raw || raw === UNTITLED_SESSION) {
@@ -368,13 +371,18 @@ export function formatForkedTitle(
 export function buildSessionTree<T extends SessionLike>(
 	sessions: T[],
 	forks: Record<string, SessionForkRelation> = {},
+	customTitles: Record<string, string> = {},
 ): SessionTreeNode<T>[] {
 	const nodes = new Map<string, SessionTreeNode<T>>();
 	for (const session of sessions) {
 		const fork = forks[session.sessionId];
 		nodes.set(session.sessionId, {
 			session,
-			displayTitle: formatForkedTitle(session, fork),
+			displayTitle: formatForkedTitle(
+				session,
+				fork,
+				customTitles[session.sessionId],
+			),
 			children: [],
 		});
 	}

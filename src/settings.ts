@@ -39,6 +39,10 @@ export interface AntiDianSettings {
 		string,
 		{ parentId: string; title?: string; parentTurnCount?: number }
 	>;
+	/** Custom user-assigned conversation titles keyed by session ID. */
+	sessionTitles?: Record<string, string>;
+	/** Session IDs deleted by the user (filtered from the conversation list). */
+	deletedSessions?: string[];
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {

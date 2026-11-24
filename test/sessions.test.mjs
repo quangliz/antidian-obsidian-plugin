@@ -598,3 +598,50 @@ test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for 
 	assert.equal(replayed[0].text, 'child follow-up');
 	assert.equal(replayed[1].text, 'child answer');
 });
+
+test('custom session titles override default/fork titles and deleteAgySessionData cleans up safely', async () => {
+	const { buildSessionTree } = await import(
+		'../src/obsidian/views/session-format.ts'
+	);
+	const { deleteAgySessionData } = await import(
+		'../src/core/sessions/transcript.ts'
+	);
+
+	const sessions = [
+		{ sessionId: 'c1', title: 'Parent', updatedAt: '2026-11-24T12:05:00Z' },
+		{ sessionId: 'p1', title: 'Parent', updatedAt: '2026-11-24T12:00:00Z' },
+	];
+	const tree = buildSessionTree(
+		sessions,
+		{ c1: { parentId: 'p1' } },
+		{ p1: 'Custom Parent', c1: 'Renamed Branch' },
+	);
+	assert.equal(tree[0].displayTitle, 'Custom Parent');
+	assert.equal(tree[0].children[0].displayTitle, 'Renamed Branch');
+
+	const fs = await import('node:fs');
+	const os = await import('node:os');
+	const path = await import('node:path');
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-del-'));
+	try {
+		const base = path.join(tmpHome, '.gemini', 'antigravity-anti-dian');
+		const brainDir = path.join(base, 'brain', 'sess-del-1');
+		const convDir = path.join(base, 'conversations');
+		fs.mkdirSync(brainDir, { recursive: true });
+		fs.mkdirSync(convDir, { recursive: true });
+		fs.writeFileSync(path.join(brainDir, 'file.txt'), 'x');
+		fs.writeFileSync(path.join(convDir, 'sess-del-1.db'), 'db');
+		fs.writeFileSync(path.join(convDir, 'keep.db'), 'keep');
+
+		// Path traversal must be ignored
+		await deleteAgySessionData('../evil', 'antigravity-anti-dian', tmpHome);
+		assert.equal(fs.existsSync(path.join(convDir, 'keep.db')), true);
+
+		await deleteAgySessionData('sess-del-1', 'antigravity-anti-dian', tmpHome);
+		assert.equal(fs.existsSync(brainDir), false);
+		assert.equal(fs.existsSync(path.join(convDir, 'sess-del-1.db')), false);
+		assert.equal(fs.existsSync(path.join(convDir, 'keep.db')), true);
+	} finally {
+		fs.rmSync(tmpHome, { recursive: true, force: true });
+	}
+});

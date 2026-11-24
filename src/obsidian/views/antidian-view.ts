@@ -31,6 +31,7 @@ import logoUrl from '../../../assets/logo-hero.png';
 import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
 import {
+	deleteAgySessionData,
 	forkedTurnsToReplayedMessages,
 	loadAgyTranscriptTurns,
 	storedTurnsToReplayedMessages,
@@ -178,7 +179,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 			if (
 				this.sessionMenu?.isOpen() &&
 				!target.closest('.anti-dian-session-drawer-panel') &&
-				!target.closest('.anti-dian-session-trigger')
+				!target.closest('.anti-dian-session-trigger') &&
+				!target.closest('.menu')
 			) {
 				this.sessionMenu.close();
 			}
@@ -217,12 +219,22 @@ export class AntiDianView extends ItemView implements HoverParent {
 		const vaultName = this.app.vault.getName() || 'anti-dian';
 		this.sessionMenu = new SessionMenuController(this.rootEl, {
 			getVaultName: () => vaultName,
-			listSessions: () => this.agent.listSessions(),
+			listSessions: async () => {
+				const deleted = new Set(this.plugin.settings.deletedSessions ?? []);
+				const sessions = await this.agent.listSessions();
+				return deleted.size > 0
+					? sessions.filter((s) => !deleted.has(s.sessionId))
+					: sessions;
+			},
 			getCurrentSessionId: () =>
 				this.plugin.antigravityProvider.getSessionId(),
 			getSessionForks: () => this.plugin.settings.sessionForks ?? {},
+			getSessionTitles: () => this.plugin.settings.sessionTitles ?? {},
 			onSelectSession: (session) => void this.switchSession(session),
 			onNewSession: () => this.startNewSession(),
+			onRenameSession: (sessionId, newTitle) =>
+				this.renameSession(sessionId, newTitle),
+			onDeleteSession: (sessionId) => void this.deleteSession(sessionId),
 		});
 
 		const leftGroup = this.topNavEl.createDiv({ cls: 'anti-dian-nav-left' });
@@ -264,16 +276,62 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private updateSessionTitle(): void {
 		if (!this.sessionTitleEl) return;
 		const provider = this.plugin.antigravityProvider;
+		const currentId = provider.getSessionId();
+		const customTitle = currentId
+			? this.plugin.settings.sessionTitles?.[currentId]?.trim()
+			: undefined;
 		const title = this.loadingSession
-			? (this.loadingSession.title ?? UNTITLED_SESSION)
-			: (provider.getSessionTitle() ??
+			? (this.plugin.settings.sessionTitles?.[this.loadingSession.sessionId]?.trim() ||
+				this.loadingSession.title ||
+				UNTITLED_SESSION)
+			: (customTitle ??
+				provider.getSessionTitle() ??
 				this.resumedTitle ??
-				(provider.getSessionId() && this.history.length > 0
+				(currentId && this.history.length > 0
 					? UNTITLED_SESSION
 					: 'New chat'));
 		this.sessionTitleEl.setText(title);
 		this.sessionTitleEl.setAttribute('title', title);
 		this.sessionTitleEl.toggleClass('is-loading', !!this.loadingSession);
+	}
+
+	private renameSession(sessionId: string, newTitle: string): void {
+		const trimmed = newTitle.trim();
+		if (!trimmed) return;
+		const titles = { ...(this.plugin.settings.sessionTitles ?? {}) };
+		titles[sessionId] = trimmed;
+		this.plugin.settings.sessionTitles = titles;
+		void this.plugin.saveData(this.plugin.settings);
+
+		if (this.plugin.antigravityProvider.getSessionId() === sessionId) {
+			this.resumedTitle = trimmed;
+			this.updateSessionTitle();
+		}
+	}
+
+	private async deleteSession(sessionId: string): Promise<void> {
+		const deleted = new Set(this.plugin.settings.deletedSessions ?? []);
+		deleted.add(sessionId);
+		this.plugin.settings.deletedSessions = [...deleted];
+
+		if (this.plugin.settings.sessionTitles?.[sessionId]) {
+			const titles = { ...this.plugin.settings.sessionTitles };
+			delete titles[sessionId];
+			this.plugin.settings.sessionTitles = titles;
+		}
+		if (this.plugin.settings.sessionForks?.[sessionId]) {
+			const forks = { ...this.plugin.settings.sessionForks };
+			delete forks[sessionId];
+			this.plugin.settings.sessionForks = forks;
+		}
+
+		await this.plugin.saveData(this.plugin.settings);
+		void deleteAgySessionData(sessionId);
+
+		if (this.plugin.antigravityProvider.getSessionId() === sessionId) {
+			this.startNewSession();
+		}
+		new Notice('Conversation deleted.');
 	}
 
 	private async switchSession(session: AcpSessionSummary): Promise<void> {
@@ -317,9 +375,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.history = [];
 			this.resetSessionStats();
 			const fork = this.plugin.settings.sessionForks?.[session.sessionId];
-			this.resumedTitle = fork
-				? formatForkedTitle(session, fork)
-				: (session.title ?? null);
+			const customTitle =
+				this.plugin.settings.sessionTitles?.[session.sessionId];
+			this.resumedTitle =
+				customTitle?.trim() ||
+				(fork ? formatForkedTitle(session, fork) : (session.title ?? null));
 			await this.renderReplayedHistory([...prefixMessages, ...childMessages], {
 				forkDividerAt: prefixMessages.length > 0 ? prefixMessages.length : undefined,
 			});
