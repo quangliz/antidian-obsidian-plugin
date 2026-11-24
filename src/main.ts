@@ -39,6 +39,7 @@ import {
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
 import { ANTI_DIAN_HOVER_SOURCE } from './obsidian/views/note-link';
+import { ANTI_DIAN_ICON, registerAntiDianIcon } from './obsidian/icon';
 
 export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
@@ -119,6 +120,7 @@ export default class AntiDianPlugin extends Plugin {
 			contextCompiler: this.contextCompiler,
 		});
 
+		registerAntiDianIcon();
 		this.registerView(
 			ANTI_DIAN_VIEW_TYPE,
 			(leaf: WorkspaceLeaf) => new AntiDianView(leaf, this),
@@ -128,7 +130,7 @@ export default class AntiDianPlugin extends Plugin {
 			defaultMod: true,
 		});
 
-		this.addRibbonIcon('bot', 'Open anti-dian', () => {
+		this.addRibbonIcon(ANTI_DIAN_ICON, 'Open anti-dian', () => {
 			void this.activateView();
 		});
 

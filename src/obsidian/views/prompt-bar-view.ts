@@ -40,15 +40,15 @@ const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string }[]
 	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically' },
 ];
 
-/* Obsidian crystal gemstone color palette matching assets/logo.png */
+/* Violet palette sampled from assets/logo.png */
 const OBSIDIAN_CRYSTAL_STOPS = [
-	'rgba(45, 27, 206, 0.85)',   // Deep Electric Indigo
-	'rgba(90, 40, 235, 0.9)',    // Royal Violet
-	'rgba(139, 69, 254, 0.95)',  // Obsidian Purple Accent
-	'rgba(225, 160, 255, 1.0)',  // Glowing Amethyst Highlight
-	'rgba(185, 115, 255, 0.98)', // Crystal Lilac
-	'rgba(139, 69, 254, 0.95)',  // Obsidian Purple Accent
-	'rgba(45, 27, 206, 0.85)',   // Deep Electric Indigo
+	'rgba(69, 27, 158, 0.85)',   // Inner fold shadow
+	'rgba(98, 46, 211, 0.9)',    // Deep left leg
+	'rgba(139, 76, 245, 0.95)',  // Right face
+	'rgba(216, 193, 250, 1.0)',  // Light center highlight
+	'rgba(185, 145, 252, 0.98)', // Lavender crown
+	'rgba(139, 76, 245, 0.95)',  // Right face
+	'rgba(69, 27, 158, 0.85)',   // Inner fold shadow
 ];
 
 const DEFAULT_SLASH_COMMANDS: AutocompleteItem[] = [

@@ -26,6 +26,7 @@ import { ContextCardsView } from './context-cards-view';
 import { ModelMenuController } from './model-menu-view';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
+import { ANTI_DIAN_ICON } from '../icon';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
@@ -92,7 +93,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	getIcon(): string {
-		return 'bot';
+		return ANTI_DIAN_ICON;
 	}
 
 	async onOpen(): Promise<void> {
