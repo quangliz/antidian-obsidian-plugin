@@ -12,6 +12,8 @@
  * blocks as chips again instead of the raw quote.
  */
 
+import type { PromptChip } from './prompt-chips';
+
 export interface SentSelection {
 	/** Note name without `.md`, when the selection came from a note. */
 	note?: string;
@@ -23,7 +25,7 @@ export interface SentSelection {
 
 export interface ParsedUserMessage {
 	selections: SentSelection[];
-	/** What the user typed, after the selection blocks. */
+	/** What the user typed, after the selection blocks (always a suffix of the text). */
 	body: string;
 }
 
@@ -69,4 +71,69 @@ export function selectionChipLabel(selection: SentSelection): string {
 			? `${selection.startLine}-${selection.endLine}`
 			: `${selection.startLine}`;
 	return `${name}:${range}`;
+}
+
+export interface KnownChipLabels {
+	/** `@` sources, without the `@` (e.g. "Web search"). */
+	sources: string[];
+	/** Slash commands, with the `/` (e.g. "/plan"). */
+	commands: string[];
+	/** Whether a note with this basename exists (for `@note`). */
+	isNote: (name: string) => boolean;
+}
+
+/** Longest note name tried after `@` (names may contain spaces). */
+const MAX_NOTE_NAME_LENGTH = 120;
+
+/**
+ * Chips for a message replayed from history, where the exact chip ranges were
+ * not kept: `@source`, `/command` and `@note` labels that match something
+ * that exists, starting at a word boundary and ending at whitespace or the end.
+ */
+export function detectSentChips(text: string, known: KnownChipLabels): PromptChip[] {
+	const chips: PromptChip[] = [];
+	const endsWord = (end: number) => end === text.length || /\s/.test(text[end] ?? '');
+	let i = 0;
+	while (i < text.length) {
+		const ch = text[i];
+		const atBoundary = i === 0 || /\s/.test(text[i - 1] ?? '');
+		if (!atBoundary || (ch !== '@' && ch !== '/')) {
+			i++;
+			continue;
+		}
+		let chip: PromptChip | undefined;
+		if (ch === '/') {
+			const cmd = known.commands.find(
+				(c) => text.startsWith(c, i) && endsWord(i + c.length),
+			);
+			if (cmd) chip = { start: i, end: i + cmd.length, kind: 'command' };
+		} else {
+			const source = known.sources.find(
+				(s) => text.startsWith(s, i + 1) && endsWord(i + 1 + s.length),
+			);
+			if (source) {
+				chip = { start: i, end: i + 1 + source.length, kind: 'source' };
+			} else {
+				// Longest note name first: try every whitespace boundary on this line.
+				const lineEnd = text.indexOf('\n', i);
+				const rest = text.slice(i + 1, lineEnd === -1 ? text.length : lineEnd);
+				const limit = Math.min(rest.length, MAX_NOTE_NAME_LENGTH);
+				for (let end = limit; end > 0; end--) {
+					if (end < rest.length && !/\s/.test(rest[end] ?? '')) continue;
+					const name = rest.slice(0, end);
+					if (name.trim() === name && known.isNote(name)) {
+						chip = { start: i, end: i + 1 + end, kind: 'file' };
+						break;
+					}
+				}
+			}
+		}
+		if (chip) {
+			chips.push(chip);
+			i = chip.end;
+		} else {
+			i++;
+		}
+	}
+	return chips;
 }

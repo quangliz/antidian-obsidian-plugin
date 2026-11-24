@@ -27,7 +27,13 @@ import {
 import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
 import { StreamRenderLoop } from './stream-render-loop';
-import { parseUserMessage, selectionChipLabel, type SentSelection } from './user-message-format';
+import {
+	detectSentChips,
+	parseUserMessage,
+	selectionChipLabel,
+	type SentSelection,
+} from './user-message-format';
+import { segmentPrompt, type PromptChip } from './prompt-chips';
 import logoUrl from '../../../assets/logo-hero.png';
 import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
@@ -642,7 +648,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.app,
 			this.plugin,
 			{
-				onSend: (text, media) => this.handleSend(text, media),
+				onSend: (text, media, chips) => this.handleSend(text, media, chips),
 				onCancel: () => this.handleCancel(),
 				onOpenModelMenu: (anchorEl) =>
 					this.modelMenuController.toggleMenu(anchorEl),
@@ -727,6 +733,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private async handleSend(
 		text: string,
 		mediaToSend: MediaInput[],
+		chips: PromptChip[] = [],
 	): Promise<void> {
 		if (!this.messagesEl || this.isRunning) {
 			return;
@@ -771,7 +778,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 
 		if (text) {
-			this.renderUserMessageBody(userMsg, text);
+			this.renderUserMessageBody(userMsg, text, chips);
 		}
 
 		this.renderUserMetaRow(turnRecord.userGroupEl, {
@@ -1103,14 +1110,49 @@ export class AntiDianView extends ItemView implements HoverParent {
 		});
 	}
 
-	/** Typed text, with attached selections shown as chips above it. */
-	private renderUserMessageBody(userMsg: HTMLElement, text: string): void {
+	/**
+	 * Typed text with its @note / @source / /command chips, and attached
+	 * selections as chips above it. `chips` (ranges of `text`) come from the
+	 * prompt bar for a live send; replayed messages detect known labels instead.
+	 */
+	private renderUserMessageBody(
+		userMsg: HTMLElement,
+		text: string,
+		chips?: PromptChip[],
+	): void {
 		const { selections, body } = parseUserMessage(text);
 		if (selections.length > 0) {
 			const row = userMsg.createDiv({ cls: 'anti-dian-user-chip-row' });
 			for (const selection of selections) this.renderSentSelectionChip(row, selection);
 		}
-		if (body.trim()) userMsg.createEl('p', { text: body });
+		if (!body.trim()) return;
+		const bodyStart = text.length - body.length;
+		const bodyChips = chips
+			? chips
+					.filter((c) => c.start >= bodyStart)
+					.map((c) => ({ ...c, start: c.start - bodyStart, end: c.end - bodyStart }))
+			: detectSentChips(body, {
+					...this.promptBar.getKnownChipLabels(),
+					isNote: (name) => this.app.metadataCache.getFirstLinkpathDest(name, '') !== null,
+				});
+		const p = userMsg.createEl('p');
+		for (const segment of segmentPrompt(body, bodyChips)) {
+			if (!segment.chip) {
+				p.appendText(segment.text);
+				continue;
+			}
+			const chipEl = p.createSpan({
+				cls: `anti-dian-prompt-chip is-${segment.chip.kind}`,
+				text: segment.text,
+			});
+			if (segment.chip.kind === 'file') {
+				const name = segment.text.slice(1);
+				chipEl.addClass('is-link');
+				chipEl.addEventListener('click', () => {
+					void this.app.workspace.openLinkText(name, '', false);
+				});
+			}
+		}
 	}
 
 	private renderSentSelectionChip(row: HTMLElement, selection: SentSelection): void {

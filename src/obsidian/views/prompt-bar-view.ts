@@ -43,7 +43,8 @@ export interface SelectionSnippet {
 }
 
 export interface PromptBarCallbacks {
-	onSend: (text: string, media: MediaInput[]) => void | Promise<void>;
+	/** `chips` are ranges of `text` inserted from autocomplete (@note, @source, /command). */
+	onSend: (text: string, media: MediaInput[], chips: PromptChip[]) => void | Promise<void>;
 	onCancel?: () => void;
 	onOpenModelMenu: (anchorEl: HTMLElement) => void;
 	onPermissionChange: (mode: PermissionMode) => void;
@@ -888,7 +889,9 @@ export class PromptBarView {
 	private async triggerSend(): Promise<void> {
 		if (!this.canSend() || this.isSending) return;
 
-		const typedText = this.inputEl.value.trim();
+		this.syncChips();
+		const rawValue = this.inputEl.value;
+		const typedText = rawValue.trim();
 		const media = [...this.stagedMedia];
 		const selections = [...this.stagedSelections];
 
@@ -898,6 +901,13 @@ export class PromptBarView {
 						.filter(Boolean)
 						.join('\n\n')
 				: typedText;
+		// Typed text is last in `text`; move chips from the raw input to it.
+		const shift = text.length - typedText.length - (rawValue.length - rawValue.trimStart().length);
+		const sentChips = typedText
+			? this.chips
+					.map((c) => ({ ...c, start: c.start + shift, end: c.end + shift }))
+					.filter((c) => c.start >= text.length - typedText.length && c.end <= text.length)
+			: [];
 
 		this.inputEl.value = '';
 		this.chips = [];
@@ -909,7 +919,15 @@ export class PromptBarView {
 		this.closeAutocompleteMenu();
 		this.updateSendButtonState();
 
-		await this.callbacks.onSend(text, media);
+		await this.callbacks.onSend(text, media, sentChips);
+	}
+
+	/** Labels that autocomplete can insert as chips (for messages replayed from history). */
+	getKnownChipLabels(): { sources: string[]; commands: string[] } {
+		return {
+			sources: ['Web search'],
+			commands: DEFAULT_SLASH_COMMANDS.filter((c) => c.key !== 'clear').map((c) => c.name),
+		};
 	}
 
 	private formatSelectionBlock(snippet: SelectionSnippet): string {

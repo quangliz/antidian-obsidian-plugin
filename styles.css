@@ -2934,3 +2934,11 @@ button.anti-dian-msg-action-btn.is-copied {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+.anti-dian-message-user .anti-dian-prompt-chip.is-link {
+	cursor: pointer;
+}
+
+.anti-dian-message-user .anti-dian-prompt-chip.is-link:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
