@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type AntiDianPlugin from './main';
 import {
+	type CachedProviderMetadata,
 	formatTokens,
 	isAgyBinaryAvailable,
 	resolveAgyBinary,
@@ -15,6 +16,8 @@ export interface AntiDianSettings {
 	cliPath?: string;
 	/** Show raw tool arguments and output in the thinking trace (for debugging). */
 	showRawToolData?: boolean;
+	/** Persisted models/tier/quota snapshot for instant startup rendering. */
+	cachedMetadata?: CachedProviderMetadata;
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {

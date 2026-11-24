@@ -94,6 +94,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 			getModelGroups: () => this.modelGroups,
 			getAccountTier: () =>
 				this.plugin.antigravityProvider.getAccountTier(),
+			getCachedUserQuota: () =>
+				this.plugin.antigravityProvider.getCachedUserQuota(),
 			fetchUserQuota: () =>
 				this.plugin.antigravityProvider.fetchUserQuota(),
 			getContextUsage: () =>
@@ -484,6 +486,17 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private async loadModels(): Promise<void> {
+		const cached = this.plugin.antigravityProvider.getCachedAvailableModels();
+		if (cached && cached.models.length > 0) {
+			this.availableModels = cached.models;
+			this.modelGroups = cached.groups;
+			if (!this.plugin.settings.model && cached.defaultModelId) {
+				this.plugin.settings.model = cached.defaultModelId;
+				this.plugin.antigravityProvider.setModel(cached.defaultModelId);
+			}
+			this.promptBar?.updateModelLabel();
+		}
+
 		try {
 			const { models, defaultModelId, groups } =
 				await this.plugin.antigravityProvider.fetchAvailableModels();
@@ -495,7 +508,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 			this.promptBar?.updateModelLabel();
 		} catch {
-			// Fallback defaults
+			// Keep cached or fallback defaults
 		}
 	}
 

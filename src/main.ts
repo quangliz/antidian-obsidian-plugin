@@ -118,6 +118,11 @@ export default class AntiDianPlugin extends Plugin {
 			model: this.settings.model || undefined,
 			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
 			mcpToolServer: this.mcpToolServer,
+			initialCache: this.settings.cachedMetadata,
+			onCacheUpdate: (cache) => {
+				this.settings.cachedMetadata = cache;
+				void this.saveData(this.settings);
+			},
 		});
 
 		this.agent = new Agent({
@@ -151,6 +156,8 @@ export default class AntiDianPlugin extends Plugin {
 		registerCommands(this);
 
 		this.addSettingTab(new AntiDianSettingTab(this.app, this));
+
+		this.antigravityProvider.warmup();
 	}
 
 	onunload(): void {

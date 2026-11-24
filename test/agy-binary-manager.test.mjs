@@ -16,6 +16,10 @@ import {
 	resolvePlatformBinaryInfo,
 	validateReleaseBaseUrl,
 } from '../src/core/models/agy-binary-manager.ts';
+import {
+	AntigravityAcpClient,
+	QUOTA_FRESH_TTL_MS,
+} from '../src/core/models/antigravity-acp.ts';
 
 function sha512Hex(buf) {
 	return crypto.createHash('sha512').update(buf).digest('hex');
@@ -282,4 +286,124 @@ test('ensureAgyBinary respects explicit customPath without downloading', async (
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
+});
+
+test('AntigravityAcpClient hydrates models, tier, and quota immediately from initialCache', () => {
+	const now = Date.now();
+	const client = new AntigravityAcpClient({
+		initialCache: {
+			models: [
+				{ id: 'gemini-4-neon-high', displayName: 'Gemini 4 Neon (High)' },
+				{ id: 'gemini-4-neon-medium', displayName: 'Gemini 4 Neon (Medium)' },
+			],
+			defaultModelId: 'gemini-4-neon-high',
+			accountTier: { tierId: 'pro', tierName: 'Google AI Pro' },
+			quota: {
+				fetchedAt: now,
+				groups: [
+					{
+						name: 'Gemini Models',
+						buckets: [
+							{
+								id: 'weekly',
+								name: 'Weekly Limit Remaining',
+								remainingFraction: 0.85,
+							},
+						],
+					},
+				],
+			},
+		},
+	});
+
+	const models = client.getCachedAvailableModels();
+	assert.ok(models);
+	assert.equal(models.models.length, 2);
+	assert.equal(models.groups.length, 1);
+	assert.equal(models.groups[0].baseName, 'Gemini 4 Neon');
+	assert.equal(models.defaultModelId, 'gemini-4-neon-high');
+
+	assert.equal(client.getAccountTier()?.tierName, 'Google AI Pro');
+
+	const quota = client.getCachedUserQuota();
+	assert.ok(quota);
+	assert.equal(quota.isStale, false);
+	assert.equal(quota.data.groups[0].buckets[0].remainingFraction, 0.85);
+});
+
+test('fetchUserQuota deduplicates concurrent fetches and emits cache updates', async () => {
+	let fetchCalls = 0;
+	let persisted = null;
+
+	const client = new AntigravityAcpClient({
+		onCacheUpdate: (snapshot) => {
+			persisted = snapshot;
+		},
+		quotaFetcher: async () => {
+			fetchCalls++;
+			await delay(20);
+			return {
+				groups: [
+					{
+						name: 'Gemini Models',
+						buckets: [
+							{
+								id: '5h',
+								name: 'Five Hour Limit Remaining',
+								remainingFraction: 0.5,
+							},
+						],
+					},
+				],
+			};
+		},
+	});
+
+	const [q1, q2] = await Promise.all([
+		client.fetchUserQuota(),
+		client.fetchUserQuota(),
+	]);
+
+	assert.equal(fetchCalls, 1);
+	assert.equal(q1?.groups[0].buckets[0].remainingFraction, 0.5);
+	assert.equal(q2?.groups[0].buckets[0].remainingFraction, 0.5);
+	assert.ok(persisted?.quota);
+	assert.equal(persisted.quota.groups[0].buckets[0].remainingFraction, 0.5);
+
+	const q3 = await client.fetchUserQuota();
+	assert.equal(fetchCalls, 1);
+	assert.equal(q3?.groups[0].buckets[0].remainingFraction, 0.5);
+});
+
+test('getCachedUserQuota marks old cache stale and fetchUserQuota falls back to stale data on error', async () => {
+	const staleTime = Date.now() - QUOTA_FRESH_TTL_MS - 10_000;
+	const client = new AntigravityAcpClient({
+		initialCache: {
+			quota: {
+				fetchedAt: staleTime,
+				groups: [
+					{
+						name: 'Gemini Models',
+						buckets: [
+							{
+								id: 'weekly',
+								name: 'Weekly Limit Remaining',
+								remainingFraction: 0.72,
+							},
+						],
+					},
+				],
+			},
+		},
+		quotaFetcher: async () => {
+			throw new Error('network error');
+		},
+	});
+
+	const snap = client.getCachedUserQuota();
+	assert.ok(snap);
+	assert.equal(snap.isStale, true);
+
+	const fallback = await client.fetchUserQuota();
+	assert.equal(fallback?.groups[0].buckets[0].remainingFraction, 0.72);
 });

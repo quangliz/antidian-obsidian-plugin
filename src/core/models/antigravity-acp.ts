@@ -75,6 +75,22 @@ export interface ContextWindowUsage {
 	size: number;
 }
 
+export interface CachedProviderMetadata {
+	models?: AvailableModel[];
+	defaultModelId?: string;
+	accountTier?: AccountTierInfo | null;
+	quota?: {
+		groups: QuotaGroupInfo[];
+		fetchedAt: number;
+	};
+}
+
+export interface CachedQuotaSnapshot {
+	data: UserQuotaResponse;
+	fetchedAt: number;
+	isStale: boolean;
+}
+
 export interface AcpStreamCallbacks {
 	onThoughtDelta?: (text: string) => void;
 	onAnswerDelta?: (text: string) => void;
@@ -105,6 +121,12 @@ export interface AntigravityAcpOptions {
 	 * list. Authentication is shared across data dirs.
 	 */
 	appDataDir?: string;
+	/** Persisted models/tier/quota snapshot for instant startup rendering. */
+	initialCache?: CachedProviderMetadata;
+	/** Called when models, tier, or quota are refreshed from the backend. */
+	onCacheUpdate?: (cache: CachedProviderMetadata) => void;
+	/** Injectable quota fetcher for unit tests. */
+	quotaFetcher?: () => Promise<UserQuotaResponse | null>;
 }
 
 /** A stored conversation as reported by ACP `session/list`. */
@@ -122,6 +144,9 @@ export type {
 
 /** Pages of `session/list` to follow before giving up (guards a looping cursor). */
 const MAX_SESSION_LIST_PAGES = 10;
+
+/** How long cached quota is considered fresh before revalidating in background. */
+export const QUOTA_FRESH_TTL_MS = 120_000;
 
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
@@ -323,6 +348,9 @@ export class AntigravityAcpClient {
 	private cachedTier: AccountTierInfo | null = null;
 	private cachedQuota: { data: UserQuotaResponse; fetchedAt: number } | null =
 		null;
+	private quotaFetchPromise: Promise<UserQuotaResponse | null> | null = null;
+	private onCacheUpdate?: (cache: CachedProviderMetadata) => void;
+	private quotaFetcher?: () => Promise<UserQuotaResponse | null>;
 	private contextUsage: ContextWindowUsage | null = null;
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
@@ -344,6 +372,57 @@ export class AntigravityAcpClient {
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
 		this.appDataDir = options.appDataDir ?? ANTI_DIAN_APP_DATA_DIR;
+		this.onCacheUpdate = options.onCacheUpdate;
+		this.quotaFetcher = options.quotaFetcher;
+		if (options.initialCache) {
+			this.hydrateCache(options.initialCache);
+		}
+	}
+
+	private hydrateCache(cache: CachedProviderMetadata): void {
+		if (Array.isArray(cache.models) && cache.models.length > 0) {
+			this.cachedModels = {
+				models: cache.models,
+				groups: groupModels(cache.models),
+				defaultModelId: cache.defaultModelId,
+			};
+		}
+		if (cache.accountTier) {
+			this.cachedTier = cache.accountTier;
+		}
+		if (
+			cache.quota &&
+			Array.isArray(cache.quota.groups) &&
+			typeof cache.quota.fetchedAt === 'number'
+		) {
+			this.cachedQuota = {
+				data: {
+					groups: cache.quota.groups,
+					accountTier: this.cachedTier,
+				},
+				fetchedAt: cache.quota.fetchedAt,
+			};
+		}
+	}
+
+	private emitCacheUpdate(): void {
+		if (!this.onCacheUpdate) return;
+		const snapshot: CachedProviderMetadata = {
+			models: this.cachedModels?.models,
+			defaultModelId: this.cachedModels?.defaultModelId,
+			accountTier: this.cachedTier,
+			quota: this.cachedQuota
+				? {
+						groups: this.cachedQuota.data.groups,
+						fetchedAt: this.cachedQuota.fetchedAt,
+					}
+				: undefined,
+		};
+		try {
+			this.onCacheUpdate(snapshot);
+		} catch {
+			// Cache persistence must never break the transport.
+		}
 	}
 
 	setCliPath(cliPath?: string): void {
@@ -374,12 +453,57 @@ export class AntigravityAcpClient {
 		return this.contextUsage;
 	}
 
+	getCachedAvailableModels(): AvailableModelsResponse | null {
+		return this.cachedModels;
+	}
+
+	getCachedUserQuota(): CachedQuotaSnapshot | null {
+		if (!this.cachedQuota) return null;
+		const isStale =
+			Date.now() - this.cachedQuota.fetchedAt >= QUOTA_FRESH_TTL_MS;
+		return {
+			data: {
+				...this.cachedQuota.data,
+				accountTier: this.cachedTier ?? this.cachedQuota.data.accountTier,
+			},
+			fetchedAt: this.cachedQuota.fetchedAt,
+			isStale,
+		};
+	}
+
+	/**
+	 * Starts ACP initialization and background quota prefetch when the binary
+	 * is already present on disk, mirroring how the VS Code extension warms up
+	 * its backend on activation.
+	 */
+	warmup(): void {
+		if (!isAgyBinaryAvailable(this.cliPath)) return;
+		void this.ensureSession().catch(() => {
+			// Best-effort warm-up; errors surface when the user interacts.
+		});
+	}
+
+	/** Triggers a non-blocking background quota refresh when stale or forced. */
+	prefetchQuota(force = false): void {
+		if (!force && this.cachedQuota) {
+			if (Date.now() - this.cachedQuota.fetchedAt < QUOTA_FRESH_TTL_MS) {
+				return;
+			}
+		}
+		if (!this.quotaFetcher && !isAgyBinaryAvailable(this.cliPath)) {
+			return;
+		}
+		void this.fetchUserQuota(force).catch(() => {
+			// Background prefetch should never surface unhandled rejections.
+		});
+	}
+
 	async fetchUserQuota(force = false): Promise<UserQuotaResponse | null> {
 		const now = Date.now();
 		if (
 			!force &&
 			this.cachedQuota &&
-			now - this.cachedQuota.fetchedAt < 30_000
+			now - this.cachedQuota.fetchedAt < QUOTA_FRESH_TTL_MS
 		) {
 			return {
 				...this.cachedQuota.data,
@@ -387,75 +511,110 @@ export class AntigravityAcpClient {
 			};
 		}
 
-		const bin = resolveAgyBinary(this.cliPath);
+		if (this.quotaFetchPromise) {
+			return this.quotaFetchPromise;
+		}
+
+		const task = this.runQuotaFetch().finally(() => {
+			if (this.quotaFetchPromise === task) {
+				this.quotaFetchPromise = null;
+			}
+		});
+		this.quotaFetchPromise = task;
+		return task;
+	}
+
+	private async runQuotaFetch(): Promise<UserQuotaResponse | null> {
 		try {
-			const stdout = await new Promise<string>((resolve, reject) => {
-				const child = spawn(
-					bin,
-					['--print', '/usage', '--output-format', 'json'],
-					{
-						cwd: this.cwd,
-						stdio: ['ignore', 'pipe', 'pipe'],
-						env: this.buildEnv(),
-					},
-				);
+			const data = this.quotaFetcher
+				? await this.quotaFetcher()
+				: await this.spawnQuotaCommand();
+			if (data) {
+				const enriched: UserQuotaResponse = {
+					...data,
+					accountTier: this.cachedTier ?? data.accountTier,
+				};
+				this.cachedQuota = { data: enriched, fetchedAt: Date.now() };
+				this.emitCacheUpdate();
+				return enriched;
+			}
+		} catch {
+			// Fall back to cached data below
+		}
 
-				let out = '';
-				child.stdout?.on('data', (chunk: Buffer | string) => {
-					out += chunk.toString();
-				});
-				child.on('error', reject);
-				child.on('close', (code) => {
-					if (code === 0) resolve(out);
-					else reject(new Error(`agy /usage exited with code ${code}`));
-				});
+		if (this.cachedQuota) {
+			return {
+				...this.cachedQuota.data,
+				accountTier: this.cachedTier ?? this.cachedQuota.data.accountTier,
+			};
+		}
+		return this.cachedTier
+			? { groups: [], accountTier: this.cachedTier }
+			: null;
+	}
+
+	private async spawnQuotaCommand(): Promise<UserQuotaResponse | null> {
+		const bin = resolveAgyBinary(this.cliPath);
+		const stdout = await new Promise<string>((resolve, reject) => {
+			const child = spawn(
+				bin,
+				['--print', '/usage', '--output-format', 'json'],
+				{
+					cwd: this.cwd,
+					stdio: ['ignore', 'pipe', 'pipe'],
+					env: this.buildEnv(),
+				},
+			);
+
+			let out = '';
+			child.stdout?.on('data', (chunk: Buffer | string) => {
+				out += chunk.toString();
 			});
+			child.on('error', reject);
+			child.on('close', (code) => {
+				if (code === 0) resolve(out);
+				else reject(new Error(`agy /usage exited with code ${code}`));
+			});
+		});
 
-			const parsed = JSON.parse(stdout) as {
-				command?: {
-					data?: {
-						groups?: {
+		const parsed = JSON.parse(stdout) as {
+			command?: {
+				data?: {
+					groups?: {
+						name: string;
+						description?: string;
+						buckets?: {
+							id: string;
 							name: string;
 							description?: string;
-							buckets?: {
-								id: string;
-								name: string;
-								description?: string;
-								window?: string;
-								remaining_fraction?: number;
-								reset_time?: string;
-							}[];
+							window?: string;
+							remaining_fraction?: number;
+							reset_time?: string;
 						}[];
-					};
+					}[];
 				};
 			};
+		};
 
-			const groups: QuotaGroupInfo[] = (
-				parsed.command?.data?.groups ?? []
-			).map((g) => ({
-				name: g.name,
-				description: g.description,
-				buckets: (g.buckets ?? []).map((b) => ({
-					id: b.id,
-					name: b.name,
-					description: b.description,
-					window: b.window,
-					remainingFraction: b.remaining_fraction ?? 1,
-					resetTime: b.reset_time,
-				})),
-			}));
+		const groups: QuotaGroupInfo[] = (
+			parsed.command?.data?.groups ?? []
+		).map((g) => ({
+			name: g.name,
+			description: g.description,
+			buckets: (g.buckets ?? []).map((b) => ({
+				id: b.id,
+				name: b.name,
+				description: b.description,
+				window: b.window,
+				remainingFraction: b.remaining_fraction ?? 1,
+				resetTime: b.reset_time,
+			})),
+		}));
 
-			const data: UserQuotaResponse = {
-				groups,
-				accountTier: this.cachedTier,
-			};
-			this.cachedQuota = { data, fetchedAt: now };
-			return data;
-		} catch {
-			return this.cachedTier
-				? { groups: [], accountTier: this.cachedTier }
-				: null;
-		}
+		return {
+			groups,
+			accountTier: this.cachedTier,
+		};
 	}
 
 	async ensureBinary(
@@ -772,6 +931,10 @@ export class AntigravityAcpClient {
 				signal?.aborted === true ||
 				result?.stopReason === 'cancelled';
 
+			if (!cancelled) {
+				this.prefetchQuota(true);
+			}
+
 			return {
 				answer: cancelled
 					? partial
@@ -931,6 +1094,8 @@ export class AntigravityAcpClient {
 				this.model = this.activeModelId ?? undefined;
 			}
 		}
+		this.emitCacheUpdate();
+		this.prefetchQuota();
 		this.emitSessionInfo();
 	}
 

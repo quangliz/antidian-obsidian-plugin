@@ -11,6 +11,7 @@ import {
 	AntigravityAcpClient,
 	type AntigravityAcpOptions,
 	type AvailableModelsResponse,
+	type CachedQuotaSnapshot,
 	type ContextWindowUsage,
 	type ReplayedMessage,
 	type UserQuotaResponse,
@@ -50,6 +51,22 @@ export class AntigravityProvider {
 
 	getContextUsage(): ContextWindowUsage | null {
 		return this.client.getContextUsage();
+	}
+
+	getCachedAvailableModels(): AvailableModelsResponse | null {
+		return this.client.getCachedAvailableModels();
+	}
+
+	getCachedUserQuota(): CachedQuotaSnapshot | null {
+		return this.client.getCachedUserQuota();
+	}
+
+	warmup(): void {
+		this.client.warmup();
+	}
+
+	prefetchQuota(force = false): void {
+		this.client.prefetchQuota(force);
 	}
 
 	async fetchUserQuota(force = false): Promise<UserQuotaResponse | null> {

@@ -2,6 +2,7 @@ import { Menu, MenuItem } from 'obsidian';
 import {
 	AccountTierInfo,
 	AvailableModel,
+	CachedQuotaSnapshot,
 	ContextWindowUsage,
 	ModelGroup,
 	ModelVariant,
@@ -16,6 +17,7 @@ export interface ModelMenuContext {
 	getAvailableModels: () => AvailableModel[];
 	getModelGroups: () => ModelGroup[];
 	getAccountTier: () => AccountTierInfo | null;
+	getCachedUserQuota: () => CachedQuotaSnapshot | null;
 	fetchUserQuota: () => Promise<UserQuotaResponse | null>;
 	getContextUsage: () => ContextWindowUsage | null;
 	getSessionStats: () => {
@@ -222,17 +224,31 @@ export class ModelMenuController {
 		});
 		this.usagePanelEl = panel;
 
-		const loadingSec = panel.createDiv({
-			cls: 'anti-dian-usage-section',
-		});
-		loadingSec.createDiv({
-			text: 'Loading quota limits...',
-			cls: 'anti-dian-usage-limit-subtext',
-		});
+		const cached = this.ctx.getCachedUserQuota();
+		const needsRefresh = !cached || cached.isStale;
+
+		this.renderUsagePanelContent(
+			panel,
+			cached?.data ?? null,
+			needsRefresh && !cached,
+		);
 		this.positionPanel(anchorEl, panel);
 
-		const quotaData = await this.ctx.fetchUserQuota();
+		if (!needsRefresh) {
+			return;
+		}
+
+		const freshQuota = await this.ctx.fetchUserQuota();
 		if (this.usagePanelEl !== panel) return;
+		this.renderUsagePanelContent(panel, freshQuota ?? cached?.data ?? null, false);
+		this.positionPanel(anchorEl, panel);
+	}
+
+	private renderUsagePanelContent(
+		panel: HTMLElement,
+		quotaData: UserQuotaResponse | null,
+		isLoadingQuota: boolean,
+	): void {
 		panel.empty();
 
 		const tier = quotaData?.accountTier ?? this.ctx.getAccountTier();
@@ -260,6 +276,17 @@ export class ModelMenuController {
 		}
 
 		const groups = quotaData?.groups ?? [];
+		if (isLoadingQuota && groups.length === 0) {
+			panel.createDiv({ cls: 'anti-dian-menu-divider' });
+			const loadingSec = panel.createDiv({
+				cls: 'anti-dian-usage-section',
+			});
+			loadingSec.createDiv({
+				text: 'Loading quota limits...',
+				cls: 'anti-dian-usage-limit-subtext',
+			});
+		}
+
 		for (const group of groups) {
 			panel.createDiv({ cls: 'anti-dian-menu-divider' });
 
@@ -351,8 +378,6 @@ export class ModelMenuController {
 				ctxStatus,
 			);
 		}
-
-		this.positionPanel(anchorEl, panel);
 	}
 
 	private formatResetSubtext(
