@@ -518,3 +518,32 @@ test('ContextCompiler.seedForkedHistory injects parent turns once and strips cle
 	const second = await compiler.compile('follow up');
 	assert.equal(second.prompt, 'follow up');
 });
+
+test('buildSessionTree nests forked children under parents and formats (fork) titles', async () => {
+	const { buildSessionTree } = await import(
+		'../src/obsidian/views/session-format.ts'
+	);
+	const sessions = [
+		{ sessionId: 'c1', title: 'Reusable UI components from Obsidian', updatedAt: '2026-11-24T12:05:00Z' },
+		{ sessionId: 'p1', title: 'Reusable UI components from Obsidian', updatedAt: '2026-11-24T12:00:00Z' },
+		{ sessionId: 'p2', title: 'Antigravity CLI login requirement', updatedAt: '2026-11-24T11:00:00Z' },
+		{ sessionId: 'orphan', title: 'Orphan branch', updatedAt: '2026-11-24T10:00:00Z' },
+	];
+	const forks = {
+		c1: { parentId: 'p1', title: 'Reusable UI components from Obsidian (fork)' },
+		orphan: { parentId: 'deleted-parent', title: 'Orphan branch (fork)' },
+	};
+
+	const tree = buildSessionTree(sessions, forks);
+	assert.equal(tree.length, 3);
+	assert.equal(tree[0].session.sessionId, 'p1');
+	assert.equal(tree[0].children.length, 1);
+	assert.equal(tree[0].children[0].session.sessionId, 'c1');
+	assert.equal(
+		tree[0].children[0].displayTitle,
+		'Reusable UI components from Obsidian (fork)',
+	);
+	assert.equal(tree[1].session.sessionId, 'p2');
+	assert.equal(tree[2].session.sessionId, 'orphan');
+	assert.equal(tree[2].displayTitle, 'Orphan branch (fork)');
+});

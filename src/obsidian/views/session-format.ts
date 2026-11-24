@@ -336,3 +336,73 @@ export function filterSessions<T extends SessionLike>(
 ): T[] {
 	return searchSessions(sessions, query).map((hit) => hit.session);
 }
+
+export interface SessionForkRelation {
+	parentId: string;
+	title?: string;
+}
+
+export interface SessionTreeNode<T extends SessionLike> {
+	session: T;
+	displayTitle: string;
+	children: SessionTreeNode<T>[];
+}
+
+export function formatForkedTitle(
+	session: SessionLike,
+	fork?: SessionForkRelation,
+): string {
+	const raw = session.title?.trim();
+	if (!fork) return raw || UNTITLED_SESSION;
+	if (!raw || raw === UNTITLED_SESSION) {
+		return fork.title?.trim() || `${UNTITLED_SESSION} (fork)`;
+	}
+	return /\(fork\)$/i.test(raw) ? raw : `${raw} (fork)`;
+}
+
+/**
+ * Organizes flat sessions (newest first) into a parent/child tree based on
+ * recorded fork relationships. Orphaned forks (parent absent) remain top-level.
+ */
+export function buildSessionTree<T extends SessionLike>(
+	sessions: T[],
+	forks: Record<string, SessionForkRelation> = {},
+): SessionTreeNode<T>[] {
+	const nodes = new Map<string, SessionTreeNode<T>>();
+	for (const session of sessions) {
+		const fork = forks[session.sessionId];
+		nodes.set(session.sessionId, {
+			session,
+			displayTitle: formatForkedTitle(session, fork),
+			children: [],
+		});
+	}
+
+	const createsCycle = (childId: string, parentId: string): boolean => {
+		let cur: string | undefined = parentId;
+		const seen = new Set<string>([childId]);
+		while (cur) {
+			if (seen.has(cur)) return true;
+			seen.add(cur);
+			cur = forks[cur]?.parentId;
+		}
+		return false;
+	};
+
+	const roots: SessionTreeNode<T>[] = [];
+	for (const session of sessions) {
+		const node = nodes.get(session.sessionId)!;
+		const parentId = forks[session.sessionId]?.parentId;
+		const parent =
+			parentId && !createsCycle(session.sessionId, parentId)
+				? nodes.get(parentId)
+				: undefined;
+		if (parent) {
+			parent.children.push(node);
+		} else {
+			roots.push(node);
+		}
+	}
+
+	return roots;
+}

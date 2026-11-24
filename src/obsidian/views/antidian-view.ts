@@ -66,6 +66,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
 	private renderedTurns: RenderedTurn[] = [];
+	/** Pending fork parent info, saved once the new forked ACP session gets an ID. */
+	private pendingForkParent: { parentId: string; title?: string } | null = null;
 
 	private rootEl: HTMLElement | null = null;
 	private heroTitleEl: HTMLElement | null = null;
@@ -143,6 +145,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 		this.unsubscribeSessionInfo =
 			this.plugin.antigravityProvider.onSessionInfoChange(() => {
+				this.recordPendingForkIfReady();
 				this.updateSessionTitle();
 			});
 
@@ -208,6 +211,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			listSessions: () => this.agent.listSessions(),
 			getCurrentSessionId: () =>
 				this.plugin.antigravityProvider.getSessionId(),
+			getSessionForks: () => this.plugin.settings.sessionForks ?? {},
 			onSelectSession: (session) => void this.switchSession(session),
 			onNewSession: () => this.startNewSession(),
 		});
@@ -276,6 +280,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.activeThinking = null;
 		this.loadingSession = session;
 		this.resumedTitle = null;
+		this.pendingForkParent = null;
 		this.updateSessionTitle();
 		this.clearMessages();
 		const loadingEl = this.messagesEl?.createDiv({
@@ -521,6 +526,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.history = [];
 		this.loadingSession = null;
 		this.resumedTitle = null;
+		this.pendingForkParent = null;
 		this.resetSessionStats();
 		void this.agent.resetSession();
 		this.updateSessionTitle();
@@ -881,6 +887,18 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 	}
 
+	private recordPendingForkIfReady(): void {
+		const pending = this.pendingForkParent;
+		if (!pending) return;
+		const childId = this.plugin.antigravityProvider.getSessionId();
+		if (!childId || childId === pending.parentId) return;
+		this.pendingForkParent = null;
+		const forks = { ...(this.plugin.settings.sessionForks ?? {}) };
+		forks[childId] = { parentId: pending.parentId, title: pending.title };
+		this.plugin.settings.sessionForks = forks;
+		void this.plugin.saveData(this.plugin.settings);
+	}
+
 	private formatRelativeTimestamp(iso?: string): string {
 		if (!iso) return '';
 		const ms = Date.parse(iso);
@@ -1051,10 +1069,19 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 		}
 
+		const parentSessionId = this.plugin.antigravityProvider.getSessionId();
 		const parentTitle =
 			this.plugin.antigravityProvider.getSessionTitle() ?? this.resumedTitle;
+		const forkTitle = parentTitle
+			? /\(fork\)$/i.test(parentTitle)
+				? parentTitle
+				: `${parentTitle} (fork)`
+			: undefined;
+		this.pendingForkParent = parentSessionId
+			? { parentId: parentSessionId, title: forkTitle }
+			: null;
 		this.resetSessionStats();
-		this.resumedTitle = parentTitle ? `Fork · ${parentTitle}` : null;
+		this.resumedTitle = forkTitle ?? null;
 
 		await this.agent.forkSession(forkedHistory);
 		this.updateSessionTitle();

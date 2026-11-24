@@ -2,7 +2,11 @@ import { setIcon } from 'obsidian';
 import type { AcpSessionSummary } from '../../core/models/antigravity-acp';
 import {
 	MatchRange,
+	type SessionForkRelation,
+	type SessionTreeNode,
 	UNTITLED_SESSION,
+	buildSessionTree,
+	formatForkedTitle,
 	formatRelativeTime,
 	searchSessions,
 } from './session-format';
@@ -13,6 +17,7 @@ export interface SessionMenuOptions {
 	getVaultName: () => string;
 	listSessions: () => Promise<AcpSessionSummary[]>;
 	getCurrentSessionId: () => string | null;
+	getSessionForks?: () => Record<string, SessionForkRelation>;
 	onSelectSession: (session: AcpSessionSummary) => void;
 	onNewSession: () => void;
 }
@@ -46,6 +51,7 @@ export class SessionMenuController {
 	private error: string | null = null;
 	private loadToken = 0;
 	private showAll = false;
+	private collapsedParents = new Set<string>();
 	private triggerEl: HTMLElement | null = null;
 
 	constructor(
@@ -213,8 +219,14 @@ export class SessionMenuController {
 
 		const query = this.searchEl?.value.trim() ?? '';
 		const all = this.sessions ?? [];
-		const hits = searchSessions(all, query);
+		const forks = this.options.getSessionForks?.() ?? {};
 		const currentId = this.options.getCurrentSessionId();
+
+		const searchable = all.map((s) => ({
+			...s,
+			title: formatForkedTitle(s, forks[s.sessionId]),
+		}));
+		const hits = searchSessions(searchable, query);
 
 		if (this.sessions === null && this.loading) {
 			this.renderStatus(list, 'Loading…', true);
@@ -226,33 +238,61 @@ export class SessionMenuController {
 			this.renderStatus(list, 'No matching conversations');
 		}
 
-		const collapsed = !this.showAll && !query && hits.length > COLLAPSED_SESSION_COUNT;
-		const visible = collapsed ? hits.slice(0, COLLAPSED_SESSION_COUNT) : hits;
+		let collapsed = false;
+		let totalCount = hits.length;
 
-		for (const { session, ranges } of visible) {
-			const isCurrent = session.sessionId === currentId;
-			const row = list.createDiv({
-				cls: 'anti-dian-session-item',
-				attr: { role: 'option', 'aria-selected': String(isCurrent) },
-			});
-			if (isCurrent) row.addClass('is-current');
-			const title = session.title ?? UNTITLED_SESSION;
-			const titleEl = row.createSpan({
-				cls: 'anti-dian-session-item-title',
-				attr: { title },
-			});
-			this.renderHighlighted(titleEl, title, ranges);
-			row.createSpan({
-				cls: 'anti-dian-session-item-time',
-				text: formatRelativeTime(session.updatedAt),
-			});
-			this.bindItem({ kind: 'session', el: row, session });
+		if (query) {
+			for (const { session, ranges } of hits) {
+				this.renderSessionRow(list, {
+					session,
+					displayTitle: session.title ?? UNTITLED_SESSION,
+					ranges,
+					isCurrent: session.sessionId === currentId,
+					depth: 0,
+					hasChildren: false,
+					isExpanded: false,
+				});
+			}
+		} else {
+			const roots = buildSessionTree(all, forks);
+			totalCount = roots.length;
+			collapsed = !this.showAll && roots.length > COLLAPSED_SESSION_COUNT;
+			const visibleRoots = collapsed
+				? roots.slice(0, COLLAPSED_SESSION_COUNT)
+				: roots;
+
+			const renderNode = (
+				node: SessionTreeNode<AcpSessionSummary>,
+				depth: number,
+			): void => {
+				const hasChildren = node.children.length > 0;
+				const isExpanded =
+					hasChildren && !this.collapsedParents.has(node.session.sessionId);
+				this.renderSessionRow(list, {
+					session: node.session,
+					displayTitle: node.displayTitle,
+					ranges: [],
+					isCurrent: node.session.sessionId === currentId,
+					depth,
+					hasChildren,
+					isExpanded,
+				});
+				if (isExpanded) {
+					for (const child of node.children) {
+						renderNode(child, depth + 1);
+					}
+				}
+			};
+
+			for (const root of visibleRoots) {
+				renderNode(root, 0);
+			}
 		}
 
 		if (collapsed) {
 			const seeAll = list.createDiv({
 				cls: 'anti-dian-session-see-all',
-				text: `See all (${hits.length})`,
+				text: `See all (${totalCount})`,
 				attr: { role: 'button' },
 			});
 			seeAll.addEventListener('mouseenter', () => {
@@ -273,6 +313,63 @@ export class SessionMenuController {
 		list.toggleClass('is-refreshing', this.loading && this.sessions !== null);
 		if (this.activeIndex >= this.items.length) this.activeIndex = this.items.length - 1;
 		this.highlight();
+	}
+
+	private renderSessionRow(
+		list: HTMLElement,
+		opts: {
+			session: AcpSessionSummary;
+			displayTitle: string;
+			ranges: MatchRange[];
+			isCurrent: boolean;
+			depth: number;
+			hasChildren: boolean;
+			isExpanded: boolean;
+		},
+	): void {
+		const row = list.createDiv({
+			cls: 'anti-dian-session-item',
+			attr: { role: 'option', 'aria-selected': String(opts.isCurrent) },
+		});
+		if (opts.isCurrent) row.addClass('is-current');
+		if (opts.depth > 0) {
+			row.addClass('is-child');
+			row.setCssProps({
+				'--anti-dian-session-depth': String(Math.min(opts.depth, 4)),
+			});
+		}
+
+		const titleWrap = row.createSpan({ cls: 'anti-dian-session-item-main' });
+		const titleEl = titleWrap.createSpan({
+			cls: 'anti-dian-session-item-title',
+			attr: { title: opts.displayTitle },
+		});
+		this.renderHighlighted(titleEl, opts.displayTitle, opts.ranges);
+
+		if (opts.hasChildren) {
+			const toggleBtn = titleWrap.createEl('button', {
+				cls: 'anti-dian-session-chevron',
+				attr: {
+					type: 'button',
+					'aria-label': opts.isExpanded ? 'Collapse forks' : 'Expand forks',
+					'aria-expanded': String(opts.isExpanded),
+				},
+			});
+			setIcon(toggleBtn, opts.isExpanded ? 'chevron-down' : 'chevron-right');
+			toggleBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				const id = opts.session.sessionId;
+				if (this.collapsedParents.has(id)) this.collapsedParents.delete(id);
+				else this.collapsedParents.add(id);
+				this.renderList();
+			});
+		}
+
+		row.createSpan({
+			cls: 'anti-dian-session-item-time',
+			text: formatRelativeTime(opts.session.updatedAt),
+		});
+		this.bindItem({ kind: 'session', el: row, session: opts.session });
 	}
 
 	private renderHighlighted(el: HTMLElement, text: string, ranges: MatchRange[]): void {

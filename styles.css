@@ -2688,3 +2688,48 @@ button.anti-dian-msg-action-btn.is-copied {
 	width: 12px;
 	height: 12px;
 }
+
+/* ── Session Fork Tree (Parent / Child) ───────────────────────────────────── */
+
+.anti-dian-session-item.is-child {
+	padding-left: calc(12px + var(--anti-dian-session-depth, 1) * 16px);
+}
+
+.anti-dian-session-item-main {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	flex: 1;
+}
+
+.anti-dian-session-item-main .anti-dian-session-item-title {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.anti-dian-session-chevron {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	flex-shrink: 0;
+	box-shadow: none;
+}
+
+.anti-dian-session-chevron:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.anti-dian-session-chevron svg {
+	width: 13px;
+	height: 13px;
+}

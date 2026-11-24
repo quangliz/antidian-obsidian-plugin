@@ -34,6 +34,8 @@ export interface AntiDianSettings {
 	showRawToolData?: boolean;
 	/** Persisted models/tier/quota snapshot for instant startup rendering. */
 	cachedMetadata?: CachedProviderMetadata;
+	/** Maps forked child session IDs to their parent session ID and fallback label. */
+	sessionForks?: Record<string, { parentId: string; title?: string }>;
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {
