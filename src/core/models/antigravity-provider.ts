@@ -37,6 +37,10 @@ export class AntigravityProvider {
 		this.client.setCliPath(cliPath);
 	}
 
+	setCaCertificates(caCertificates?: string): void {
+		this.client.setCaCertificates(caCertificates);
+	}
+
 	setModel(model: string): void {
 		this.client.setModel(model);
 	}

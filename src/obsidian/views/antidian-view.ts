@@ -707,8 +707,27 @@ export class AntiDianView extends ItemView implements HoverParent {
 					);
 				},
 				this.plugin.settings.permissionMode ?? 'ask',
-				// Ask mode: each write waits here for Approve / Reject on its tool row.
-				(request) => thinkingState.requestApproval(request),
+				// Ask mode: each write waits here for Approve / Reject on its tool row
+				// and (when enabled) inline in the open Markdown editor.
+				async (request) => {
+					const inlineEnabled =
+						this.plugin.settings.enableInlineDiff !== false;
+					if (inlineEnabled) {
+						this.plugin.inlineDiffController.showPendingReview(
+							request,
+							(decision) => {
+								thinkingState.resolveApproval(request.callId, decision);
+							},
+						);
+					}
+					try {
+						return await thinkingState.requestApproval(request);
+					} finally {
+						this.plugin.inlineDiffController.clearPendingReview(
+							request.callId,
+						);
+					}
+				},
 			);
 
 			if (myToken !== this.turnToken) {

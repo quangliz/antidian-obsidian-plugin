@@ -8,14 +8,30 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import {
 	AGY_BINARY_SIDECAR_FILENAME,
+	INSTALL_LOCK_FILENAME,
+	MANIFEST_CHECK_TTL_MS,
+	checkAndStageAgyUpdate,
 	ensureAgyBinary,
 	fetchAgyReleaseManifest,
 	getManagedAgyBinaryPath,
+	getStagedBinaryPath,
+	isInstallLockStale,
 	isValidReleaseManifest,
+	promoteStagedBinaryIfAny,
 	resolveManifestPlatformArch,
 	resolvePlatformBinaryInfo,
 	validateReleaseBaseUrl,
+	withInstallLock,
 } from '../src/core/models/agy-binary-manager.ts';
+import {
+	buildAgySecurityEnv,
+	categorizeProcessFailure,
+	checkLinuxX64CpuSupport,
+	formatProcessExitError,
+	isNonRetriableFailure,
+	readCliLogTailFallback,
+	wasSuspendedSince,
+} from '../src/core/models/agy-diagnostics.ts';
 import {
 	AntigravityAcpClient,
 	QUOTA_FRESH_TTL_MS,
@@ -406,4 +422,179 @@ test('getCachedUserQuota marks old cache stale and fetchUserQuota falls back to 
 
 	const fallback = await client.fetchUserQuota();
 	assert.equal(fallback?.groups[0].buckets[0].remainingFraction, 0.72);
+});
+
+test('checkAndStageAgyUpdate stages .next when locked and promotes on next startup', async () => {
+	const dir = makeTempDir();
+	try {
+		const targetPath = path.join(dir, 'bin', 'agy');
+		const v1 = Buffer.from('v1-binary');
+		const v2 = Buffer.from('v2-binary-updated');
+		let clock = 1_000_000;
+
+		// Install v1
+		await ensureAgyBinary({
+			targetPath,
+			platform: 'linux',
+			arch: 'x64',
+			now: () => clock,
+			releaseBaseUrl: 'https://updates.example.com',
+			fetchText: async () =>
+				JSON.stringify({
+					version: '1.5.10',
+					url: 'https://updates.example.com/agy',
+					sha512: sha512Hex(v1),
+				}),
+			downloadToFile: async (_url, dest) => fs.writeFileSync(dest, v1),
+		});
+
+		// Within 12h TTL -> skipped_ttl
+		const ttlRes = await checkAndStageAgyUpdate({
+			targetPath,
+			platform: 'linux',
+			arch: 'x64',
+			now: () => clock + 60_000,
+			fetchText: async () => {
+				throw new Error('Should not fetch within TTL');
+			},
+		});
+		assert.equal(ttlRes.status, 'skipped_ttl');
+
+		// After 12h, simulate EBUSY lock on rename -> stages agy.next
+		clock += MANIFEST_CHECK_TTL_MS + 1000;
+		const stageRes = await checkAndStageAgyUpdate({
+			targetPath,
+			platform: 'linux',
+			arch: 'x64',
+			now: () => clock,
+			releaseBaseUrl: 'https://updates.example.com',
+			fetchText: async () =>
+				JSON.stringify({
+					version: '1.5.16',
+					url: 'https://updates.example.com/agy',
+					sha512: sha512Hex(v2),
+				}),
+			downloadToFile: async (_url, dest) => fs.writeFileSync(dest, v2),
+			fsRename: async () => {
+				const err = new Error('resource busy');
+				err.code = 'EBUSY';
+				throw err;
+			},
+		});
+
+		assert.equal(stageRes.status, 'staged');
+		assert.equal(stageRes.version, '1.5.16');
+		assert.equal(fs.existsSync(getStagedBinaryPath(targetPath)), true);
+		assert.deepEqual(fs.readFileSync(targetPath), v1);
+
+		// Next startup promotes agy.next -> agy
+		const promoted = await promoteStagedBinaryIfAny(targetPath, 'linux');
+		assert.equal(promoted, true);
+		assert.equal(fs.existsSync(getStagedBinaryPath(targetPath)), false);
+		assert.deepEqual(fs.readFileSync(targetPath), v2);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('withInstallLock cleans up stale lock and detects live lock contention', async () => {
+	const dir = makeTempDir();
+	try {
+		const lockPath = path.join(dir, INSTALL_LOCK_FILENAME);
+		// Dead/stale lock is reclaimed automatically
+		fs.writeFileSync(
+			lockPath,
+			JSON.stringify({ pid: 999999, hostname: os.hostname(), createdAt: 1 }),
+		);
+		assert.equal(
+			isInstallLockStale(
+				{ pid: 999999, hostname: os.hostname(), createdAt: Date.now() },
+				{ checkPidAlive: () => false },
+			),
+			true,
+		);
+
+		let ran = false;
+		await withInstallLock(dir, async () => {
+			ran = true;
+		});
+		assert.equal(ran, true);
+		assert.equal(fs.existsSync(lockPath), false);
+
+		// Live lock triggers onContended fast-path
+		fs.writeFileSync(
+			lockPath,
+			JSON.stringify({
+				pid: process.pid,
+				hostname: os.hostname(),
+				createdAt: Date.now(),
+			}),
+		);
+		const contended = await withInstallLock(
+			dir,
+			async () => 'ran',
+			{ onContended: () => 'skipped' },
+		);
+		assert.equal(contended, 'skipped');
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('diagnostics detect CPU flags, failure categories, suspend drift, CA env, and cli.log tail', () => {
+	const missingAvx = checkLinuxX64CpuSupport({
+		platform: 'linux',
+		arch: 'x64',
+		readCpuInfo: () =>
+			'model name\t: Old Xeon\nflags\t\t: sse4_1 sse4_2 ssse3 popcnt cx16 avx\n',
+	});
+	assert.equal(missingAvx.supported, false);
+	assert.deepEqual(missingAvx.missingFlags, ['avx2', 'bmi1', 'bmi2', 'fma']);
+	assert.equal(missingAvx.modelName, 'Old Xeon');
+
+	assert.equal(categorizeProcessFailure({ exitCode: 132 }), 'killed_by_SIGILL');
+	assert.equal(isNonRetriableFailure('killed_by_SIGILL'), true);
+	assert.equal(isNonRetriableFailure('process_exit_nonzero'), false);
+	assert.match(
+		formatProcessExitError({ exitCode: 132, cpuCheck: missingAvx }),
+		/x86-64-v3.*avx2/i,
+	);
+	assert.equal(
+		wasSuspendedSince(10_000, 1_000, 40_000, 2_000),
+		true,
+	);
+	assert.equal(
+		wasSuspendedSince(10_000, 1_000, 12_000, 3_000),
+		false,
+	);
+
+	const env = buildAgySecurityEnv(
+		{ PATH: '/usr/bin' },
+		{
+			caCertificates: '/corp/ca.pem',
+			platform: 'darwin',
+			fsExists: (p) => p === '/corp/ca.pem' || p === '/etc/ssl/cert.pem',
+			extraBinDirs: ['/home/u/.gemini/bin'],
+		},
+	);
+	assert.equal(env.AGY_CA_CERT, '/corp/ca.pem');
+	assert.equal(env.NODE_EXTRA_CA_CERTS, '/corp/ca.pem');
+	assert.equal(env.SSL_CERT_FILE, '/etc/ssl/cert.pem');
+	assert.equal(env.NODE_USE_SYSTEM_CA, '1');
+	assert.ok(env.PATH?.startsWith('/home/u/.gemini/bin'));
+
+	const fakeHome = makeTempDir();
+	try {
+		const logDir = path.join(fakeHome, '.gemini', 'antigravity-anti-dian');
+		fs.mkdirSync(logDir, { recursive: true });
+		fs.writeFileSync(path.join(logDir, 'cli.log'), 'line1\nfatal: boom\n');
+		const tail = readCliLogTailFallback(
+			Date.now() - 1000,
+			'antigravity-anti-dian',
+			fakeHome,
+		);
+		assert.match(tail ?? '', /fatal: boom/);
+	} finally {
+		fs.rmSync(fakeHome, { recursive: true, force: true });
+	}
 });

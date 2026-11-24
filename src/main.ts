@@ -40,6 +40,7 @@ import {
 } from './core/tools';
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
+import { InlineDiffController } from './obsidian/editor/inline-diff';
 import { ANTI_DIAN_HOVER_SOURCE } from './obsidian/views/note-link';
 import { ANTI_DIAN_ICON, registerAntiDianIcon } from './obsidian/icon';
 
@@ -57,6 +58,7 @@ export default class AntiDianPlugin extends Plugin {
 	applicator!: ChangeSetApplicator;
 	mcpToolServer!: McpToolServer;
 	antigravityProvider!: AntigravityProvider;
+	inlineDiffController!: InlineDiffController;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
 
@@ -114,6 +116,7 @@ export default class AntiDianPlugin extends Plugin {
 
 		this.antigravityProvider = new AntigravityProvider({
 			cliPath: this.settings.cliPath,
+			caCertificates: this.settings.caCertificates,
 			cwd: vaultBasePath,
 			model: this.settings.model || undefined,
 			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
@@ -124,6 +127,11 @@ export default class AntiDianPlugin extends Plugin {
 				void this.saveData(this.settings);
 			},
 		});
+
+		this.inlineDiffController = new InlineDiffController(this.app);
+		this.registerEditorExtension(
+			this.inlineDiffController.getEditorExtension(),
+		);
 
 		this.agent = new Agent({
 			provider: this.antigravityProvider,
@@ -161,6 +169,7 @@ export default class AntiDianPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		this.inlineDiffController?.clearAll();
 		this.workspaceAdapter?.destroy();
 		void this.antigravityProvider?.destroy();
 	}
@@ -193,6 +202,9 @@ export default class AntiDianPlugin extends Plugin {
 		);
 		if (this.antigravityProvider) {
 			this.antigravityProvider.setCliPath(this.settings.cliPath);
+			this.antigravityProvider.setCaCertificates(
+				this.settings.caCertificates,
+			);
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
 			}
@@ -203,6 +215,9 @@ export default class AntiDianPlugin extends Plugin {
 		await this.saveData(this.settings);
 		if (this.antigravityProvider) {
 			this.antigravityProvider.setCliPath(this.settings.cliPath);
+			this.antigravityProvider.setCaCertificates(
+				this.settings.caCertificates,
+			);
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
 			}

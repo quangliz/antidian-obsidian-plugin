@@ -12,9 +12,19 @@ import type { MediaInput, TokenUsage } from '../types/model';
 import {
 	type BinaryDownloadProgress,
 	type EnsureAgyBinaryResult,
+	checkAndStageAgyUpdate,
 	ensureAgyBinary,
 	getManagedAgyBinaryPath,
 } from './agy-binary-manager';
+import {
+	MAX_STDERR_TAIL_LINES,
+	buildAgySecurityEnv,
+	categorizeProcessFailure,
+	formatProcessExitError,
+	isNonRetriableFailure,
+	readCliLogTailFallback,
+	wasSuspendedSince,
+} from './agy-diagnostics';
 import type { McpToolServer } from './mcp-tool-server';
 
 export interface AvailableModel {
@@ -110,6 +120,7 @@ export interface AcpPromptResult {
 
 export interface AntigravityAcpOptions {
 	cliPath?: string;
+	caCertificates?: string;
 	cwd?: string;
 	model?: string;
 	systemPrompt?: string;
@@ -147,6 +158,11 @@ const MAX_SESSION_LIST_PAGES = 10;
 
 /** How long cached quota is considered fresh before revalidating in background. */
 export const QUOTA_FRESH_TTL_MS = 120_000;
+
+const AUTO_RECOVER_MAX_ATTEMPTS = 3;
+const AUTO_RECOVER_WINDOW_MS = 10 * 60_000;
+const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
+const BACKGROUND_UPDATE_DELAY_MS = 60_000;
 
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
@@ -330,6 +346,7 @@ const tokenCount = (v: unknown): number | undefined =>
 
 export class AntigravityAcpClient {
 	private cliPath?: string;
+	private caCertificates?: string;
 	private cwd: string;
 	private model?: string;
 	private systemPrompt?: string;
@@ -337,6 +354,15 @@ export class AntigravityAcpClient {
 	private appDataDir: string;
 
 	private proc: ChildProcess | null = null;
+	private intentionalStop = false;
+	private procSpawnedAtWallMs = 0;
+	private procSpawnedAtUptimeMs = 0;
+	private stderrTail: string[] = [];
+	private recoveryAttemptTimestamps: number[] = [];
+	private recoveryTimer: ReturnType<typeof nodeSetTimeout> | null = null;
+	private backgroundUpdateTimer: ReturnType<typeof nodeSetTimeout> | null =
+		null;
+	private backgroundUpdateScheduled = false;
 	private rl: readline.Interface | null = null;
 	private nextId = 1;
 	private pending = new Map<number, PendingRpc>();
@@ -367,6 +393,7 @@ export class AntigravityAcpClient {
 
 	constructor(options: AntigravityAcpOptions = {}) {
 		this.cliPath = options.cliPath;
+		this.caCertificates = options.caCertificates;
 		this.cwd = options.cwd ?? process.cwd();
 		this.model = options.model;
 		this.systemPrompt = options.systemPrompt;
@@ -376,6 +403,14 @@ export class AntigravityAcpClient {
 		this.quotaFetcher = options.quotaFetcher;
 		if (options.initialCache) {
 			this.hydrateCache(options.initialCache);
+		}
+	}
+
+	setCaCertificates(caCertificates?: string): void {
+		const next = caCertificates?.trim() || undefined;
+		if (this.caCertificates !== next) {
+			this.caCertificates = next;
+			this.destroyProcess();
 		}
 	}
 
@@ -623,10 +658,27 @@ export class AntigravityAcpClient {
 		return ensureAgyBinary(
 			{
 				customPath: this.cliPath,
+				caCertificates: this.caCertificates,
 				onProgress,
 			},
 			findExistingAgyBinary,
 		);
+	}
+
+	private scheduleBackgroundUpdateCheck(): void {
+		if (this.backgroundUpdateScheduled || this.cliPath?.trim()) return;
+		this.backgroundUpdateScheduled = true;
+		const timer = nodeSetTimeout(() => {
+			this.backgroundUpdateTimer = null;
+			void checkAndStageAgyUpdate({
+				customPath: this.cliPath,
+				caCertificates: this.caCertificates,
+			}).catch(() => {
+				// Best-effort background update check
+			});
+		}, BACKGROUND_UPDATE_DELAY_MS);
+		timer.unref?.();
+		this.backgroundUpdateTimer = timer;
 	}
 
 	async checkStatus(
@@ -1096,6 +1148,7 @@ export class AntigravityAcpClient {
 		}
 		this.emitCacheUpdate();
 		this.prefetchQuota();
+		this.scheduleBackgroundUpdateCheck();
 		this.emitSessionInfo();
 	}
 
@@ -1123,53 +1176,121 @@ export class AntigravityAcpClient {
 	}
 
 	private buildEnv(): NodeJS.ProcessEnv {
-		const env = { ...process.env };
-		const extraBins = [
-			path.dirname(getManagedAgyBinaryPath()),
-			path.join(os.homedir(), '.local', 'bin'),
-		];
-		const parts = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
-		for (const dir of extraBins.reverse()) {
-			if (!parts.includes(dir)) {
-				parts.unshift(dir);
-			}
+		return buildAgySecurityEnv(process.env, {
+			caCertificates: this.caCertificates,
+			extraBinDirs: [
+				path.dirname(getManagedAgyBinaryPath()),
+				path.join(os.homedir(), '.local', 'bin'),
+			],
+		});
+	}
+
+	private scheduleAutoRecovery(reason: string): void {
+		if (this.intentionalStop || this.recoveryTimer) return;
+		const now = Date.now();
+		if (
+			this.procSpawnedAtWallMs > 0 &&
+			wasSuspendedSince(this.procSpawnedAtWallMs, this.procSpawnedAtUptimeMs)
+		) {
+			this.recoveryAttemptTimestamps = [];
 		}
-		env.PATH = parts.join(path.delimiter);
-		return env;
+		this.recoveryAttemptTimestamps = this.recoveryAttemptTimestamps.filter(
+			(ts) => now - ts < AUTO_RECOVER_WINDOW_MS,
+		);
+		const attempt = this.recoveryAttemptTimestamps.length + 1;
+		if (attempt > AUTO_RECOVER_MAX_ATTEMPTS) return;
+
+		this.recoveryAttemptTimestamps.push(now);
+		const baseDelay =
+			AUTO_RECOVER_BACKOFF_MS[
+				Math.min(attempt - 1, AUTO_RECOVER_BACKOFF_MS.length - 1)
+			] ?? 9_000;
+
+		const timer = nodeSetTimeout(() => {
+			this.recoveryTimer = null;
+			if (this.intentionalStop || this.proc) return;
+			void this.ensureInitialized().catch(() => {
+				// Errors surface on next user action; avoid unhandled rejection
+			});
+		}, baseDelay);
+		timer.unref?.();
+		this.recoveryTimer = timer;
+		void reason;
 	}
 
 	private spawnProcess(): void {
 		const bin = resolveAgyBinary(this.cliPath);
-		this.proc = spawn(bin, ['acp', ...this.appDataDirArgs()], {
+		this.intentionalStop = false;
+		this.stderrTail = [];
+		this.procSpawnedAtWallMs = Date.now();
+		this.procSpawnedAtUptimeMs = process.uptime() * 1000;
+
+		const proc = spawn(bin, ['acp', ...this.appDataDirArgs()], {
 			cwd: this.cwd,
 			stdio: ['pipe', 'pipe', 'pipe'],
 			env: this.buildEnv(),
 		});
+		this.proc = proc;
 
-		this.proc.stderr?.on('data', () => {
-			// Ignore verbose CLI stderr logs
+		proc.stderr?.on('data', (chunk: Buffer | string) => {
+			const lines = chunk
+				.toString()
+				.split(/\r?\n/)
+				.map((l) => l.trim())
+				.filter(Boolean);
+			for (const line of lines) {
+				this.stderrTail.push(line);
+				if (this.stderrTail.length > MAX_STDERR_TAIL_LINES) {
+					this.stderrTail.shift();
+				}
+			}
 		});
 
-		this.proc.on('error', (err) => {
+		proc.on('error', (err) => {
 			this.rejectAllPending(
 				new Error(`Failed to start Antigravity CLI (${bin}): ${err.message}`),
 			);
 			this.destroyProcess();
 		});
 
-		this.proc.on('exit', (code) => {
-			this.rejectAllPending(
-				new Error(`Antigravity ACP process exited (code ${code ?? 'unknown'})`),
-			);
-			this.proc = null;
-			this.rl = null;
-			this.initialized = false;
-			this.sessionId = null;
-			this.activeModelId = null;
+		proc.on('exit', (code, signal) => {
+			const wasIntentional = this.intentionalStop;
+			let tail =
+				this.stderrTail.length > 0 ? this.stderrTail.join('\n') : undefined;
+			if (!wasIntentional && !tail) {
+				tail = readCliLogTailFallback(
+					this.procSpawnedAtWallMs,
+					this.appDataDir,
+				);
+			}
+
+			const category = categorizeProcessFailure({
+				exitCode: code,
+				signal,
+				stderrTail: tail,
+			});
+			const message = formatProcessExitError({
+				exitCode: code,
+				signal,
+				stderrTail: tail,
+			});
+
+			this.rejectAllPending(new Error(message));
+			if (this.proc === proc) {
+				this.proc = null;
+				this.rl = null;
+				this.initialized = false;
+				this.sessionId = null;
+				this.activeModelId = null;
+			}
+
+			if (!wasIntentional && !isNonRetriableFailure(category)) {
+				this.scheduleAutoRecovery(category);
+			}
 		});
 
-		if (this.proc.stdout) {
-			this.rl = readline.createInterface({ input: this.proc.stdout });
+		if (proc.stdout) {
+			this.rl = readline.createInterface({ input: proc.stdout });
 			this.rl.on('line', (line) => {
 				this.handleLine(line);
 			});
@@ -1177,6 +1298,15 @@ export class AntigravityAcpClient {
 	}
 
 	private destroyProcess(): void {
+		this.intentionalStop = true;
+		if (this.recoveryTimer) {
+			nodeClearTimeout(this.recoveryTimer);
+			this.recoveryTimer = null;
+		}
+		if (this.backgroundUpdateTimer) {
+			nodeClearTimeout(this.backgroundUpdateTimer);
+			this.backgroundUpdateTimer = null;
+		}
 		if (this.rl) {
 			this.rl.close();
 			this.rl = null;

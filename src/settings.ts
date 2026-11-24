@@ -14,6 +14,10 @@ export interface AntiDianSettings {
 	model?: string;
 	permissionMode?: PermissionMode;
 	cliPath?: string;
+	/** Optional PEM-encoded CA certificate path for corporate TLS/VPN proxies. */
+	caCertificates?: string;
+	/** Highlight pending write approvals inline in open Markdown editors. */
+	enableInlineDiff?: boolean;
 	/** Show raw tool arguments and output in the thinking trace (for debugging). */
 	showRawToolData?: boolean;
 	/** Persisted models/tier/quota snapshot for instant startup rendering. */
@@ -24,6 +28,8 @@ export const DEFAULT_SETTINGS: AntiDianSettings = {
 	model: '',
 	permissionMode: 'ask',
 	cliPath: '',
+	caCertificates: '',
+	enableInlineDiff: true,
 	showRawToolData: false,
 };
 
@@ -111,6 +117,37 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					.onChange(async (val) => {
 						this.plugin.settings.permissionMode =
 							val as PermissionMode;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Inline editor diff')
+			.setDesc(
+				'Show pending write approvals directly inside open notes with accept and reject actions.',
+			)
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.enableInlineDiff ?? true)
+					.onChange(async (value) => {
+						this.plugin.settings.enableInlineDiff = value;
+						if (!value) {
+							this.plugin.inlineDiffController.clearAll();
+						}
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Custom root certificates')
+			.setDesc(
+				'Optional path to a certificate bundle trusted when downloading or running the antigravity backend behind a corporate proxy.',
+			)
+			.addText((text) => {
+				text.setPlaceholder('/path/to/corporate-ca.pem')
+					.setValue(this.plugin.settings.caCertificates ?? '')
+					.onChange(async (value) => {
+						this.plugin.settings.caCertificates = value.trim();
 						await this.plugin.saveSettings();
 					});
 			});

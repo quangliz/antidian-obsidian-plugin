@@ -950,6 +950,16 @@ export class ThinkingStateView {
 		});
 	}
 
+	/** Resolve a specific pending approval externally (e.g. from inline editor diff). */
+	public resolveApproval(callId: string, decision: ApprovalDecision): boolean {
+		const step = this.steps.find(
+			(s) => s.callId === callId && s.approval?.state === 'pending',
+		);
+		if (!step?.approval?.resolve) return false;
+		step.approval.resolve(decision);
+		return true;
+	}
+
 	/** Reject every write still waiting (view closed or session reset). */
 	public cancelPendingApprovals(): void {
 		for (const step of this.steps) {

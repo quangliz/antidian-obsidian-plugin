@@ -1865,3 +1865,98 @@ button.anti-dian-thinking-header-btn:hover {
 .anti-dian-approval-status.is-applied {
 	color: var(--color-green);
 }
+
+/* ── Inline Editor Diff Review (CodeMirror 6) ─────────────────────────────── */
+
+.cm-line.anti-dian-cm-diff-removed {
+	background-color: rgba(var(--color-red-rgb), 0.14);
+	text-decoration: line-through;
+	text-decoration-color: rgba(var(--color-red-rgb), 0.55);
+}
+
+.anti-dian-cm-diff-widget {
+	margin: 4px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	background: var(--background-secondary);
+	font-family: var(--font-text);
+}
+
+.anti-dian-cm-diff-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 8px;
+	background: var(--background-secondary-alt);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+}
+
+.anti-dian-cm-diff-badge {
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-cm-diff-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.anti-dian-cm-diff-btn {
+	padding: 2px 10px;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+}
+
+.anti-dian-cm-diff-btn.is-accept {
+	background: rgba(var(--color-green-rgb), 0.18);
+	border-color: rgba(var(--color-green-rgb), 0.45);
+	color: var(--color-green);
+}
+
+.anti-dian-cm-diff-btn.is-accept:hover {
+	background: rgba(var(--color-green-rgb), 0.28);
+}
+
+.anti-dian-cm-diff-btn.is-reject {
+	background: rgba(var(--color-red-rgb), 0.12);
+	border-color: rgba(var(--color-red-rgb), 0.35);
+	color: var(--color-red);
+}
+
+.anti-dian-cm-diff-btn.is-reject:hover {
+	background: rgba(var(--color-red-rgb), 0.22);
+}
+
+.anti-dian-cm-diff-added {
+	background: rgba(var(--color-green-rgb), 0.1);
+	padding: 4px 0;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+}
+
+.anti-dian-cm-diff-added-line {
+	display: flex;
+	gap: 8px;
+	padding: 0 8px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.anti-dian-cm-diff-gutter {
+	color: var(--color-green);
+	user-select: none;
+	flex-shrink: 0;
+}
+
+.anti-dian-cm-diff-text {
+	color: var(--text-normal);
+}
