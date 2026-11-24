@@ -1425,6 +1425,23 @@ button.anti-dian-promptbar-menu-row {
 	gap: var(--size-4-1);
 }
 
+/*
+ * Obsidian makes app chrome unselectable and only re-enables selection inside
+ * its own markdown/editor views, so opt the chat transcript back in. Controls
+ * (buttons, headers, the copy/time row) stay unselectable so clicks and drags
+ * on them don't start a text selection.
+ */
+.anti-dian-messages {
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: auto;
+}
+
+.anti-dian-messages :is(button, [role="button"], .anti-dian-message-meta, .anti-dian-thinking-header-btn) {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
 .anti-dian-message-user {
 	align-self: flex-end;
 	background: var(--background-modifier-active-hover);
