@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	ContextCompiler,
+	extractForkedContext,
 	stripCompiledContext,
 } from '../src/core/context/compiler.ts';
 import {
@@ -546,4 +547,54 @@ test('buildSessionTree nests forked children under parents and formats (fork) ti
 	assert.equal(tree[1].session.sessionId, 'p2');
 	assert.equal(tree[2].session.sessionId, 'orphan');
 	assert.equal(tree[2].displayTitle, 'Orphan branch (fork)');
+});
+
+test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for forked sessions', async () => {
+	const {
+		forkedTurnsToReplayedMessages,
+		parseAgyTranscriptJsonl,
+		storedTurnsToReplayedMessages,
+	} = await import('../src/core/sessions/transcript.ts');
+
+	const compiler = new ContextCompiler();
+	compiler.seedForkedHistory([
+		{ userText: 'first question', agentText: 'first answer\n\nwith details' },
+		{ userText: 'second question', agentText: 'second answer' },
+	]);
+	const compiled = await compiler.compile('child follow-up');
+
+	const extracted = extractForkedContext(compiled.prompt);
+	assert.deepEqual(extracted, [
+		{ userText: 'first question', agentText: 'first answer\n\nwith details' },
+		{ userText: 'second question', agentText: 'second answer' },
+	]);
+
+	const childJsonl = [
+		JSON.stringify({
+			type: 'USER_INPUT',
+			created_at: '2026-11-24T12:10:00Z',
+			content: `<USER_REQUEST>\n${compiled.prompt}\n</USER_REQUEST>`,
+		}),
+		JSON.stringify({
+			type: 'PLANNER_RESPONSE',
+			created_at: '2026-11-24T12:10:03Z',
+			content: 'child answer',
+		}),
+	].join('\n');
+
+	const parsed = parseAgyTranscriptJsonl(childJsonl);
+	assert.equal(parsed.length, 1);
+	assert.equal(parsed[0].userText, 'child follow-up');
+	assert.equal(parsed[0].agentText, 'child answer');
+	assert.deepEqual(parsed[0].forkedContext, extracted);
+
+	const fallbackMessages = forkedTurnsToReplayedMessages(parsed[0].forkedContext);
+	assert.equal(fallbackMessages.length, 4);
+	assert.equal(fallbackMessages[0].role, 'user');
+	assert.equal(fallbackMessages[1].text, 'first answer\n\nwith details');
+
+	const replayed = storedTurnsToReplayedMessages(parsed);
+	assert.equal(replayed.length, 2);
+	assert.equal(replayed[0].text, 'child follow-up');
+	assert.equal(replayed[1].text, 'child answer');
 });

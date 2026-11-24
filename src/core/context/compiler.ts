@@ -247,3 +247,51 @@ function endAfter(text: string, marker: string, from = 0): number | null {
 	const i = text.indexOf(marker, from);
 	return i === -1 ? null : i + marker.length;
 }
+
+/**
+ * Extracts the parent conversation turns from a `[Forked Conversation Context:]`
+ * block injected into a forked session's first prompt, if present.
+ */
+export function extractForkedContext(prompt: string): ForkedTurn[] {
+	const startIdx = prompt.indexOf(FORK_BLOCK_START);
+	if (startIdx === -1) return [];
+	const bodyStart = startIdx + FORK_BLOCK_START.length;
+	const endIdx = prompt.indexOf(FORK_BLOCK_END, bodyStart);
+	if (endIdx === -1) return [];
+
+	const body = prompt.slice(bodyStart, endIdx);
+	const turns: ForkedTurn[] = [];
+	let current: ForkedTurn | null = null;
+	let field: 'user' | 'agent' | null = null;
+
+	const flush = () => {
+		if (!current) return;
+		current.userText = current.userText.trim();
+		current.agentText = current.agentText.trim();
+		if (current.userText || current.agentText) {
+			turns.push(current);
+		}
+		current = null;
+		field = null;
+	};
+
+	for (const line of body.split(/\r?\n/)) {
+		if (line.startsWith('User: ')) {
+			flush();
+			current = { userText: line.slice('User: '.length), agentText: '' };
+			field = 'user';
+		} else if (line.startsWith('Assistant: ')) {
+			if (!current) {
+				current = { userText: '', agentText: '' };
+			}
+			current.agentText = line.slice('Assistant: '.length);
+			field = 'agent';
+		} else if (current && field === 'user') {
+			current.userText += `\n${line}`;
+		} else if (current && field === 'agent') {
+			current.agentText += `\n${line}`;
+		}
+	}
+	flush();
+	return turns;
+}

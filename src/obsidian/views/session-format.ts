@@ -340,6 +340,7 @@ export function filterSessions<T extends SessionLike>(
 export interface SessionForkRelation {
 	parentId: string;
 	title?: string;
+	parentTurnCount?: number;
 }
 
 export interface SessionTreeNode<T extends SessionLike> {

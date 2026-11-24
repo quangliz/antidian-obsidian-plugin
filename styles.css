@@ -2692,7 +2692,8 @@ button.anti-dian-msg-action-btn.is-copied {
 /* ── Session Fork Tree (Parent / Child) ───────────────────────────────────── */
 
 .anti-dian-session-item.is-child {
-	padding-left: calc(12px + var(--anti-dian-session-depth, 1) * 16px);
+	/* Forks sit one step (16px) right of their parent's title per level. */
+	padding-left: calc(30px + var(--anti-dian-session-depth, 1) * 16px);
 }
 
 .anti-dian-session-item-main {
@@ -2708,28 +2709,36 @@ button.anti-dian-msg-action-btn.is-copied {
 	min-width: 0;
 }
 
-.anti-dian-session-chevron {
+/* Expand/collapse forks: a bare muted chevron right after the parent's title.
+   The extra specificity beats Obsidian's `button:not(.clickable-icon)` chrome. */
+.anti-dian-session-list button.anti-dian-session-chevron {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 18px;
-	height: 18px;
+	width: 16px;
+	height: 16px;
+	margin-left: 2px;
 	padding: 0;
 	border: none;
-	border-radius: var(--radius-s);
+	border-radius: 4px;
 	background: transparent;
-	color: var(--text-muted);
+	box-shadow: none;
+	color: var(--text-faint);
 	cursor: pointer;
 	flex-shrink: 0;
-	box-shadow: none;
+	transition: color 0.15s ease;
 }
 
-.anti-dian-session-chevron:hover {
-	background: var(--background-modifier-hover);
+.anti-dian-session-list button.anti-dian-session-chevron:hover {
+	background: transparent;
 	color: var(--text-normal);
 }
 
-.anti-dian-session-chevron svg {
-	width: 13px;
-	height: 13px;
+.anti-dian-session-list button.anti-dian-session-chevron:focus-visible {
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.anti-dian-session-list button.anti-dian-session-chevron svg {
+	width: 14px;
+	height: 14px;
 }

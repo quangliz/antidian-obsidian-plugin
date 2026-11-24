@@ -28,9 +28,14 @@ import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
 import { StreamRenderLoop } from './stream-render-loop';
 import logoUrl from '../../../assets/logo-hero.png';
-import { UNTITLED_SESSION } from './session-format';
+import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
-import { loadAgyTranscriptTurns } from '../../core/sessions/transcript';
+import {
+	forkedTurnsToReplayedMessages,
+	loadAgyTranscriptTurns,
+	storedTurnsToReplayedMessages,
+} from '../../core/sessions/transcript';
+import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
@@ -67,7 +72,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private activeThinking: ThinkingStateView | null = null;
 	private renderedTurns: RenderedTurn[] = [];
 	/** Pending fork parent info, saved once the new forked ACP session gets an ID. */
-	private pendingForkParent: { parentId: string; title?: string } | null = null;
+	private pendingForkParent: {
+		parentId: string;
+		title?: string;
+		parentTurnCount: number;
+	} | null = null;
 
 	private rootEl: HTMLElement | null = null;
 	private heroTitleEl: HTMLElement | null = null;
@@ -298,11 +307,22 @@ export class AntiDianView extends ItemView implements HoverParent {
 				loadAgyTranscriptTurns(session.sessionId).catch(() => []),
 			]);
 			if (myToken !== this.turnToken) return;
+			const childMessages = mergeStoredTraces(replayed, stored);
+			const prefixMessages = await this.resolveForkPrefixMessages(
+				session.sessionId,
+				stored,
+			);
+			if (myToken !== this.turnToken) return;
 			loadingEl?.remove();
 			this.history = [];
 			this.resetSessionStats();
-			this.resumedTitle = session.title ?? null;
-			await this.renderReplayedHistory(mergeStoredTraces(replayed, stored));
+			const fork = this.plugin.settings.sessionForks?.[session.sessionId];
+			this.resumedTitle = fork
+				? formatForkedTitle(session, fork)
+				: (session.title ?? null);
+			await this.renderReplayedHistory([...prefixMessages, ...childMessages], {
+				forkDividerAt: prefixMessages.length > 0 ? prefixMessages.length : undefined,
+			});
 		} catch (err) {
 			if (myToken !== this.turnToken) return;
 			loadingEl?.remove();
@@ -319,7 +339,58 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 	}
 
-	private async renderReplayedHistory(messages: ReplayedMessage[]): Promise<void> {
+	private async resolveForkPrefixMessages(
+		sessionId: string,
+		childStored: StoredTurnTrace[],
+		visited: Set<string> = new Set(),
+	): Promise<ReplayedMessage[]> {
+		if (visited.has(sessionId)) return [];
+		visited.add(sessionId);
+
+		const fork = this.plugin.settings.sessionForks?.[sessionId];
+		const fallbackForkTurns = childStored[0]?.forkedContext;
+
+		if (fork?.parentId) {
+			const parentStored = await loadAgyTranscriptTurns(fork.parentId).catch(
+				() => [],
+			);
+			const grandPrefix = await this.resolveForkPrefixMessages(
+				fork.parentId,
+				parentStored,
+				visited,
+			);
+			const parentMessages = [
+				...grandPrefix,
+				...storedTurnsToReplayedMessages(parentStored),
+			];
+			if (parentMessages.length > 0) {
+				const turnLimit = fork.parentTurnCount ?? fallbackForkTurns?.length;
+				if (turnLimit !== undefined && turnLimit > 0) {
+					let userTurns = 0;
+					const sliced: ReplayedMessage[] = [];
+					for (const msg of parentMessages) {
+						if (msg.role === 'user') {
+							if (userTurns >= turnLimit) break;
+							userTurns++;
+						}
+						sliced.push(msg);
+					}
+					return sliced;
+				}
+				return parentMessages;
+			}
+		}
+
+		if (fallbackForkTurns && fallbackForkTurns.length > 0) {
+			return forkedTurnsToReplayedMessages(fallbackForkTurns);
+		}
+		return [];
+	}
+
+	private async renderReplayedHistory(
+		messages: ReplayedMessage[],
+		options?: { forkDividerAt?: number },
+	): Promise<void> {
 		if (!this.messagesEl) return;
 		if (messages.length === 0) {
 			this.resetEmptyState();
@@ -327,6 +398,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 		this.renderedTurns = [];
 		for (let i = 0; i < messages.length; i++) {
+			if (options?.forkDividerAt !== undefined && i === options.forkDividerAt) {
+				const divider = this.messagesEl.createDiv({
+					cls: 'anti-dian-fork-divider',
+				});
+				const icon = divider.createSpan({ cls: 'anti-dian-fork-divider-icon' });
+				setIcon(icon, 'git-fork');
+				divider.createSpan({ text: 'Forked into new conversation' });
+			}
 			const message = messages[i]!;
 			if (message.role === 'user') {
 				const turn: RenderedTurn = {
@@ -894,7 +973,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 		if (!childId || childId === pending.parentId) return;
 		this.pendingForkParent = null;
 		const forks = { ...(this.plugin.settings.sessionForks ?? {}) };
-		forks[childId] = { parentId: pending.parentId, title: pending.title };
+		forks[childId] = {
+			parentId: pending.parentId,
+			title: pending.title,
+			parentTurnCount: pending.parentTurnCount,
+		};
 		this.plugin.settings.sessionForks = forks;
 		void this.plugin.saveData(this.plugin.settings);
 	}
@@ -1078,7 +1161,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 				: `${parentTitle} (fork)`
 			: undefined;
 		this.pendingForkParent = parentSessionId
-			? { parentId: parentSessionId, title: forkTitle }
+			? {
+					parentId: parentSessionId,
+					title: forkTitle,
+					parentTurnCount: keptTurns.length,
+				}
 			: null;
 		this.resetSessionStats();
 		this.resumedTitle = forkTitle ?? null;

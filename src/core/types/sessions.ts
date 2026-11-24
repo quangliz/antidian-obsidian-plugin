@@ -46,6 +46,10 @@ export interface ReplayedMessage {
 export interface StoredTurnTrace {
 	/** The text the user typed (without injected context); used to align with the replay. */
 	userText: string;
+	/** Assistant response text captured from the transcript, when available. */
+	agentText?: string;
+	/** Parent turns injected into the first prompt of a forked conversation. */
+	forkedContext?: Array<{ userText: string; agentText: string }>;
 	events: ReplayedAgentEvent[];
 	durationMs?: number;
 	usage?: TurnUsage;
