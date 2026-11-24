@@ -6,6 +6,8 @@ import {
 	AntigravityAcpClient,
 	AntigravityAcpOptions,
 	AvailableModelsResponse,
+	ContextWindowUsage,
+	UserQuotaResponse,
 } from './antigravity-acp';
 import { McpToolServer } from './mcp-tool-server';
 
@@ -38,6 +40,14 @@ export class AntigravityProvider {
 
 	getAccountTier(): AccountTierInfo | null {
 		return this.client.getAccountTier();
+	}
+
+	getContextUsage(): ContextWindowUsage | null {
+		return this.client.getContextUsage();
+	}
+
+	async fetchUserQuota(force = false): Promise<UserQuotaResponse | null> {
+		return this.client.fetchUserQuota(force);
 	}
 
 	async checkStatus(): Promise<{

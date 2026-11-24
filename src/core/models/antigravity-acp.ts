@@ -39,6 +39,31 @@ export interface AccountTierInfo {
 	upgradeUri?: string;
 }
 
+export interface QuotaBucketInfo {
+	id: string;
+	name: string;
+	description?: string;
+	window?: string;
+	remainingFraction: number;
+	resetTime?: string;
+}
+
+export interface QuotaGroupInfo {
+	name: string;
+	description?: string;
+	buckets: QuotaBucketInfo[];
+}
+
+export interface UserQuotaResponse {
+	groups: QuotaGroupInfo[];
+	accountTier?: AccountTierInfo | null;
+}
+
+export interface ContextWindowUsage {
+	used: number;
+	size: number;
+}
+
 export interface AcpStreamCallbacks {
 	onThoughtDelta?: (text: string) => void;
 	onAnswerDelta?: (text: string) => void;
@@ -239,6 +264,9 @@ export class AntigravityAcpClient {
 
 	private cachedModels: AvailableModelsResponse | null = null;
 	private cachedTier: AccountTierInfo | null = null;
+	private cachedQuota: { data: UserQuotaResponse; fetchedAt: number } | null =
+		null;
+	private contextUsage: ContextWindowUsage | null = null;
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
@@ -274,6 +302,94 @@ export class AntigravityAcpClient {
 
 	getAccountTier(): AccountTierInfo | null {
 		return this.cachedTier;
+	}
+
+	getContextUsage(): ContextWindowUsage | null {
+		return this.contextUsage;
+	}
+
+	async fetchUserQuota(force = false): Promise<UserQuotaResponse | null> {
+		const now = Date.now();
+		if (
+			!force &&
+			this.cachedQuota &&
+			now - this.cachedQuota.fetchedAt < 30_000
+		) {
+			return {
+				...this.cachedQuota.data,
+				accountTier: this.cachedTier ?? this.cachedQuota.data.accountTier,
+			};
+		}
+
+		const bin = resolveAgyBinary(this.cliPath);
+		try {
+			const stdout = await new Promise<string>((resolve, reject) => {
+				const child = spawn(
+					bin,
+					['--print', '/usage', '--output-format', 'json'],
+					{
+						cwd: this.cwd,
+						stdio: ['ignore', 'pipe', 'pipe'],
+						env: this.buildEnv(),
+					},
+				);
+
+				let out = '';
+				child.stdout?.on('data', (chunk: Buffer | string) => {
+					out += chunk.toString();
+				});
+				child.on('error', reject);
+				child.on('close', (code) => {
+					if (code === 0) resolve(out);
+					else reject(new Error(`agy /usage exited with code ${code}`));
+				});
+			});
+
+			const parsed = JSON.parse(stdout) as {
+				command?: {
+					data?: {
+						groups?: {
+							name: string;
+							description?: string;
+							buckets?: {
+								id: string;
+								name: string;
+								description?: string;
+								window?: string;
+								remaining_fraction?: number;
+								reset_time?: string;
+							}[];
+						}[];
+					};
+				};
+			};
+
+			const groups: QuotaGroupInfo[] = (
+				parsed.command?.data?.groups ?? []
+			).map((g) => ({
+				name: g.name,
+				description: g.description,
+				buckets: (g.buckets ?? []).map((b) => ({
+					id: b.id,
+					name: b.name,
+					description: b.description,
+					window: b.window,
+					remainingFraction: b.remaining_fraction ?? 1,
+					resetTime: b.reset_time,
+				})),
+			}));
+
+			const data: UserQuotaResponse = {
+				groups,
+				accountTier: this.cachedTier,
+			};
+			this.cachedQuota = { data, fetchedAt: now };
+			return data;
+		} catch {
+			return this.cachedTier
+				? { groups: [], accountTier: this.cachedTier }
+				: null;
+		}
 	}
 
 	async checkStatus(): Promise<{
@@ -357,6 +473,7 @@ export class AntigravityAcpClient {
 			const oldId = this.sessionId;
 			this.sessionId = null;
 			this.activeModelId = null;
+			this.contextUsage = null;
 			try {
 				await this.sendRequest('session/close', { sessionId: oldId });
 			} catch {
@@ -365,6 +482,7 @@ export class AntigravityAcpClient {
 		} else {
 			this.sessionId = null;
 			this.activeModelId = null;
+			this.contextUsage = null;
 		}
 	}
 
@@ -765,10 +883,21 @@ export class AntigravityAcpClient {
 					rawInput?: Record<string, unknown>;
 					rawOutput?: unknown;
 					status?: string;
+					used?: number;
+					size?: number;
 			  }
 			| undefined;
 
 		if (!update?.sessionUpdate) return;
+
+		if (
+			update.sessionUpdate === 'usage_update' &&
+			typeof update.used === 'number' &&
+			typeof update.size === 'number'
+		) {
+			this.contextUsage = { used: update.used, size: update.size };
+			return;
+		}
 
 		if (update.sessionUpdate === 'agent_thought_chunk') {
 			const text = update.content?.text;

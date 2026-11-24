@@ -67,6 +67,10 @@ export class AntiDianView extends ItemView {
 			getModelGroups: () => this.modelGroups,
 			getAccountTier: () =>
 				this.plugin.antigravityProvider.getAccountTier(),
+			fetchUserQuota: () =>
+				this.plugin.antigravityProvider.fetchUserQuota(),
+			getContextUsage: () =>
+				this.plugin.antigravityProvider.getContextUsage(),
 			getSessionStats: () => ({
 				promptTokens: this.sessionPromptTokens,
 				candidateTokens: this.sessionCandidateTokens,

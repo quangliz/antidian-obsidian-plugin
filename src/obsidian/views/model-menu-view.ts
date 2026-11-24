@@ -2,7 +2,10 @@ import { setIcon } from 'obsidian';
 import {
 	AccountTierInfo,
 	AvailableModel,
+	ContextWindowUsage,
 	ModelGroup,
+	UserQuotaResponse,
+	formatTokens,
 	groupModels,
 } from '../../core/models/antigravity-acp';
 
@@ -12,6 +15,8 @@ export interface ModelMenuContext {
 	getAvailableModels: () => AvailableModel[];
 	getModelGroups: () => ModelGroup[];
 	getAccountTier: () => AccountTierInfo | null;
+	fetchUserQuota: () => Promise<UserQuotaResponse | null>;
+	getContextUsage: () => ContextWindowUsage | null;
 	getSessionStats: () => {
 		promptTokens: number;
 		candidateTokens: number;
@@ -303,7 +308,7 @@ export class ModelMenuController {
 		}
 	}
 
-	openUsageSubmenu(anchorEl: HTMLElement): void {
+	async openUsageSubmenu(anchorEl: HTMLElement): Promise<void> {
 		this.closeUsageSubmenu();
 		this.closeEffortSubmenu();
 		this.isUsageSubmenuOpen = true;
@@ -312,7 +317,20 @@ export class ModelMenuController {
 			cls: 'anti-dian-usage-popup',
 		});
 
-		const tier = this.ctx.getAccountTier();
+		const loadingSec = this.usageSubmenuEl.createDiv({
+			cls: 'anti-dian-usage-section',
+		});
+		loadingSec.createDiv({
+			text: 'Loading quota limits...',
+			cls: 'anti-dian-usage-limit-subtext',
+		});
+		this.positionSubmenu(anchorEl, this.usageSubmenuEl);
+
+		const quotaData = await this.ctx.fetchUserQuota();
+		if (!this.usageSubmenuEl || !this.isUsageSubmenuOpen) return;
+		this.usageSubmenuEl.empty();
+
+		const tier = quotaData?.accountTier ?? this.ctx.getAccountTier();
 		const accountSec = this.usageSubmenuEl.createDiv({
 			cls: 'anti-dian-usage-section anti-dian-usage-account-section',
 		});
@@ -336,6 +354,43 @@ export class ModelMenuController {
 			});
 		}
 
+		const groups = quotaData?.groups ?? [];
+		for (const group of groups) {
+			this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
+
+			const groupSec = this.usageSubmenuEl.createDiv({
+				cls: 'anti-dian-usage-section',
+			});
+			groupSec.createDiv({
+				text: group.name,
+				cls: 'anti-dian-usage-sec-title',
+			});
+
+			for (const bucket of group.buckets) {
+				const pct = `${Math.round(bucket.remainingFraction * 100)}%`;
+				const status: 'success' | 'warning' | 'error' =
+					bucket.remainingFraction < 0.15
+						? 'error'
+						: bucket.remainingFraction < 0.3
+							? 'warning'
+							: 'success';
+
+				const subtext = this.formatResetSubtext(
+					bucket.resetTime,
+					bucket.window,
+					bucket.remainingFraction,
+				);
+
+				this.renderUsageLimitRow(
+					groupSec,
+					bucket.name,
+					pct,
+					subtext,
+					status,
+				);
+			}
+		}
+
 		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
 
 		const sessionSec = this.usageSubmenuEl.createDiv({
@@ -355,7 +410,52 @@ export class ModelMenuController {
 			'success',
 		);
 
+		const ctxUsage = this.ctx.getContextUsage();
+		if (ctxUsage && ctxUsage.size > 0) {
+			const usedPct = Math.min(
+				100,
+				Math.round((ctxUsage.used / ctxUsage.size) * 100),
+			);
+			const ctxStatus: 'success' | 'warning' | 'error' =
+				usedPct > 85 ? 'error' : usedPct > 65 ? 'warning' : 'success';
+			this.renderUsageLimitRow(
+				sessionSec,
+				'Context Window',
+				`${usedPct}%`,
+				`${formatTokens(ctxUsage.used)} / ${formatTokens(ctxUsage.size)}`,
+				ctxStatus,
+			);
+		}
+
 		this.positionSubmenu(anchorEl, this.usageSubmenuEl);
+	}
+
+	private formatResetSubtext(
+		resetTime?: string,
+		windowType?: string,
+		remainingFraction?: number,
+	): string | undefined {
+		if (remainingFraction !== undefined && remainingFraction >= 0.999) {
+			return windowType === '5h'
+				? 'Full 5-hour window available'
+				: 'Full weekly window available';
+		}
+		if (!resetTime) return undefined;
+		const diffMs = new Date(resetTime).getTime() - Date.now();
+		if (!Number.isFinite(diffMs) || diffMs <= 0) {
+			return 'Refreshing soon';
+		}
+		const totalMins = Math.round(diffMs / 60_000);
+		const days = Math.floor(totalMins / (60 * 24));
+		const hours = Math.floor((totalMins % (60 * 24)) / 60);
+		const mins = totalMins % 60;
+		if (days > 0) {
+			return `Resets in ${days}d ${hours}h`;
+		}
+		if (hours > 0) {
+			return `Resets in ${hours}h ${mins}m`;
+		}
+		return `Resets in ${mins}m`;
 	}
 
 	private renderUsageLimitRow(
