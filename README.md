@@ -51,6 +51,11 @@ description: Summarize today's notes and extract open action items.
 
 Anti-dian discovers your skills automatically and loads them on demand.
 
+## Privacy & Network Use
+
+- **Google account & AI requests**: Anti-dian authenticates with your Google account and sends your prompts, attached media, and the note context accessed during a conversation to Google's Antigravity backend via the `agy` CLI. It never uploads your entire vault.
+- **Backend binary**: If `agy` is not already installed, Anti-dian downloads and verifies the official Antigravity CLI binary from Google's release endpoint (or you can provide a local binary path in **Settings → Anti-dian → Advanced**).
+
 ## Technical Details & Development
 
 For architecture, MCP vault tools, the mutation/diff pipeline, backend configuration, and development scripts, see [ARCHITECTURE.md](./ARCHITECTURE.md) (and [AGENTS.md](./AGENTS.md) for contributor guidelines).
