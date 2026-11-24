@@ -729,7 +729,12 @@ export class ThinkingStateView {
 					showRaw: this.getShowRawToolData(),
 				},
 			);
-			const hasPanel = renderDetail !== null || step.approval !== undefined;
+			const hasApprovalControls =
+				step.approval?.state === 'pending' ||
+				(step.approval?.state === 'applied' &&
+					Boolean(step.approval.appliedChangeSetId) &&
+					Boolean(this.undoChange));
+			const hasPanel = renderDetail !== null || hasApprovalControls;
 			const isOpen = hasPanel && this.openStepIds.has(step.id);
 			const row = this.rowsContainerEl.createDiv({
 				cls: 'anti-dian-thinking-row',

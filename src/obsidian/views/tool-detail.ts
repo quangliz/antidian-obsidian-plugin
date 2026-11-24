@@ -2,7 +2,6 @@ import { App, HoverParent } from 'obsidian';
 import { FileDiff } from '../../core/types/changes';
 import { renderFileDiff } from './diff-lines';
 import { bindNoteLink } from './note-link';
-import { originalTextSize } from '../../core/sessions/trace';
 
 /** What the detail renderer needs to know about one tool call. */
 export interface ToolDetailInput {
@@ -62,8 +61,6 @@ const formatValue = (v: unknown): string => {
 		return String(v);
 	}
 };
-
-const lineCount = (text: string): number => text.split('\n').length;
 
 const plural = (n: number, word: string): string =>
 	`${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
@@ -133,28 +130,17 @@ function mutationDetail(input: ToolDetailInput): Renderer | null {
 function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer | null {
 	if (input.status !== 'done') return null;
 	const output = input.output;
-	// Replayed calls from before Anti-dian saved traces: the CLI kept no result.
-	if (output === undefined) {
-		return (el) => meta(el, 'Result was not saved for this earlier turn');
-	}
+	// If no result was saved (e.g. replayed turn without stored output),
+	// keep the row compact without an expand button.
+	if (output === undefined) return null;
 
 	switch (input.toolName) {
-		case 'read_note': {
-			if (!isRecord(output)) return (el) => meta(el, 'Note not found');
-			const content = str(output.content) ?? '';
-			const heading = str(output.heading);
-			// Saved traces cut long content; they keep its real size.
-			const size = originalTextSize(output, 'content');
-			const parts = [
-				heading ? `#${heading}` : 'Whole note',
-				plural(size?.chars ?? content.length, 'char'),
-				plural(size?.lines ?? lineCount(content), 'line'),
-			];
-			if (output.isStaged) parts.push('includes staged edits');
-			return (el) => meta(el, parts.join(' · '));
-		}
+		case 'read_note':
+			// Plain reads don't need an expandable detail panel; errors and raw
+			// debug mode are still handled by buildToolDetail.
+			return null;
 		case 'get_note_outline': {
-			if (!isRecord(output)) return (el) => meta(el, 'Note not found');
+			if (!isRecord(output)) return null;
 			const headings = Array.isArray(output.headings)
 				? output.headings.filter(isRecord)
 				: [];

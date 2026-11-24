@@ -346,6 +346,50 @@ test('parseAgyTranscriptJsonl extracts turns, tool calls, outputs, durations, an
 	assert.deepEqual(turn.events[0].output, { path: 'a.md', content: 'hello' });
 });
 
+test('parseAgyTranscriptJsonl reconstructs _diff for replace_block edits', () => {
+	const jsonl = [
+		JSON.stringify({
+			step_index: 0,
+			type: 'USER_INPUT',
+			created_at: '2026-11-24T12:40:46Z',
+			content: '<USER_REQUEST>\nrename header\n</USER_REQUEST>',
+		}),
+		JSON.stringify({
+			step_index: 1,
+			type: 'PLANNER_RESPONSE',
+			created_at: '2026-11-24T12:40:47Z',
+			tool_calls: [
+				{
+					name: 'mcp_anti-dian-vault_replace_block',
+					args: {
+						path: '"note.md"',
+						oldText: '"# Old Title"',
+						newText: '"# New Title"',
+					},
+				},
+			],
+		}),
+		JSON.stringify({
+			step_index: 2,
+			type: 'GENERIC',
+			status: 'DONE',
+			created_at: '2026-11-24T12:40:48Z',
+			content:
+				'Created At: 2026-11-24T12:40:48Z\nCompleted At: 2026-11-24T12:40:49Z\n{"staged":false,"applied":true,"message":"Applied"}',
+		}),
+	].join('\n');
+
+	const turns = parseAgyTranscriptJsonl(jsonl);
+	assert.equal(turns.length, 1);
+	const tool = turns[0].events[0];
+	assert.equal(tool.toolName, 'replace_block');
+	assert.equal(tool.output.applied, true);
+	assert.ok(tool.output._diff);
+	assert.equal(tool.output._diff.additions, 1);
+	assert.equal(tool.output._diff.deletions, 1);
+	assert.equal(tool.output._diff.hunks.length, 1);
+});
+
 test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns reads from disk', async () => {
 	assert.deepEqual(getAgyTranscriptPaths('../evil'), []);
 
