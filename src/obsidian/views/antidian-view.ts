@@ -26,6 +26,7 @@ import {
 } from '../../core/models/antigravity-acp';
 import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
+import { StreamRenderLoop } from './stream-render-loop';
 import logoUrl from '../../../assets/logo-hero.png';
 import { UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
@@ -637,8 +638,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 		let streamSourceEnded = false;
 		let resolveStreamComplete: (() => void) | null = null;
 		let answerWaitingForThought = false;
-		let streamRenderVersion = 0;
-		let streamRenderScheduled = false;
 		let streamingFinished = false;
 		let renderSourcePath = '';
 		const streamSpeed = 60;
@@ -652,33 +651,26 @@ export class AntiDianView extends ItemView implements HoverParent {
 				attr: { 'aria-hidden': 'true' },
 			});
 		};
-		const renderStreamedMarkdown = () => {
-			if (streamRenderScheduled) return;
-			streamRenderScheduled = true;
-			window.requestAnimationFrame(() => {
-				streamRenderScheduled = false;
-				const version = streamRenderVersion;
-				const markdown = streamedMarkdown;
+		// Shows the latest finished render even if the text has grown since, so slow
+		// renders (MathJax for `$…$`) don't freeze the stream until it ends.
+		const streamRenderLoop = new StreamRenderLoop<HTMLElement>({
+			getText: () => streamedMarkdown,
+			schedule: (fn) => window.requestAnimationFrame(() => fn()),
+			render: async (markdown) => {
 				const rendered = answerEl.createDiv();
 				rendered.detach();
-				void MarkdownRenderer.render(
-					this.app,
-					markdown,
-					rendered,
-					renderSourcePath,
-					this,
-				).then(() => {
-					if (streamingFinished || version !== streamRenderVersion) {
-						if (!streamingFinished) renderStreamedMarkdown();
-						return;
-					}
-					linkifyCodeWikilinks(this.app, rendered, renderSourcePath);
-					answerEl.replaceChildren(...Array.from(rendered.childNodes));
-					appendStreamCaret();
-					this.scrollToBottom();
-				});
-			});
-		};
+				await MarkdownRenderer.render(this.app, markdown, rendered, renderSourcePath, this);
+				return rendered;
+			},
+			show: (rendered) => {
+				if (streamingFinished) return;
+				linkifyCodeWikilinks(this.app, rendered, renderSourcePath);
+				answerEl.replaceChildren(...Array.from(rendered.childNodes));
+				appendStreamCaret();
+				this.scrollToBottom();
+			},
+		});
+		const renderStreamedMarkdown = () => streamRenderLoop.request();
 		const startTextStream = () => {
 			if (streamAnimationFrame !== null) return;
 			const advance = (timestamp: number) => {
@@ -691,7 +683,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 					0,
 					streamedMarkdown.length + streamChunkSize,
 				);
-				streamRenderVersion++;
 				renderStreamedMarkdown();
 
 				if (streamedMarkdown.length < receivedMarkdown.length) {
@@ -734,7 +725,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 						streamedMarkdown = '';
 						streamLastFrame = 0;
 						streamSourceEnded = false;
-						streamRenderVersion++;
+						streamRenderLoop.reset();
 						streamingFinished = false;
 						answerEl.empty();
 						appendStreamCaret();
@@ -806,7 +797,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 					window.cancelAnimationFrame(streamAnimationFrame);
 					streamAnimationFrame = null;
 				}
-				streamRenderVersion++;
+				streamRenderLoop.reset();
 				answerEl.empty();
 
 				const partialAnswer = result.answer || streamedMarkdown.trim();
@@ -830,7 +821,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				await waitForTextStream();
 				if (myToken !== this.turnToken) return;
 				streamingFinished = true;
-				streamRenderVersion++;
+				streamRenderLoop.reset();
 				answerEl.empty();
 
 				await MarkdownRenderer.render(
@@ -875,7 +866,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				window.cancelAnimationFrame(streamAnimationFrame);
 				streamAnimationFrame = null;
 			}
-			streamRenderVersion++;
+			streamRenderLoop.reset();
 			answerEl.empty();
 			answerEl.createEl('p', {
 				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
