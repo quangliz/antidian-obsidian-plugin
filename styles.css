@@ -133,14 +133,14 @@
 	padding: 8px 10px;
 	gap: 6px;
 	box-sizing: border-box;
-	box-shadow: 0 0 0 1px var(--background-modifier-border), 0 2px 10px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 0 0 1px var(--background-modifier-border), var(--shadow-s);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 	overflow: hidden;
 }
 
 .anti-dian-promptbar-card:focus-within {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 1px var(--interactive-accent), 0 3px 14px rgba(0, 0, 0, 0.18);
+	box-shadow: 0 0 0 1px var(--interactive-accent), var(--shadow-s);
 }
 
 .anti-dian-promptbar-card.is-expanded {
@@ -356,7 +356,7 @@
 	padding: 0 8px;
 	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
-	background: rgba(255, 255, 255, 0.04);
+	background: var(--background-modifier-hover);
 	cursor: pointer;
 	user-select: none;
 	max-width: 140px;
@@ -371,7 +371,7 @@
 
 .anti-dian-promptbar-note-pill.is-active {
 	border-color: var(--interactive-accent);
-	background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.12);
+	background: rgba(var(--interactive-accent-rgb), 0.12);
 }
 
 .anti-dian-promptbar-note-pill.is-active .anti-dian-promptbar-note-icon {
@@ -459,7 +459,7 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
 	padding: 4px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+	box-shadow: var(--shadow-l);
 	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
 	transform-origin: bottom center;
 	display: flex;
@@ -563,129 +563,31 @@
 /* Model Menu Popup & Usage Submenu                             */
 /* ------------------------------------------------------------- */
 
-.anti-dian-model-menu {
-	position: fixed;
-	z-index: 9999;
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-	padding: 6px 0;
-	min-width: 250px;
-	max-height: min(420px, calc(100vh - 30px));
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.anti-dian-menu-header {
-	padding: 4px 12px;
-	font-size: calc(var(--font-ui-smaller) * 0.9);
-	font-weight: var(--font-semibold);
-	color: var(--text-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-.anti-dian-menu-list {
-	display: flex;
-	flex-direction: column;
-}
-
-.anti-dian-menu-item {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 6px 12px;
-	cursor: pointer;
-	font-size: var(--font-ui-small);
-	color: var(--text-normal);
-}
-
-.anti-dian-menu-item:hover,
-.anti-dian-menu-item.is-selected {
-	background: var(--background-modifier-hover);
-}
-
-.anti-dian-menu-item-left {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.anti-dian-permission-menu .anti-dian-menu-item-left {
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 1px;
-}
-
-.anti-dian-menu-item-title {
-	font-weight: var(--font-medium);
-}
-
+/* Extra text inside native Menu item titles (model + permission menus). */
 .anti-dian-menu-item-effort {
-	font-size: calc(var(--font-ui-smaller) * 0.9);
+	margin-left: 4px;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
 
 .anti-dian-menu-item-badge {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	font-size: 10px;
-	padding: 1px 4px;
-	border-radius: 3px;
-	background: rgba(255, 255, 255, 0.08);
+	margin-left: 6px;
+	font-size: var(--font-ui-smaller);
+	padding: 0 4px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
 	color: var(--text-muted);
 }
 
-.anti-dian-menu-info-icon {
-	display: flex;
-	align-items: center;
-	font-size: 9px;
-}
-
-.anti-dian-menu-item-right {
-	display: flex;
-	align-items: center;
+.anti-dian-menu-item-desc {
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-}
-
-.anti-dian-menu-check {
-	color: var(--text-accent);
-}
-
-.anti-dian-menu-chev {
-	font-size: 11px;
 }
 
 .anti-dian-menu-divider {
 	height: 1px;
 	background: var(--background-modifier-border);
 	margin: 4px 0;
-}
-
-.anti-dian-usage-icon-indicator {
-	display: flex;
-	align-items: center;
-	color: var(--text-muted);
-}
-
-.anti-dian-effort-popup {
-	position: fixed;
-	z-index: 10000;
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-	padding: 6px 0;
-	min-width: 140px;
-	max-height: min(300px, calc(100vh - 30px));
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
 }
 
 /* ------------------------------------------------------------- */
@@ -698,7 +600,7 @@
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 12px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+	box-shadow: var(--shadow-l);
 	padding: 12px;
 	min-width: 270px;
 	max-height: min(440px, calc(100vh - 30px));
@@ -979,11 +881,6 @@ button.anti-dian-thinking-header-btn:hover {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
-	transition: transform 0.25s ease;
-}
-
-.anti-dian-thinking-chevron-icon.is-rotated {
-	transform: rotate(180deg);
 }
 
 .anti-dian-thinking-trace-wrapper {
@@ -1146,14 +1043,14 @@ button.anti-dian-thinking-header-btn:hover {
 .anti-dian-thinking-row-check {
 	display: flex;
 	align-items: center;
-	color: var(--color-green, #22c55e);
+	color: var(--color-green);
 	flex-shrink: 0;
 }
 
 .anti-dian-thinking-row-err {
 	display: flex;
 	align-items: center;
-	color: var(--color-red, #ef4444);
+	color: var(--color-red);
 	flex-shrink: 0;
 }
 
@@ -1186,11 +1083,11 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-row-diff .diff-add {
-	color: var(--color-green, #22c55e);
+	color: var(--color-green);
 }
 
 .anti-dian-thinking-row-diff .diff-del {
-	color: var(--color-red, #ef4444);
+	color: var(--color-red);
 }
 
 .anti-dian-thinking-step-detail {
@@ -1283,10 +1180,6 @@ button.anti-dian-context-cards-header-btn:hover {
 	align-items: center;
 	color: var(--text-muted);
 	transition: transform 0.25s ease;
-}
-
-.anti-dian-context-chevron.is-rotated {
-	transform: rotate(180deg);
 }
 
 .anti-dian-context-cards-grid {
@@ -1427,25 +1320,25 @@ button.anti-dian-context-card-chip:hover {
 	border-radius: 4px;
 	font-size: 8px;
 	font-weight: 700;
-	color: #ffffff;
+	color: var(--text-on-accent);
 	letter-spacing: 0.5px;
 	background: var(--interactive-accent);
 }
 
 .anti-dian-context-badge.badge-md {
-	background: #3b82f6;
+	background: var(--color-blue);
 }
 
 .anti-dian-context-badge.badge-pdf {
-	background: #ef4444;
+	background: var(--color-red);
 }
 
 .anti-dian-context-badge.badge-csv {
-	background: #22c55e;
+	background: var(--color-green);
 }
 
 .anti-dian-context-badge.badge-web {
-	background: #a855f7;
+	background: var(--color-purple);
 }
 
 .anti-dian-context-chip-name {
@@ -1693,7 +1586,7 @@ button.anti-dian-diff-summary-btn {
 	background: transparent !important;
 	border: none !important;
 	box-shadow: none !important;
-	color: var(--text-normal, #ffffff);
+	color: var(--text-normal);
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
@@ -1705,16 +1598,16 @@ button.anti-dian-diff-summary-btn {
 
 .anti-dian-diff-summary-btn:hover,
 button.anti-dian-diff-summary-btn:hover {
-	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06)) !important;
+	background: var(--background-modifier-hover) !important;
 }
 
 .anti-dian-diff-files-count {
 	font-weight: 600;
-	color: var(--text-normal, #ffffff);
+	color: var(--text-normal);
 }
 
 .anti-dian-diff-stat-add {
-	color: var(--color-green, #22c55e);
+	color: var(--color-green);
 	font-family: var(--font-monospace);
 	font-size: 12.5px;
 	font-weight: 600;
@@ -1722,7 +1615,7 @@ button.anti-dian-diff-summary-btn:hover {
 }
 
 .anti-dian-diff-stat-del {
-	color: var(--color-red, #ef4444);
+	color: var(--color-red);
 	font-family: var(--font-monospace);
 	font-size: 12.5px;
 	font-weight: 600;
@@ -1731,7 +1624,7 @@ button.anti-dian-diff-summary-btn:hover {
 .anti-dian-diff-chevron {
 	display: flex;
 	align-items: center;
-	color: var(--text-muted, #71717a);
+	color: var(--text-muted);
 	transition: transform 0.2s ease;
 	margin-left: 2px;
 }
@@ -1739,10 +1632,6 @@ button.anti-dian-diff-summary-btn:hover {
 .anti-dian-diff-chevron svg {
 	width: 12px;
 	height: 12px;
-}
-
-.anti-dian-diff-chevron.is-rotated {
-	transform: rotate(180deg);
 }
 
 .anti-dian-diff-header-actions {
@@ -1762,7 +1651,7 @@ button.anti-dian-diff-btn-review {
 	background: transparent !important;
 	border: none !important;
 	box-shadow: none !important;
-	color: var(--text-muted, #a1a1aa) !important;
+	color: var(--text-muted) !important;
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
@@ -1771,14 +1660,14 @@ button.anti-dian-diff-btn-review {
 
 .anti-dian-diff-btn-review:hover,
 button.anti-dian-diff-btn-review:hover {
-	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.08)) !important;
-	color: var(--text-normal, #ffffff) !important;
+	background: var(--background-modifier-hover) !important;
+	color: var(--text-normal) !important;
 }
 
 .anti-dian-diff-btn-icon {
 	display: flex;
 	align-items: center;
-	color: var(--text-muted, #a1a1aa);
+	color: var(--text-muted);
 }
 
 .anti-dian-diff-btn-icon svg {
@@ -1788,7 +1677,7 @@ button.anti-dian-diff-btn-review:hover {
 
 .anti-dian-diff-rejected-badge {
 	font-size: 11.5px;
-	color: var(--color-red, #ef4444);
+	color: var(--color-red);
 	font-weight: 500;
 }
 
@@ -1811,17 +1700,17 @@ button.anti-dian-diff-btn-review:hover {
 }
 
 .anti-dian-diff-file-row:hover {
-	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06));
+	background: var(--background-modifier-hover);
 }
 
 .anti-dian-diff-file-row.is-selected {
-	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.08));
+	background: var(--background-modifier-hover);
 }
 
 .anti-dian-diff-file-icon {
 	display: flex;
 	align-items: center;
-	color: #14b8a6;
+	color: var(--color-cyan);
 	flex-shrink: 0;
 }
 
@@ -1833,14 +1722,14 @@ button.anti-dian-diff-btn-review:hover {
 .anti-dian-diff-file-name {
 	font-size: 12.5px;
 	font-weight: 500;
-	color: var(--text-normal, #e4e4e7);
+	color: var(--text-normal);
 	font-family: var(--font-monospace);
 	white-space: nowrap;
 }
 
 .anti-dian-diff-file-path-sub {
 	font-size: 11.5px;
-	color: var(--text-muted, #71717a);
+	color: var(--text-muted);
 	font-family: var(--font-monospace);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1862,11 +1751,11 @@ button.anti-dian-diff-btn-review:hover {
 }
 
 .anti-dian-diff-file-counts .diff-add {
-	color: var(--color-green, #22c55e);
+	color: var(--color-green);
 }
 
 .anti-dian-diff-file-counts .diff-del {
-	color: var(--color-red, #ef4444);
+	color: var(--color-red);
 }
 
 .anti-dian-diff-inline-box {

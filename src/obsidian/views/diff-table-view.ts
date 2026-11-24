@@ -1,4 +1,5 @@
-import { setIcon } from 'obsidian';
+import { App, ButtonComponent, Modal, Setting, setIcon } from 'obsidian';
+import { bindNoteLink } from './note-link';
 import { ChangeSet, ChangeSetDiff, FileDiff } from '../../core/types/changes';
 import type AntiDianPlugin from '../../main';
 
@@ -76,9 +77,9 @@ export class DiffTableView {
 		}
 
 		const chevron = leftSummaryBtn.createSpan({
-			cls: `anti-dian-diff-chevron ${this.isExpanded ? 'is-rotated' : ''}`,
+			cls: `anti-dian-diff-chevron collapse-icon ${this.isExpanded ? '' : 'is-collapsed'}`,
 		});
-		setIcon(chevron, 'chevron-down');
+		setIcon(chevron, 'right-triangle');
 
 		leftSummaryBtn.onclick = (e) => {
 			e.stopPropagation();
@@ -102,6 +103,12 @@ export class DiffTableView {
 
 			undoBtn.onclick = async (e) => {
 				e.stopPropagation();
+				const confirmed = await confirmAction(this.plugin.app, {
+					title: 'Undo applied changes?',
+					message: `This restores ${filesCount} ${filesCount === 1 ? 'file' : 'files'} to the state before these changes were applied.`,
+					cta: 'Undo',
+				});
+				if (!confirmed) return;
 				undoBtn.disabled = true;
 				try {
 					await this.plugin.applicator.rollback(this.changeSet.id);
@@ -157,10 +164,18 @@ export class DiffTableView {
 
 				// File Name
 				const noteName = file.path.replace(/\.md$/, '').split('/').pop() || file.path;
-				fileRow.createSpan({
+				const nameEl = fileRow.createSpan({
 					cls: 'anti-dian-diff-file-name',
 					text: noteName,
 				});
+				// Hover previews the note and Ctrl/Cmd-click opens it; a plain
+				// click keeps toggling the inline diff. New files don't exist yet.
+				if (file.operationType !== 'create') {
+					bindNoteLink(this.plugin.app, nameEl, {
+						path: file.path,
+						onPlainClick: () => this.toggleFile(i),
+					});
+				}
 
 				// Truncated Folder / Directory Subtitle
 				const folder = file.path.includes('/')
@@ -192,8 +207,7 @@ export class DiffTableView {
 
 				fileRow.onclick = (e) => {
 					e.stopPropagation();
-					this.expandedFileIndex = this.expandedFileIndex === i ? null : i;
-					this.render();
+					this.toggleFile(i);
 				};
 
 				// Inline diff preview if clicked
@@ -209,38 +223,41 @@ export class DiffTableView {
 					cls: 'anti-dian-diff-bottom-bar',
 				});
 
-				const rejectBtn = bottomBar.createEl('button', {
-					cls: 'anti-dian-btn-reject',
-					text: 'Reject',
-				});
-				rejectBtn.onclick = () => {
-					this.plugin.stagingManager.setStatus(this.changeSet.id, 'rejected');
-					this.isRejected = true;
-					this.render();
-				};
+				const applyLabel = `Apply ${filesCount} ${filesCount === 1 ? 'change' : 'changes'}`;
 
-				const applyBtn = bottomBar.createEl('button', {
-					cls: 'anti-dian-btn-apply mod-cta',
-					text: `Apply ${this.diff.files.length} ${this.diff.files.length === 1 ? 'change' : 'changes'}`,
-				});
-
-				applyBtn.onclick = async () => {
-					applyBtn.disabled = true;
-					rejectBtn.disabled = true;
-					applyBtn.setText('Applying...');
-
-					try {
-						await this.plugin.applicator.apply(this.changeSet);
-						this.isAccepted = true;
+				const rejectBtn = new ButtonComponent(bottomBar)
+					.setClass('anti-dian-btn-reject')
+					.setButtonText('Reject')
+					.onClick(() => {
+						this.plugin.stagingManager.setStatus(this.changeSet.id, 'rejected');
+						this.isRejected = true;
 						this.render();
-					} catch {
-						applyBtn.disabled = false;
-						rejectBtn.disabled = false;
-						applyBtn.setText('Apply');
-					}
-				};
+					});
+
+				const applyBtn = new ButtonComponent(bottomBar)
+					.setClass('anti-dian-btn-apply')
+					.setCta()
+					.setButtonText(applyLabel)
+					.onClick(async () => {
+						applyBtn.setDisabled(true).setButtonText('Applying...');
+						rejectBtn.setDisabled(true);
+
+						try {
+							await this.plugin.applicator.apply(this.changeSet);
+							this.isAccepted = true;
+							this.render();
+						} catch {
+							applyBtn.setDisabled(false).setButtonText(applyLabel);
+							rejectBtn.setDisabled(false);
+						}
+					});
 			}
 		}
+	}
+
+	private toggleFile(index: number): void {
+		this.expandedFileIndex = this.expandedFileIndex === index ? null : index;
+		this.render();
 	}
 
 	private renderInlineFileDiff(container: HTMLElement, file: FileDiff): void {
@@ -269,4 +286,35 @@ export class DiffTableView {
 			}
 		}
 	}
+}
+
+interface ConfirmOptions {
+	title: string;
+	message: string;
+	cta: string;
+}
+
+/** Native confirmation dialog; resolves true only when the CTA is pressed. */
+function confirmAction(app: App, opts: ConfirmOptions): Promise<boolean> {
+	return new Promise((resolve) => {
+		let confirmed = false;
+		const modal = new Modal(app);
+		modal.setTitle(opts.title);
+		modal.contentEl.createEl('p', { text: opts.message });
+		new Setting(modal.contentEl)
+			.addButton((btn) =>
+				btn.setButtonText('Cancel').onClick(() => modal.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(opts.cta)
+					.setWarning()
+					.onClick(() => {
+						confirmed = true;
+						modal.close();
+					}),
+			);
+		modal.onClose = () => resolve(confirmed);
+		modal.open();
+	});
 }

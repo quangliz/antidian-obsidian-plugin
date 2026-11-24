@@ -1,8 +1,11 @@
 import {
+	HoverParent,
+	HoverPopover,
 	ItemView,
 	MarkdownRenderer,
 	WorkspaceLeaf,
 	setIcon,
+	setTooltip,
 } from 'obsidian';
 import type AntiDianPlugin from '../../main';
 import {
@@ -26,7 +29,8 @@ import { ThinkingStateView } from './thinking-state-view';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
-export class AntiDianView extends ItemView {
+export class AntiDianView extends ItemView implements HoverParent {
+	hoverPopover: HoverPopover | null = null;
 	private plugin: AntiDianPlugin;
 	private contextService: ContextService;
 	private agent: Agent;
@@ -112,10 +116,9 @@ export class AntiDianView extends ItemView {
 			if (
 				this.modelMenuController.isOpen() &&
 				!target.closest('.anti-dian-promptbar-model-pill') &&
-				!target.closest('.anti-dian-model-pill') &&
-				!target.closest('.anti-dian-model-menu') &&
-				!target.closest('.anti-dian-effort-popup') &&
-				!target.closest('.anti-dian-usage-popup')
+				!target.closest('.anti-dian-usage-popup') &&
+				// The "View usage" menu item click that opened the panel bubbles here.
+				!target.closest('.menu')
 			) {
 				this.modelMenuController.closeMenu();
 			}
@@ -163,9 +166,9 @@ export class AntiDianView extends ItemView {
 
 		const newSessionBtn = rightGroup.createEl('button', {
 			cls: 'anti-dian-nav-btn',
-			attr: { 'aria-label': 'New chat session' },
 		});
 		setIcon(newSessionBtn, 'plus');
+		setTooltip(newSessionBtn, 'New chat session');
 		newSessionBtn.onclick = () => {
 			this.startNewSession();
 		};
@@ -298,7 +301,7 @@ export class AntiDianView extends ItemView {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const thinkingState = new ThinkingStateView(agentMsg, this.app, this);
+		const thinkingState = new ThinkingStateView(agentMsg, this.app, this, this);
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 		let receivedMarkdown = '';
 		let streamedMarkdown = '';

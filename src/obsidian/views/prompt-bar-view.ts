@@ -1,4 +1,12 @@
-import { App, setIcon } from 'obsidian';
+import {
+	App,
+	Menu,
+	SearchResult,
+	prepareFuzzySearch,
+	renderResults,
+	setIcon,
+	setTooltip,
+} from 'obsidian';
 import type AntiDianPlugin from '../../main';
 import { ActiveContext } from '../../core/types/context';
 import { MediaInput } from '../../core/types/model';
@@ -20,7 +28,11 @@ interface AutocompleteItem {
 	icon?: string;
 	type: 'source' | 'file' | 'command';
 	action?: () => void;
+	/** Fuzzy match against `name`, used to highlight matched characters. */
+	match?: SearchResult;
 }
+
+const MAX_AT_ITEMS = 8;
 
 const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string }[] = [
 	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied' },
@@ -69,7 +81,18 @@ export class PromptBarView {
 	private activeNoteLabelEl!: HTMLElement;
 	private permissionPillEl!: HTMLElement;
 	private permissionLabelEl!: HTMLElement;
-	private permissionMenuEl: HTMLElement | null = null;
+	private permissionMenu: Menu | null = null;
+	private permissionMenuHiddenAt = 0;
+	private onDocPointerDown = (e: PointerEvent): void => {
+		const target = e.target as HTMLElement;
+		if (
+			this.menuContainerEl &&
+			!target.closest('.anti-dian-promptbar-autocomplete') &&
+			!target.closest('.anti-dian-promptbar-btn-plus')
+		) {
+			this.closeAutocompleteMenu();
+		}
+	};
 	private sendBtnEl!: HTMLButtonElement;
 
 	private menuContainerEl: HTMLElement | null = null;
@@ -107,6 +130,7 @@ export class PromptBarView {
 			window.cancelAnimationFrame(this.animFrameId);
 			this.animFrameId = null;
 		}
+		this.rootEl.doc.removeEventListener('pointerdown', this.onDocPointerDown);
 		this.closeAutocompleteMenu();
 		this.closePermissionMenu();
 	}
@@ -362,12 +386,10 @@ export class PromptBarView {
 		// Plus button (+)
 		this.plusBtnEl = leftControls.createEl('button', {
 			cls: 'anti-dian-promptbar-btn-plus',
-			attr: {
-				type: 'button',
-				'aria-label': 'Add attachments and sources',
-			},
+			attr: { type: 'button' },
 		});
 		setIcon(this.plusBtnEl, 'plus');
+		setTooltip(this.plusBtnEl, 'Add attachments and sources');
 		this.plusBtnEl.onclick = (e) => {
 			e.stopPropagation();
 			this.togglePlusMenu();
@@ -461,13 +483,10 @@ export class PromptBarView {
 		// Tactile Send button
 		this.sendBtnEl = rightControls.createEl('button', {
 			cls: 'anti-dian-promptbar-btn-send',
-			attr: {
-				type: 'button',
-				'aria-label': 'Send message',
-				disabled: 'true',
-			},
+			attr: { type: 'button', disabled: 'true' },
 		});
 		setIcon(this.sendBtnEl, 'arrow-up');
+		setTooltip(this.sendBtnEl, 'Send message');
 		this.sendBtnEl.onclick = () => {
 			void this.triggerSend();
 		};
@@ -546,24 +565,8 @@ export class PromptBarView {
 			}
 		});
 
-		// Close autocomplete menu when clicking outside
-		document.addEventListener('pointerdown', (e: PointerEvent) => {
-			const target = e.target as HTMLElement;
-			if (
-				this.permissionMenuEl &&
-				!target.closest('.anti-dian-promptbar-permission-pill') &&
-				!target.closest('.anti-dian-permission-menu')
-			) {
-				this.closePermissionMenu();
-			}
-			if (
-				this.menuContainerEl &&
-				!target.closest('.anti-dian-promptbar-autocomplete') &&
-				!target.closest('.anti-dian-promptbar-btn-plus')
-			) {
-				this.closeAutocompleteMenu();
-			}
-		});
+		// Close autocomplete menu when clicking outside (removed in destroy()).
+		this.rootEl.doc.addEventListener('pointerdown', this.onDocPointerDown);
 	}
 
 	private getPermissionLabel(): string {
@@ -572,63 +575,49 @@ export class PromptBarView {
 	}
 
 	private togglePermissionMenu(): void {
-		if (this.permissionMenuEl) {
+		if (this.permissionMenu) {
 			this.closePermissionMenu();
 			return;
 		}
+		// The native menu hides on the pointerdown that precedes this click.
+		if (Date.now() - this.permissionMenuHiddenAt < 300) return;
 
 		const currentMode = this.plugin.settings.permissionMode ?? 'ask';
-		this.permissionMenuEl = document.body.createDiv({
-			cls: 'anti-dian-model-menu anti-dian-permission-menu',
-			attr: { role: 'menu', 'aria-label': 'Permission mode' },
-		});
-		this.permissionMenuEl.createDiv({
-			cls: 'anti-dian-menu-header',
-			text: 'Permission',
-		});
-		const list = this.permissionMenuEl.createDiv({ cls: 'anti-dian-menu-list' });
-
+		const menu = new Menu();
+		menu.addItem((item) => item.setTitle('Permission').setIsLabel(true));
 		for (const option of PERMISSION_MODES) {
-			const selected = option.value === currentMode;
-			const item = list.createDiv({
-				cls: `anti-dian-menu-item ${selected ? 'is-selected' : ''}`,
-				attr: {
-					role: 'menuitemradio',
-					'aria-checked': String(selected),
-				},
+			menu.addItem((item) => {
+				const title = createFragment();
+				title.appendText(option.label);
+				title.createDiv({ cls: 'anti-dian-menu-item-desc', text: option.desc });
+				item
+					.setTitle(title)
+					.setChecked(option.value === currentMode)
+					.onClick(() => {
+						this.plugin.settings.permissionMode = option.value;
+						this.permissionLabelEl.setText(option.label);
+						this.callbacks.onPermissionChange(option.value);
+					});
 			});
-			const itemLeft = item.createDiv({ cls: 'anti-dian-menu-item-left' });
-			itemLeft.createSpan({ cls: 'anti-dian-menu-item-title', text: option.label });
-			itemLeft.createSpan({ cls: 'anti-dian-menu-item-effort', text: option.desc });
-
-			if (selected) {
-				const check = item.createSpan({ cls: 'anti-dian-menu-check' });
-				setIcon(check, 'check');
-			}
-
-			item.onclick = (e) => {
-				e.stopPropagation();
-				this.plugin.settings.permissionMode = option.value;
-				this.permissionLabelEl.setText(option.label);
-				this.callbacks.onPermissionChange(option.value);
-				this.closePermissionMenu();
-			};
 		}
+		menu.onHide(() => {
+			if (this.permissionMenu === menu) this.permissionMenu = null;
+			this.permissionMenuHiddenAt = Date.now();
+			this.permissionPillEl.setAttribute('aria-expanded', 'false');
+		});
 
+		this.permissionMenu = menu;
 		this.permissionPillEl.setAttribute('aria-expanded', 'true');
-		const anchorRect = this.permissionPillEl.getBoundingClientRect();
-		const menuWidth = this.permissionMenuEl.offsetWidth || 250;
-		const menuHeight = this.permissionMenuEl.offsetHeight || 150;
-		const top = window.innerHeight - anchorRect.bottom - 10 >= menuHeight
-			? anchorRect.bottom + 6
-			: Math.max(10, anchorRect.top - menuHeight - 6);
-		const left = Math.max(10, Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 10));
-		this.permissionMenuEl.setCssProps({ left: `${left}px`, top: `${top}px` });
+		const rect = this.permissionPillEl.getBoundingClientRect();
+		menu.showAtPosition(
+			{ x: rect.right, y: rect.bottom + 4, width: rect.width, left: true },
+			this.permissionPillEl.doc,
+		);
 	}
 
 	private closePermissionMenu(): void {
-		this.permissionMenuEl?.remove();
-		this.permissionMenuEl = null;
+		this.permissionMenu?.hide();
+		this.permissionMenu = null;
 		this.permissionPillEl?.setAttribute('aria-expanded', 'false');
 	}
 
@@ -760,9 +749,10 @@ export class PromptBarView {
 
 			const removeBtn = chip.createEl('button', {
 				cls: 'anti-dian-promptbar-chip-remove',
-				attr: { 'aria-label': 'Remove attachment', type: 'button' },
+				attr: { type: 'button' },
 			});
 			setIcon(removeBtn, 'x');
+			setTooltip(removeBtn, 'Remove attachment');
 			const idx = i;
 			removeBtn.onclick = (e) => {
 				e.stopPropagation();
@@ -817,10 +807,14 @@ export class PromptBarView {
 	}
 
 	private getItems(kind: 'at' | 'slash', query: string): AutocompleteItem[] {
+		const fuzzy = query ? prepareFuzzySearch(query) : null;
+
 		if (kind === 'slash') {
-			return DEFAULT_SLASH_COMMANDS.filter((c) =>
-				c.name.slice(1).toLowerCase().startsWith(query),
-			);
+			if (!fuzzy) return DEFAULT_SLASH_COMMANDS;
+			return DEFAULT_SLASH_COMMANDS.flatMap((c) => {
+				const match = fuzzy(c.name.slice(1));
+				return match ? [{ ...c, match }] : [];
+			}).sort((a, b) => (b.match?.score ?? 0) - (a.match?.score ?? 0));
 		}
 
 		// '@' Sources and Vault Notes
@@ -855,26 +849,25 @@ export class PromptBarView {
 			});
 		}
 
-		// Vault Markdown files matching query
-		const allFiles = this.app.vault.getMarkdownFiles();
-		for (const file of allFiles) {
-			const noteName = file.basename;
-			if (query && !noteName.toLowerCase().includes(query)) {
-				continue;
-			}
+		// Vault Markdown files, ranked by fuzzy match on the basename.
+		const matches: AutocompleteItem[] = [];
+		for (const file of this.app.vault.getMarkdownFiles()) {
 			// Avoid duplicating active note
 			if (ctx.activeFile && file.path === ctx.activeFile) continue;
-
-			items.push({
+			const match = fuzzy ? fuzzy(file.basename) : null;
+			if (fuzzy && !match) continue;
+			matches.push({
 				key: file.path,
-				name: noteName,
+				name: file.basename,
 				desc: file.parent ? file.parent.path : 'Vault root',
 				icon: 'file',
 				type: 'file',
+				match: match ?? undefined,
 			});
-
-			if (items.length >= 8) break;
+			if (!fuzzy && items.length + matches.length >= MAX_AT_ITEMS) break;
 		}
+		matches.sort((a, b) => (b.match?.score ?? 0) - (a.match?.score ?? 0));
+		items.push(...matches.slice(0, Math.max(0, MAX_AT_ITEMS - items.length)));
 
 		return items;
 	}
@@ -926,10 +919,17 @@ export class PromptBarView {
 					setIcon(iconWrapper, item.icon);
 				}
 
-				rowBtn.createSpan({
+				const nameEl = rowBtn.createSpan({
 					cls: 'anti-dian-promptbar-menu-name',
-					text: item.type === 'command' ? item.name : `@${item.name}`,
 				});
+				if (item.type === 'command') {
+					// Slash command matches are computed without the leading "/".
+					nameEl.appendText('/');
+					this.renderName(nameEl, item.name.slice(1), item.match);
+				} else {
+					nameEl.appendText('@');
+					this.renderName(nameEl, item.name, item.match);
+				}
 
 				rowBtn.createSpan({
 					cls: 'anti-dian-promptbar-menu-desc',
@@ -962,6 +962,14 @@ export class PromptBarView {
 		);
 
 		this.updateGliderPosition();
+	}
+
+	private renderName(el: HTMLElement, text: string, match?: SearchResult): void {
+		if (match) {
+			renderResults(el, text, match);
+		} else {
+			el.appendText(text);
+		}
 	}
 
 	private updateGliderPosition(): void {

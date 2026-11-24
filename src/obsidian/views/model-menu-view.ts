@@ -1,9 +1,10 @@
-import { setIcon } from 'obsidian';
+import { Menu, MenuItem } from 'obsidian';
 import {
 	AccountTierInfo,
 	AvailableModel,
 	ContextWindowUsage,
 	ModelGroup,
+	ModelVariant,
 	UserQuotaResponse,
 	formatTokens,
 	groupModels,
@@ -24,24 +25,32 @@ export interface ModelMenuContext {
 	};
 }
 
+/** `MenuItem.setSubmenu` exists at runtime but is not in the public typings. */
+type MenuItemWithSubmenu = MenuItem & { setSubmenu?: () => Menu };
+
+const SUPPORTS_SUBMENU =
+	typeof (MenuItem.prototype as MenuItemWithSubmenu).setSubmenu === 'function';
+
+const DEFAULT_MODEL_ID = 'gemini-3.7-flash-high';
+
 export class ModelMenuController {
 	private ctx: ModelMenuContext;
-	private modelMenuEl: HTMLElement | null = null;
-	private effortSubmenuEl: HTMLElement | null = null;
-	private usageSubmenuEl: HTMLElement | null = null;
-	private isModelMenuOpen = false;
-	private isUsageSubmenuOpen = false;
+	private menu: Menu | null = null;
+	private menuAnchorEl: HTMLElement | null = null;
+	private menuHiddenAt = 0;
+	private usagePanelEl: HTMLElement | null = null;
 
 	constructor(ctx: ModelMenuContext) {
 		this.ctx = ctx;
 	}
 
+	/** True while the custom usage panel is open (the native menu manages itself). */
 	isOpen(): boolean {
-		return this.isModelMenuOpen;
+		return this.usagePanelEl !== null;
 	}
 
 	formatModelLabel(modelId?: string): string {
-		const currentId = modelId || this.ctx.getCurrentModelId() || 'gemini-3.7-flash-high';
+		const currentId = modelId || this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
 		const groups = this.ctx.getModelGroups();
 
 		const group = groups.find((g) =>
@@ -94,244 +103,138 @@ export class ModelMenuController {
 	}
 
 	toggleMenu(anchorEl: HTMLElement): void {
-		if (this.isModelMenuOpen) {
+		if (this.usagePanelEl) {
 			this.closeMenu();
-		} else {
-			this.openMenu(anchorEl);
+			return;
 		}
+		// The native menu hides itself on the pointerdown that precedes this click;
+		// treat a click on the same anchor right after that as "close", not "reopen".
+		if (this.menuAnchorEl === anchorEl && Date.now() - this.menuHiddenAt < 300) {
+			return;
+		}
+		this.openMenu(anchorEl);
 	}
 
 	openMenu(anchorEl: HTMLElement): void {
 		this.closeMenu();
-		this.isModelMenuOpen = true;
 
-		this.modelMenuEl = document.body.createDiv({
-			cls: 'anti-dian-model-menu',
-		});
-
-		this.modelMenuEl.createDiv({
-			cls: 'anti-dian-menu-header',
-			text: 'Model',
-		});
-
-		const currentModelId = this.ctx.getCurrentModelId() || 'gemini-3.7-flash-high';
-		const available = this.ctx.getAvailableModels();
+		const currentModelId = this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
 		const groups =
 			this.ctx.getModelGroups().length > 0
 				? this.ctx.getModelGroups()
-				: groupModels(available);
+				: groupModels(this.ctx.getAvailableModels());
 
-		const listContainer = this.modelMenuEl.createDiv({
-			cls: 'anti-dian-menu-list',
-		});
+		const menu = new Menu();
+		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
 
 		for (const group of groups) {
-			const isGroupActive = group.variants.some(
-				(v) => v.id === currentModelId,
-			);
-			const hasMultipleEfforts = group.variants.length > 1;
+			const activeVariant = group.variants.find((v) => v.id === currentModelId);
+			const title = this.groupTitle(group, activeVariant);
 
-			const item = listContainer.createDiv({
-				cls: `anti-dian-menu-item ${isGroupActive ? 'is-selected' : ''}`,
-			});
-
-			const itemLeft = item.createDiv({ cls: 'anti-dian-menu-item-left' });
-			itemLeft.createSpan({
-				text: group.baseName,
-				cls: 'anti-dian-menu-item-title',
-			});
-
-			const activeVariant = group.variants.find(
-				(v) => v.id === currentModelId,
-			);
-			if (activeVariant && activeVariant.thinkingEffort !== 'Default') {
-				itemLeft.createSpan({
-					text: activeVariant.thinkingEffort,
-					cls: 'anti-dian-menu-item-effort',
-				});
-			} else if (!hasMultipleEfforts && group.supportsThinking) {
-				itemLeft.createSpan({
-					text: 'Thinking',
-					cls: 'anti-dian-menu-item-effort',
-				});
-			}
-
-			if (group.baseName.includes('3.6') || group.baseName.includes('3.5')) {
-				const badge = itemLeft.createSpan({
-					cls: 'anti-dian-menu-item-badge',
-				});
-				badge.setText('Fast');
-				const infoIcon = badge.createSpan({
-					cls: 'anti-dian-menu-info-icon',
-				});
-				setIcon(infoIcon, 'info');
-			}
-
-			const itemRight = item.createDiv({
-				cls: 'anti-dian-menu-item-right',
-			});
-
-			if (hasMultipleEfforts) {
-				const chev = itemRight.createSpan({
-					cls: 'anti-dian-menu-chev',
-				});
-				setIcon(chev, 'chevron-right');
-
-				item.onmouseenter = () => {
-					this.closeUsageSubmenu();
-					this.openEffortSubmenu(item, group);
-				};
-
-				item.onclick = (e) => {
-					e.stopPropagation();
-					this.openEffortSubmenu(item, group);
-				};
-			} else {
-				if (isGroupActive) {
-					const check = itemRight.createSpan({
-						cls: 'anti-dian-menu-check',
-					});
-					setIcon(check, 'check');
-				}
-
-				item.onmouseenter = () => {
-					this.closeEffortSubmenu();
-				};
-
-				item.onclick = (e) => {
-					e.stopPropagation();
-					if (group.variants[0]) {
-						this.ctx.onSelectModel(group.variants[0].id);
-						this.closeMenu();
+			if (group.variants.length > 1 && SUPPORTS_SUBMENU) {
+				menu.addItem((item) => {
+					item.setTitle(title).setChecked(activeVariant !== undefined);
+					const submenu = (item as MenuItemWithSubmenu).setSubmenu?.();
+					if (!submenu) return;
+					submenu.addItem((sub) => sub.setTitle('Thinking effort').setIsLabel(true));
+					for (const variant of group.variants) {
+						submenu.addItem((sub) =>
+							sub
+								.setTitle(variant.thinkingEffort)
+								.setChecked(variant.id === currentModelId)
+								.onClick(() => this.ctx.onSelectModel(variant.id)),
+						);
 					}
-				};
-			}
-		}
-
-		this.modelMenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
-
-		const usageItem = this.modelMenuEl.createDiv({
-			cls: 'anti-dian-menu-item anti-dian-menu-item-usage',
-		});
-		const usageLeft = usageItem.createDiv({
-			cls: 'anti-dian-menu-item-left',
-		});
-		const usageIcon = usageLeft.createSpan({
-			cls: 'anti-dian-usage-icon-indicator',
-		});
-		setIcon(usageIcon, 'activity');
-		usageLeft.createSpan({
-			text: 'View Usage',
-			cls: 'anti-dian-menu-item-title',
-		});
-
-		const usageRight = usageItem.createDiv({
-			cls: 'anti-dian-menu-item-right',
-		});
-		const usageChev = usageRight.createSpan({
-			cls: 'anti-dian-menu-chev',
-		});
-		setIcon(usageChev, 'chevron-right');
-
-		usageItem.onmouseenter = () => {
-			this.closeEffortSubmenu();
-			void this.openUsageSubmenu(usageItem);
-		};
-
-		usageItem.onclick = (e) => {
-			e.stopPropagation();
-			this.toggleUsageSubmenu(usageItem);
-		};
-
-		this.positionMenu(anchorEl, this.modelMenuEl);
-	}
-
-	openEffortSubmenu(anchorEl: HTMLElement, group: ModelGroup): void {
-		this.closeEffortSubmenu();
-
-		this.effortSubmenuEl = document.body.createDiv({
-			cls: 'anti-dian-effort-popup',
-		});
-
-		const currentModelId = this.ctx.getCurrentModelId() || 'gemini-3.7-flash-high';
-
-		this.effortSubmenuEl.createDiv({
-			cls: 'anti-dian-menu-header',
-			text: 'Thinking Effort',
-		});
-
-		for (const variant of group.variants) {
-			const isSelected = currentModelId === variant.id;
-
-			const item = this.effortSubmenuEl.createDiv({
-				cls: `anti-dian-menu-item ${isSelected ? 'is-selected' : ''}`,
-			});
-
-			const itemLeft = item.createDiv({ cls: 'anti-dian-menu-item-left' });
-			itemLeft.createSpan({
-				text: variant.thinkingEffort,
-				cls: 'anti-dian-menu-item-title',
-			});
-
-			const itemRight = item.createDiv({
-				cls: 'anti-dian-menu-item-right',
-			});
-			if (isSelected) {
-				const check = itemRight.createSpan({
-					cls: 'anti-dian-menu-check',
 				});
-				setIcon(check, 'check');
+			} else if (group.variants.length > 1) {
+				// No submenu support: list each effort as its own item.
+				for (const variant of group.variants) {
+					menu.addItem((item) =>
+						item
+							.setTitle(`${group.baseName} · ${variant.thinkingEffort}`)
+							.setChecked(variant.id === currentModelId)
+							.onClick(() => this.ctx.onSelectModel(variant.id)),
+					);
+				}
+			} else {
+				const variant = group.variants[0];
+				menu.addItem((item) =>
+					item
+						.setTitle(title)
+						.setChecked(activeVariant !== undefined)
+						.setDisabled(!variant)
+						.onClick(() => {
+							if (variant) this.ctx.onSelectModel(variant.id);
+						}),
+				);
 			}
-
-			item.onclick = (e) => {
-				e.stopPropagation();
-				this.ctx.onSelectModel(variant.id);
-				this.closeMenu();
-			};
 		}
 
-		this.positionSubmenu(anchorEl, this.effortSubmenuEl);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle('View usage')
+				.setIcon('activity')
+				.onClick(() => {
+					void this.openUsagePanel(anchorEl);
+				}),
+		);
+
+		menu.onHide(() => {
+			if (this.menu === menu) this.menu = null;
+			this.menuHiddenAt = Date.now();
+		});
+
+		this.menu = menu;
+		this.menuAnchorEl = anchorEl;
+		const rect = anchorEl.getBoundingClientRect();
+		menu.showAtPosition(
+			{ x: rect.left, y: rect.bottom + 4, width: rect.width },
+			anchorEl.doc,
+		);
 	}
 
-	closeEffortSubmenu(): void {
-		if (this.effortSubmenuEl) {
-			this.effortSubmenuEl.remove();
-			this.effortSubmenuEl = null;
+	private groupTitle(group: ModelGroup, activeVariant?: ModelVariant): DocumentFragment {
+		const frag = createFragment();
+		frag.appendText(group.baseName);
+		const effort =
+			activeVariant && activeVariant.thinkingEffort !== 'Default'
+				? activeVariant.thinkingEffort
+				: group.variants.length <= 1 && group.supportsThinking
+					? 'Thinking'
+					: null;
+		if (effort) {
+			frag.createSpan({ cls: 'anti-dian-menu-item-effort', text: effort });
 		}
-	}
-
-	toggleUsageSubmenu(anchorEl: HTMLElement): void {
-		if (this.isUsageSubmenuOpen) {
-			this.closeUsageSubmenu();
-		} else {
-			void this.openUsageSubmenu(anchorEl);
+		if (group.baseName.includes('3.6') || group.baseName.includes('3.5')) {
+			frag.createSpan({ cls: 'anti-dian-menu-item-badge', text: 'Fast' });
 		}
+		return frag;
 	}
 
-	async openUsageSubmenu(anchorEl: HTMLElement): Promise<void> {
-		this.closeUsageSubmenu();
-		this.closeEffortSubmenu();
-		this.isUsageSubmenuOpen = true;
+	async openUsagePanel(anchorEl: HTMLElement): Promise<void> {
+		this.closeUsagePanel();
 
-		this.usageSubmenuEl = document.body.createDiv({
+		const panel = anchorEl.doc.body.createDiv({
 			cls: 'anti-dian-usage-popup',
 		});
+		this.usagePanelEl = panel;
 
-		const loadingSec = this.usageSubmenuEl.createDiv({
+		const loadingSec = panel.createDiv({
 			cls: 'anti-dian-usage-section',
 		});
 		loadingSec.createDiv({
 			text: 'Loading quota limits...',
 			cls: 'anti-dian-usage-limit-subtext',
 		});
-		this.positionSubmenu(anchorEl, this.usageSubmenuEl);
+		this.positionPanel(anchorEl, panel);
 
 		const quotaData = await this.ctx.fetchUserQuota();
-		if (!this.usageSubmenuEl || !this.isUsageSubmenuOpen) return;
-		this.usageSubmenuEl.empty();
+		if (this.usagePanelEl !== panel) return;
+		panel.empty();
 
 		const tier = quotaData?.accountTier ?? this.ctx.getAccountTier();
-		const accountSec = this.usageSubmenuEl.createDiv({
+		const accountSec = panel.createDiv({
 			cls: 'anti-dian-usage-section anti-dian-usage-account-section',
 		});
 		const accountHeader = accountSec.createDiv({
@@ -356,9 +259,9 @@ export class ModelMenuController {
 
 		const groups = quotaData?.groups ?? [];
 		for (const group of groups) {
-			this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
+			panel.createDiv({ cls: 'anti-dian-menu-divider' });
 
-			const groupSec = this.usageSubmenuEl.createDiv({
+			const groupSec = panel.createDiv({
 				cls: 'anti-dian-usage-section',
 			});
 			groupSec.createDiv({
@@ -391,9 +294,9 @@ export class ModelMenuController {
 			}
 		}
 
-		this.usageSubmenuEl.createDiv({ cls: 'anti-dian-menu-divider' });
+		panel.createDiv({ cls: 'anti-dian-menu-divider' });
 
-		const sessionSec = this.usageSubmenuEl.createDiv({
+		const sessionSec = panel.createDiv({
 			cls: 'anti-dian-usage-section',
 		});
 		sessionSec.createDiv({
@@ -427,7 +330,7 @@ export class ModelMenuController {
 			);
 		}
 
-		this.positionSubmenu(anchorEl, this.usageSubmenuEl);
+		this.positionPanel(anchorEl, panel);
 	}
 
 	private formatResetSubtext(
@@ -488,68 +391,37 @@ export class ModelMenuController {
 		});
 	}
 
-	closeUsageSubmenu(): void {
-		if (this.usageSubmenuEl) {
-			this.usageSubmenuEl.remove();
-			this.usageSubmenuEl = null;
-		}
-		this.isUsageSubmenuOpen = false;
+	closeUsagePanel(): void {
+		this.usagePanelEl?.remove();
+		this.usagePanelEl = null;
 	}
 
 	closeMenu(): void {
-		this.closeEffortSubmenu();
-		this.closeUsageSubmenu();
-		if (this.modelMenuEl) {
-			this.modelMenuEl.remove();
-			this.modelMenuEl = null;
-		}
-		this.isModelMenuOpen = false;
+		this.menu?.hide();
+		this.menu = null;
+		this.closeUsagePanel();
 	}
 
-	private positionMenu(anchor: HTMLElement, menu: HTMLElement): void {
+	private positionPanel(anchor: HTMLElement, panel: HTMLElement): void {
+		const win = anchor.win;
 		const anchorRect = anchor.getBoundingClientRect();
-		const menuHeight = menu.offsetHeight || 380;
-		const menuWidth = menu.offsetWidth || 260;
-		const viewportHeight = window.innerHeight;
-		const viewportWidth = window.innerWidth;
+		const height = panel.offsetHeight || 380;
+		const width = panel.offsetWidth || 260;
 
-		const spaceBelow = viewportHeight - anchorRect.bottom - 10;
+		const spaceBelow = win.innerHeight - anchorRect.bottom - 10;
 		const spaceAbove = anchorRect.top - 10;
 
 		let top = anchorRect.bottom + 6;
-		if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-			top = Math.max(10, anchorRect.top - menuHeight - 6);
+		if (spaceBelow < height && spaceAbove > spaceBelow) {
+			top = Math.max(10, anchorRect.top - height - 6);
 		}
 
 		let left = anchorRect.left;
-		if (left + menuWidth > viewportWidth - 10) {
-			left = Math.max(10, viewportWidth - menuWidth - 10);
+		if (left + width > win.innerWidth - 10) {
+			left = Math.max(10, win.innerWidth - width - 10);
 		}
 
-		menu.setCssProps({
-			left: `${left}px`,
-			top: `${top}px`,
-		});
-	}
-
-	private positionSubmenu(anchor: HTMLElement, submenu: HTMLElement): void {
-		const anchorRect = anchor.getBoundingClientRect();
-		const popupHeight = submenu.offsetHeight || 260;
-		const popupWidth = submenu.offsetWidth || 250;
-		const viewportHeight = window.innerHeight;
-		const viewportWidth = window.innerWidth;
-
-		let left = anchorRect.right + 6;
-		if (left + popupWidth > viewportWidth - 10) {
-			left = Math.max(10, anchorRect.left - popupWidth - 6);
-		}
-
-		let top = anchorRect.top;
-		if (top + popupHeight > viewportHeight - 10) {
-			top = Math.max(10, viewportHeight - popupHeight - 10);
-		}
-
-		submenu.setCssProps({
+		panel.setCssProps({
 			left: `${left}px`,
 			top: `${top}px`,
 		});

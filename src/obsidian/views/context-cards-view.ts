@@ -1,4 +1,5 @@
-import { App, setIcon } from 'obsidian';
+import { App, setIcon, setTooltip } from 'obsidian';
+import { bindNoteLink } from './note-link';
 import { ContextReference } from '../../core/types/context';
 
 export interface GroupedContextChunk {
@@ -96,12 +97,12 @@ export class ContextCardsView {
 			cls: 'anti-dian-context-count-badge',
 			text: String(chunks.length),
 		});
-		countBadge.setAttribute('aria-label', `${chunks.length} chunks used`);
+		setTooltip(countBadge, `${chunks.length} sources used`);
 
 		const chevron = headerBtn.createSpan({
-			cls: 'anti-dian-context-chevron',
+			cls: 'anti-dian-context-chevron collapse-icon is-collapsed',
 		});
-		setIcon(chevron, 'chevron-down');
+		setIcon(chevron, 'right-triangle');
 
 		// Cards Grid Wrapper
 		const gridWrapper = this.containerEl.createDiv({
@@ -112,13 +113,8 @@ export class ContextCardsView {
 			e.stopPropagation();
 			this.isExpanded = !this.isExpanded;
 			headerBtn.setAttribute('aria-expanded', String(this.isExpanded));
-			if (this.isExpanded) {
-				chevron.addClass('is-rotated');
-				gridWrapper.addClass('is-open');
-			} else {
-				chevron.removeClass('is-rotated');
-				gridWrapper.removeClass('is-open');
-			}
+			chevron.toggleClass('is-collapsed', !this.isExpanded);
+			gridWrapper.toggleClass('is-open', this.isExpanded);
 		};
 
 		// Render Each Context Card
@@ -161,7 +157,7 @@ export class ContextCardsView {
 					cls: 'anti-dian-context-card-body',
 					text: chunk.snippet,
 				});
-				body.setAttribute('title', chunk.snippet);
+				setTooltip(body, chunk.snippet, { placement: 'top' });
 			} else if (chunk.headings.length > 0) {
 				const headingsEl = card.createDiv({
 					cls: 'anti-dian-context-card-headings',
@@ -207,10 +203,7 @@ export class ContextCardsView {
 			setIcon(arrowIcon, 'arrow-up-right');
 
 			if (!chunk.isUrl) {
-				chip.onclick = (e) => {
-					e.stopPropagation();
-					void this.app.workspace.openLinkText(chunk.path, '', false);
-				};
+				bindNoteLink(this.app, chip, { path: chunk.path });
 			}
 		}
 	}

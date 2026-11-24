@@ -1,4 +1,5 @@
-import { App, Component, MarkdownRenderer, setIcon } from 'obsidian';
+import { App, Component, HoverParent, MarkdownRenderer, setIcon } from 'obsidian';
+import { bindNoteLink } from './note-link';
 import { AgentStepEvent } from '../../core/agent';
 
 export interface SourceItem {
@@ -28,6 +29,7 @@ export interface ThinkingStep {
 export class ThinkingStateView {
 	private app: App;
 	private component: Component;
+	private hoverParent?: HoverParent;
 	private containerEl: HTMLElement;
 	private headerBtnEl!: HTMLButtonElement;
 	private sparkleIconEl!: HTMLElement;
@@ -54,7 +56,13 @@ export class ThinkingStateView {
 	private thoughtWaiters: (() => void)[] = [];
 	private selectedStepId: string | null = null;
 
-	constructor(containerEl: HTMLElement, app: App, component: Component) {
+	constructor(
+		containerEl: HTMLElement,
+		app: App,
+		component: Component,
+		hoverParent?: HoverParent,
+	) {
+		this.hoverParent = hoverParent;
 		this.app = app;
 		this.component = component;
 		this.containerEl = containerEl.createDiv({
@@ -334,9 +342,9 @@ export class ThinkingStateView {
 		});
 
 		this.chevronIconEl = this.headerBtnEl.createSpan({
-			cls: 'anti-dian-thinking-chevron-icon',
+			cls: 'anti-dian-thinking-chevron-icon collapse-icon is-collapsed',
 		});
-		setIcon(this.chevronIconEl, 'chevron-down');
+		setIcon(this.chevronIconEl, 'right-triangle');
 
 		this.headerBtnEl.onclick = (e) => {
 			e.stopPropagation();
@@ -383,13 +391,8 @@ export class ThinkingStateView {
 			this.statusTextEl.setText(this.activeStatus);
 		}
 
-		if (this.isExpanded) {
-			this.chevronIconEl.addClass('is-rotated');
-			this.traceWrapperEl.addClass('is-open');
-		} else {
-			this.chevronIconEl.removeClass('is-rotated');
-			this.traceWrapperEl.removeClass('is-open');
-		}
+		this.chevronIconEl.toggleClass('is-collapsed', !this.isExpanded);
+		this.traceWrapperEl.toggleClass('is-open', this.isExpanded);
 	}
 
 	private renderSteps(): void {
@@ -486,14 +489,12 @@ export class ThinkingStateView {
 						});
 					}
 
-					// If vault path, clicking opens the note
-					if (src.path) {
-						srcRow.onclick = (e) => {
-							e.stopPropagation();
-							if (src.path) {
-								void this.app.workspace.openLinkText(src.path, '', false);
-							}
-						};
+					// Vault notes behave like internal links (hover preview, mod-click).
+					if (src.path && !src.href) {
+						bindNoteLink(this.app, srcRow, {
+							path: src.path,
+							hoverParent: this.hoverParent,
+						});
 					}
 				}
 
