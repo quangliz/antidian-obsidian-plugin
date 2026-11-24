@@ -1,4 +1,4 @@
-import { Menu, MenuItem } from 'obsidian';
+import { Menu, MenuItem, setIcon } from 'obsidian';
 import {
 	AccountTierInfo,
 	AvailableModel,
@@ -32,6 +32,10 @@ export interface ModelMenuContext {
 /** `MenuItem.setSubmenu` exists at runtime but is not in the public typings. */
 type MenuItemWithSubmenu = MenuItem & { setSubmenu?: () => Menu };
 
+/** `Menu.dom` / `MenuItem.dom` exist at runtime but are not in the public typings. */
+type MenuWithDom = Menu & { dom?: HTMLElement };
+type MenuItemWithDom = MenuItem & { dom?: HTMLElement };
+
 const SUPPORTS_SUBMENU =
 	typeof (MenuItem.prototype as MenuItemWithSubmenu).setSubmenu === 'function';
 
@@ -43,6 +47,8 @@ export class ModelMenuController {
 	private menuAnchorEl: HTMLElement | null = null;
 	private menuHiddenAt = 0;
 	private usagePanelEl: HTMLElement | null = null;
+	/** True when the usage panel was opened by hovering "View Usage" (tied to the menu). */
+	private usagePanelFromHover = false;
 
 	constructor(ctx: ModelMenuContext) {
 		this.ctx = ctx;
@@ -129,6 +135,7 @@ export class ModelMenuController {
 				: groupModels(this.ctx.getAvailableModels());
 
 		const menu = new Menu();
+		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
 		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
 
 		for (const group of groups) {
@@ -140,6 +147,7 @@ export class ModelMenuController {
 					item.setTitle(title).setChecked(activeVariant !== undefined);
 					const submenu = (item as MenuItemWithSubmenu).setSubmenu?.();
 					if (!submenu) return;
+					(submenu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
 					submenu.addItem((sub) => sub.setTitle('Thinking effort').setIsLabel(true));
 					for (const variant of group.variants) {
 						submenu.addItem((sub) =>
@@ -175,18 +183,38 @@ export class ModelMenuController {
 		}
 
 		menu.addSeparator();
-		menu.addItem((item) =>
+		let usageItemEl: HTMLElement | undefined;
+		menu.addItem((item) => {
 			item
-				.setTitle('View usage')
-				.setIcon('activity')
+				.setTitle(this.viewUsageTitle())
+				.setIcon('gauge')
 				.onClick(() => {
 					void this.openUsagePanel(anchorEl);
-				}),
-		);
+				});
+			usageItemEl = (item as MenuItemWithDom).dom;
+		});
+
+		// Hovering "View Usage" shows the usage panel beside the menu, like a submenu;
+		// hovering any other item closes it again.
+		const menuEl = (menu as MenuWithDom).dom;
+		menuEl?.addEventListener('mouseover', (evt) => {
+			const target = evt.target as HTMLElement | null;
+			const itemEl = target?.closest('.menu-item');
+			if (!itemEl) return;
+			if (itemEl === usageItemEl) {
+				if (!this.usagePanelEl) void this.openUsagePanel(usageItemEl, true);
+			} else if (this.usagePanelFromHover) {
+				this.closeUsagePanel();
+			}
+		});
 
 		menu.onHide(() => {
 			if (this.menu === menu) this.menu = null;
 			this.menuHiddenAt = Date.now();
+			// Keep a hover panel only while the pointer is on it (e.g. clicking inside it).
+			if (this.usagePanelFromHover && !this.usagePanelEl?.matches(':hover')) {
+				this.closeUsagePanel();
+			}
 		});
 
 		this.menu = menu;
@@ -211,18 +239,38 @@ export class ModelMenuController {
 			frag.createSpan({ cls: 'anti-dian-menu-item-effort', text: effort });
 		}
 		if (group.baseName.includes('3.6') || group.baseName.includes('3.5')) {
-			frag.createSpan({ cls: 'anti-dian-menu-item-badge', text: 'Fast' });
+			this.appendBadge(frag, 'Fast', 'Faster, lighter model');
 		}
 		return frag;
 	}
 
-	async openUsagePanel(anchorEl: HTMLElement): Promise<void> {
+	/** Pill badge after a model name; a tooltip adds a trailing info icon. */
+	private appendBadge(frag: DocumentFragment, text: string, tooltip?: string): void {
+		const badge = frag.createSpan({ cls: 'anti-dian-menu-item-badge', text });
+		if (!tooltip) return;
+		badge.setAttribute('aria-label', tooltip);
+		const info = badge.createSpan({ cls: 'anti-dian-menu-item-badge-info' });
+		setIcon(info, 'info');
+	}
+
+	private viewUsageTitle(): DocumentFragment {
+		const frag = createFragment();
+		frag.appendText('View Usage');
+		const chevron = frag.createSpan({ cls: 'anti-dian-menu-item-chevron' });
+		setIcon(chevron, 'chevron-right');
+		return frag;
+	}
+
+	async openUsagePanel(anchorEl: HTMLElement, beside = false): Promise<void> {
 		this.closeUsagePanel();
 
 		const panel = anchorEl.doc.body.createDiv({
 			cls: 'anti-dian-usage-popup',
 		});
 		this.usagePanelEl = panel;
+		this.usagePanelFromHover = beside;
+		const position = () =>
+			beside ? this.positionPanelBeside(anchorEl, panel) : this.positionPanel(anchorEl, panel);
 
 		const cached = this.ctx.getCachedUserQuota();
 		const needsRefresh = !cached || cached.isStale;
@@ -232,7 +280,7 @@ export class ModelMenuController {
 			cached?.data ?? null,
 			needsRefresh && !cached,
 		);
-		this.positionPanel(anchorEl, panel);
+		position();
 
 		if (!needsRefresh) {
 			return;
@@ -241,7 +289,7 @@ export class ModelMenuController {
 		const freshQuota = await this.ctx.fetchUserQuota();
 		if (this.usagePanelEl !== panel) return;
 		this.renderUsagePanelContent(panel, freshQuota ?? cached?.data ?? null, false);
-		this.positionPanel(anchorEl, panel);
+		position();
 	}
 
 	private renderUsagePanelContent(
@@ -441,12 +489,33 @@ export class ModelMenuController {
 	closeUsagePanel(): void {
 		this.usagePanelEl?.remove();
 		this.usagePanelEl = null;
+		this.usagePanelFromHover = false;
 	}
 
 	closeMenu(): void {
 		this.menu?.hide();
 		this.menu = null;
 		this.closeUsagePanel();
+	}
+
+	/** Place the panel to the right of a menu item (left if no room), like a submenu. */
+	private positionPanelBeside(itemEl: HTMLElement, panel: HTMLElement): void {
+		const win = itemEl.win;
+		const menuRect = (itemEl.closest('.menu') ?? itemEl).getBoundingClientRect();
+		const itemRect = itemEl.getBoundingClientRect();
+		const height = panel.offsetHeight || 380;
+		const width = panel.offsetWidth || 270;
+
+		let left = menuRect.right + 4;
+		if (left + width > win.innerWidth - 10) {
+			left = Math.max(10, menuRect.left - width - 4);
+		}
+		let top = itemRect.top - 6;
+		if (top + height > win.innerHeight - 10) {
+			top = Math.max(10, win.innerHeight - height - 10);
+		}
+
+		panel.setCssProps({ left: `${left}px`, top: `${top}px` });
 	}
 
 	private positionPanel(anchor: HTMLElement, panel: HTMLElement): void {

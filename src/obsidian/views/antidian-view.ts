@@ -29,7 +29,6 @@ import { SessionMenuController } from './session-menu-view';
 import { UNTITLED_SESSION } from './session-format';
 import { mergeStoredTraces } from '../../core/sessions/trace';
 import { loadAgyTranscriptTurns } from '../../core/sessions/transcript';
-import type { TurnUsage } from '../../core/types/sessions';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
