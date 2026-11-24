@@ -2,11 +2,13 @@ import type { MediaInput } from '../types/model';
 import {
 	type AccountTierInfo,
 	type AcpPromptResult,
+	type AcpSessionSummary,
 	type AcpStreamCallbacks,
 	AntigravityAcpClient,
 	type AntigravityAcpOptions,
 	type AvailableModelsResponse,
 	type ContextWindowUsage,
+	type ReplayedMessage,
 	type UserQuotaResponse,
 } from './antigravity-acp';
 import type { McpToolServer } from './mcp-tool-server';
@@ -69,6 +71,26 @@ export class AntigravityProvider {
 
 	async resetSession(): Promise<void> {
 		return this.client.resetSession();
+	}
+
+	async listSessions(): Promise<AcpSessionSummary[]> {
+		return this.client.listSessions();
+	}
+
+	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
+		return this.client.loadSession(sessionId);
+	}
+
+	getSessionId(): string | null {
+		return this.client.getSessionId();
+	}
+
+	getSessionTitle(): string | null {
+		return this.client.getSessionTitle();
+	}
+
+	onSessionInfoChange(listener: () => void): () => void {
+		return this.client.onSessionInfoChange(listener);
 	}
 
 	cancel(): void {

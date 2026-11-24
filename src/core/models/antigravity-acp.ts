@@ -100,6 +100,23 @@ export interface AntigravityAcpOptions {
 	appDataDir?: string;
 }
 
+/** A stored conversation as reported by ACP `session/list`. */
+export interface AcpSessionSummary {
+	sessionId: string;
+	title?: string;
+	/** ISO timestamp of the last update, when the CLI reports one. */
+	updatedAt?: string;
+}
+
+/** One message of a stored conversation, replayed by ACP `session/load`. */
+export interface ReplayedMessage {
+	role: 'user' | 'agent';
+	text: string;
+}
+
+/** Pages of `session/list` to follow before giving up (guards a looping cursor). */
+const MAX_SESSION_LIST_PAGES = 10;
+
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
 
@@ -297,6 +314,10 @@ export class AntigravityAcpClient {
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
 	private startPromise: Promise<void> | null = null;
+	private sessionTitle: string | null = null;
+	private sessionInfoListeners = new Set<() => void>();
+	/** Collects `session/load` history replay; null outside a load. */
+	private replayBuffer: ReplayedMessage[] | null = null;
 	private promptInFlight = false;
 	private turnCancelled = false;
 	private activePromptRpcId: number | null = null;
@@ -500,7 +521,88 @@ export class AntigravityAcpClient {
 		return { models: [], groups: [] };
 	}
 
+	getSessionId(): string | null {
+		return this.sessionId;
+	}
+
+	getSessionTitle(): string | null {
+		return this.sessionTitle;
+	}
+
+	/** Notified when the active session or its CLI-generated title changes. */
+	onSessionInfoChange(listener: () => void): () => void {
+		this.sessionInfoListeners.add(listener);
+		return () => this.sessionInfoListeners.delete(listener);
+	}
+
+	/**
+	 * Lists stored conversations for this vault (newest first). Only sessions
+	 * whose cwd is the vault are returned, so CLI sessions started elsewhere
+	 * never leak into the picker.
+	 */
+	async listSessions(): Promise<AcpSessionSummary[]> {
+		await this.ensureInitialized();
+		const out: AcpSessionSummary[] = [];
+		let cursor: string | undefined;
+		for (let page = 0; page < MAX_SESSION_LIST_PAGES; page++) {
+			const res = (await this.sendRequest('session/list', {
+				cwd: this.cwd,
+				...(cursor ? { cursor } : {}),
+			})) as { sessions?: unknown; nextCursor?: unknown } | null;
+			out.push(...parseSessionList(res?.sessions, this.cwd));
+			cursor =
+				typeof res?.nextCursor === 'string' && res.nextCursor
+					? res.nextCursor
+					: undefined;
+			if (!cursor) break;
+		}
+		return sortSessionsNewestFirst(dedupeSessions(out));
+	}
+
+	/**
+	 * Switches to a stored conversation. The CLI replays its history, which is
+	 * returned so the UI can render it; later prompts continue that session.
+	 */
+	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
+		if (this.promptInFlight) {
+			throw new Error('Cannot switch sessions while a response is running.');
+		}
+		if (this.startPromise) {
+			await this.startPromise.catch(() => undefined);
+		}
+		if (this.sessionId === sessionId) {
+			return [];
+		}
+		await this.resetSession();
+
+		let replayed: ReplayedMessage[] = [];
+		const loading = (async () => {
+			await this.ensureInitialized();
+			this.replayBuffer = [];
+			try {
+				const res = (await this.sendRequest('session/load', {
+					...(await this.buildSessionParams()),
+					sessionId,
+				})) as Partial<AcpSessionNewResult> | null;
+				replayed = this.replayBuffer;
+				await this.applySessionResult(sessionId, res ?? {});
+			} finally {
+				this.replayBuffer = null;
+			}
+		})();
+		this.startPromise = loading;
+		try {
+			await loading;
+		} finally {
+			if (this.startPromise === loading) this.startPromise = null;
+		}
+		return replayed;
+	}
+
 	async resetSession(): Promise<void> {
+		const hadSession = this.sessionId !== null || this.sessionTitle !== null;
+		this.sessionTitle = null;
+		if (hadSession) this.emitSessionInfo();
 		if (this.sessionId && this.proc && !this.proc.killed) {
 			const oldId = this.sessionId;
 			this.sessionId = null;
@@ -689,7 +791,7 @@ export class AntigravityAcpClient {
 		}
 	}
 
-	private async startAndCreateSession(): Promise<void> {
+	private async ensureInitialized(): Promise<void> {
 		if (!this.proc || this.proc.killed) {
 			this.spawnProcess();
 		}
@@ -705,48 +807,64 @@ export class AntigravityAcpClient {
 			});
 			this.initialized = true;
 		}
+	}
+
+	/** Shared `session/new` / `session/load` params: vault cwd, MCP server, system prompt. */
+	private async buildSessionParams(): Promise<Record<string, unknown>> {
+		const mcpServers: Record<string, unknown>[] = [];
+		if (this.mcpToolServer) {
+			const info = await this.mcpToolServer.start();
+			mcpServers.push({
+				type: 'http',
+				name: MCP_SERVER_NAME,
+				url: info.url,
+				headers: [
+					{
+						name: 'Authorization',
+						value: `Bearer ${info.token}`,
+					},
+				],
+			});
+		}
+
+		const params: Record<string, unknown> = {
+			cwd: this.cwd,
+			mcpServers,
+		};
+
+		if (this.systemPrompt) {
+			params._meta = {
+				antigravity: {
+					systemPrompt: {
+						append: this.systemPrompt,
+					},
+				},
+			};
+		}
+		return params;
+	}
+
+	private async startAndCreateSession(): Promise<void> {
+		await this.ensureInitialized();
 
 		if (!this.sessionId) {
-			const mcpServers: Record<string, unknown>[] = [];
-			if (this.mcpToolServer) {
-				const info = await this.mcpToolServer.start();
-				mcpServers.push({
-					type: 'http',
-					name: MCP_SERVER_NAME,
-					url: info.url,
-					headers: [
-						{
-							name: 'Authorization',
-							value: `Bearer ${info.token}`,
-						},
-					],
-				});
-			}
-
-			const params: Record<string, unknown> = {
-				cwd: this.cwd,
-				mcpServers,
-			};
-
-			if (this.systemPrompt) {
-				params._meta = {
-					antigravity: {
-						systemPrompt: {
-							append: this.systemPrompt,
-						},
-					},
-				};
-			}
-
 			const sess = (await this.sendRequest(
 				'session/new',
-				params,
+				await this.buildSessionParams(),
 			)) as AcpSessionNewResult;
+			await this.applySessionResult(sess.sessionId, sess);
+		}
+	}
 
-			this.sessionId = sess.sessionId;
-			this.activeModelId = sess.models?.currentModelId ?? null;
+	private async applySessionResult(
+		sessionId: string,
+		sess: Partial<AcpSessionNewResult>,
+	): Promise<void> {
+		this.sessionId = sessionId;
+		this.activeModelId = sess.models?.currentModelId ?? null;
 
-			const rawModels = sess.models?.availableModels ?? [];
+		const rawModels = sess.models?.availableModels ?? [];
+		if (rawModels.length > 0 || !this.cachedModels) {
 			const models: AvailableModel[] = rawModels.map((m) => ({
 				id: m.modelId,
 				displayName: m.name || m.modelId,
@@ -757,23 +875,34 @@ export class AntigravityAcpClient {
 				groups: groupModels(models),
 				defaultModelId: sess.models?.currentModelId,
 			};
+		}
 
-			const tier = sess._meta?.antigravity?.tier;
-			if (tier) {
-				this.cachedTier = {
-					tierId: tier.id,
-					tierName: tier.name,
-					upgradeUri: tier.upgradeUri,
-				};
+		const tier = sess._meta?.antigravity?.tier;
+		if (tier) {
+			this.cachedTier = {
+				tierId: tier.id,
+				tierName: tier.name,
+				upgradeUri: tier.upgradeUri,
+			};
+		}
+
+		if (this.model && this.activeModelId !== this.model) {
+			try {
+				await this.applyModel(this.model);
+			} catch {
+				// If saved model is no longer available, keep session default
+				this.model = this.activeModelId ?? undefined;
 			}
+		}
+		this.emitSessionInfo();
+	}
 
-			if (this.model && this.activeModelId !== this.model) {
-				try {
-					await this.applyModel(this.model);
-				} catch {
-					// If saved model is no longer available, keep session default
-					this.model = this.activeModelId ?? undefined;
-				}
+	private emitSessionInfo(): void {
+		for (const listener of this.sessionInfoListeners) {
+			try {
+				listener();
+			} catch {
+				// A broken listener must not break the transport.
 			}
 		}
 	}
@@ -1016,10 +1145,33 @@ export class AntigravityAcpClient {
 					status?: string;
 					used?: number;
 					size?: number;
+					title?: unknown;
 			  }
 			| undefined;
 
 		if (!update?.sessionUpdate) return;
+
+		if (update.sessionUpdate === 'session_info_update') {
+			if (typeof update.title === 'string' && update.title.trim()) {
+				this.sessionTitle = update.title.trim();
+				this.emitSessionInfo();
+			}
+			return;
+		}
+
+		if (this.replayBuffer) {
+			const role =
+				update.sessionUpdate === 'user_message_chunk'
+					? 'user'
+					: update.sessionUpdate === 'agent_message_chunk'
+						? 'agent'
+						: null;
+			const text = update.content?.text;
+			if (role && typeof text === 'string') {
+				appendReplayChunk(this.replayBuffer, role, text);
+			}
+			return;
+		}
 
 		if (
 			update.sessionUpdate === 'usage_update' &&
@@ -1087,4 +1239,61 @@ export class AntigravityAcpClient {
 			}
 		}
 	}
+}
+
+/** Merges consecutive chunks of the same role into one replayed message. */
+export function appendReplayChunk(
+	buffer: ReplayedMessage[],
+	role: ReplayedMessage['role'],
+	text: string,
+): void {
+	const last = buffer[buffer.length - 1];
+	if (last && last.role === role) {
+		last.text += text;
+	} else {
+		buffer.push({ role, text });
+	}
+}
+
+/** Validates untrusted `session/list` entries and keeps only this vault's sessions. */
+export function parseSessionList(
+	raw: unknown,
+	cwd: string,
+): AcpSessionSummary[] {
+	if (!Array.isArray(raw)) return [];
+	const out: AcpSessionSummary[] = [];
+	for (const entry of raw) {
+		if (!entry || typeof entry !== 'object') continue;
+		const e = entry as Record<string, unknown>;
+		if (typeof e.sessionId !== 'string' || !e.sessionId) continue;
+		if (typeof e.cwd === 'string' && e.cwd !== cwd) continue;
+		out.push({
+			sessionId: e.sessionId,
+			title:
+				typeof e.title === 'string' && e.title.trim()
+					? e.title.trim()
+					: undefined,
+			updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : undefined,
+		});
+	}
+	return out;
+}
+
+function dedupeSessions(sessions: AcpSessionSummary[]): AcpSessionSummary[] {
+	const seen = new Set<string>();
+	return sessions.filter((s) => {
+		if (seen.has(s.sessionId)) return false;
+		seen.add(s.sessionId);
+		return true;
+	});
+}
+
+function sortSessionsNewestFirst(
+	sessions: AcpSessionSummary[],
+): AcpSessionSummary[] {
+	const time = (s: AcpSessionSummary) => {
+		const t = s.updatedAt ? Date.parse(s.updatedAt) : NaN;
+		return Number.isFinite(t) ? t : 0;
+	};
+	return [...sessions].sort((a, b) => time(b) - time(a));
 }

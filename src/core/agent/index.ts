@@ -3,8 +3,12 @@ import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
-import { ContextCompiler } from '../context/compiler';
+import { ContextCompiler, stripCompiledContext } from '../context/compiler';
 import type { AntigravityProvider } from '../models/antigravity-provider';
+import type {
+	AcpSessionSummary,
+	ReplayedMessage,
+} from '../models/antigravity-acp';
 
 export interface AgentOptions {
 	provider: AntigravityProvider;
@@ -120,6 +124,25 @@ export class Agent {
 		this.cancel();
 		this.contextCompiler.reset();
 		await this.provider.resetSession();
+	}
+
+	async listSessions(): Promise<AcpSessionSummary[]> {
+		return this.provider.listSessions();
+	}
+
+	/**
+	 * Continues a stored session. Returns its history with Anti-dian's injected
+	 * context blocks removed from user messages, ready for display.
+	 */
+	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
+		this.cancel();
+		const replayed = await this.provider.loadSession(sessionId);
+		this.contextCompiler.resumeSession();
+		return replayed
+			.map((m) =>
+				m.role === 'user' ? { ...m, text: stripCompiledContext(m.text) } : m,
+			)
+			.filter((m) => m.text.trim().length > 0);
 	}
 
 	async run(

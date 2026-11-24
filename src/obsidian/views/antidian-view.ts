@@ -3,6 +3,7 @@ import {
 	HoverPopover,
 	ItemView,
 	MarkdownRenderer,
+	Notice,
 	WorkspaceLeaf,
 	setIcon,
 	setTooltip,
@@ -17,10 +18,14 @@ import { Message, MediaInput } from '../../core/types/model';
 import { ChangeSetValidator } from '../../core/transactions';
 import {
 	formatTokens,
+	AcpSessionSummary,
 	AvailableModel,
 	ModelGroup,
+	ReplayedMessage,
 } from '../../core/models/antigravity-acp';
 import { ModelMenuController } from './model-menu-view';
+import { SessionMenuController } from './session-menu-view';
+import { UNTITLED_SESSION } from './session-format';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
@@ -35,7 +40,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private agent: Agent;
 	private validator?: ChangeSetValidator;
 	private unsubscribeContext: (() => void) | null = null;
+	private unsubscribeSessionInfo: (() => void) | null = null;
 	private modelMenuController: ModelMenuController;
+	private sessionMenu: SessionMenuController | null = null;
+	private sessionTriggerEl: HTMLElement | null = null;
+	private sessionTitleEl: HTMLElement | null = null;
+	/** Session being loaded; its title is shown until the CLI confirms the switch. */
+	private loadingSession: AcpSessionSummary | null = null;
+	/** Title of a resumed session, kept until the CLI reports one of its own. */
+	private resumedTitle: string | null = null;
 	private promptBar!: PromptBarView;
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
@@ -111,6 +124,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.renderMessagesContainer();
 		this.renderInputCard();
 
+		this.unsubscribeSessionInfo =
+			this.plugin.antigravityProvider.onSessionInfoChange(() => {
+				this.updateSessionTitle();
+			});
+
 		this.unsubscribeContext = this.contextService.onContextChange(
 			(context) => {
 				this.updateContextNav(context);
@@ -127,6 +145,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 				!target.closest('.menu')
 			) {
 				this.modelMenuController.closeMenu();
+			}
+			if (
+				this.sessionMenu?.isOpen() &&
+				!target.closest('.anti-dian-session-menu') &&
+				!target.closest('.anti-dian-session-trigger')
+			) {
+				this.sessionMenu.close();
 			}
 		});
 
@@ -148,6 +173,9 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.unsubscribeContext();
 			this.unsubscribeContext = null;
 		}
+		this.unsubscribeSessionInfo?.();
+		this.unsubscribeSessionInfo = null;
+		this.sessionMenu?.close();
 		this.promptBar?.destroy();
 		this.modelMenuController.closeMenu();
 		this.contentEl.empty();
@@ -157,24 +185,35 @@ export class AntiDianView extends ItemView implements HoverParent {
 		if (!this.rootEl) return;
 		this.topNavEl = this.rootEl.createDiv({ cls: 'anti-dian-top-nav' });
 
-		const leftGroup = this.topNavEl.createDiv({
-			cls: 'anti-dian-nav-left',
-		});
-		const folderIcon = leftGroup.createSpan({
-			cls: 'anti-dian-nav-icon',
-		});
-		setIcon(folderIcon, 'folder');
-
 		const vaultName = this.app.vault.getName() || 'anti-dian';
-		leftGroup.createSpan({
-			text: vaultName,
-			cls: 'anti-dian-nav-title',
+		const trigger = this.topNavEl.createEl('button', {
+			cls: 'anti-dian-nav-left anti-dian-session-trigger',
+			attr: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
 		});
-
-		const chevronIcon = leftGroup.createSpan({
+		this.sessionTriggerEl = trigger;
+		const sessionIcon = trigger.createSpan({ cls: 'anti-dian-nav-icon' });
+		setIcon(sessionIcon, 'messages-square');
+		this.sessionTitleEl = trigger.createSpan({ cls: 'anti-dian-nav-title' });
+		const chevronIcon = trigger.createSpan({
 			cls: 'anti-dian-nav-chevron',
 		});
 		setIcon(chevronIcon, 'chevron-down');
+		setTooltip(trigger, `Sessions in ${vaultName}`);
+
+		this.sessionMenu = new SessionMenuController(this.topNavEl, {
+			getVaultName: () => vaultName,
+			listSessions: () => this.agent.listSessions(),
+			getCurrentSessionId: () =>
+				this.plugin.antigravityProvider.getSessionId(),
+			onSelectSession: (session) => void this.switchSession(session),
+			onNewSession: () => this.startNewSession(),
+		});
+		trigger.onclick = (e) => {
+			e.stopPropagation();
+			this.modelMenuController.closeMenu();
+			this.sessionMenu?.toggle(trigger);
+		};
+		this.updateSessionTitle();
 
 		const rightGroup = this.topNavEl.createDiv({
 			cls: 'anti-dian-nav-right',
@@ -188,6 +227,113 @@ export class AntiDianView extends ItemView implements HoverParent {
 		newSessionBtn.onclick = () => {
 			this.startNewSession();
 		};
+	}
+
+	private updateSessionTitle(): void {
+		if (!this.sessionTitleEl) return;
+		const provider = this.plugin.antigravityProvider;
+		const title = this.loadingSession
+			? (this.loadingSession.title ?? UNTITLED_SESSION)
+			: (provider.getSessionTitle() ??
+				this.resumedTitle ??
+				(provider.getSessionId() && this.history.length > 0
+					? UNTITLED_SESSION
+					: 'New chat'));
+		this.sessionTitleEl.setText(title);
+		this.sessionTriggerEl?.toggleClass('is-loading', !!this.loadingSession);
+	}
+
+	private async switchSession(session: AcpSessionSummary): Promise<void> {
+		if (session.sessionId === this.plugin.antigravityProvider.getSessionId()) {
+			return;
+		}
+		if (this.isRunning) {
+			new Notice('Stop the current response before switching sessions.');
+			return;
+		}
+		const myToken = ++this.turnToken;
+		this.activeThinking?.cancelPendingApprovals();
+		this.activeThinking = null;
+		this.loadingSession = session;
+		this.resumedTitle = null;
+		this.updateSessionTitle();
+		this.clearMessages();
+		const loadingEl = this.messagesEl?.createDiv({
+			cls: 'anti-dian-session-loading',
+			text: 'Loading session…',
+		});
+		if (this.rootEl) {
+			this.rootEl.removeClass('is-empty-session');
+			this.rootEl.addClass('has-chat');
+		}
+
+		try {
+			const replayed = await this.agent.loadSession(session.sessionId);
+			if (myToken !== this.turnToken) return;
+			loadingEl?.remove();
+			this.history = [];
+			this.resetSessionStats();
+			this.resumedTitle = session.title ?? null;
+			await this.renderReplayedHistory(replayed);
+		} catch (err) {
+			if (myToken !== this.turnToken) return;
+			loadingEl?.remove();
+			this.resetEmptyState();
+			new Notice(
+				`Could not open session: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			if (myToken === this.turnToken) {
+				this.loadingSession = null;
+				this.updateSessionTitle();
+				this.promptBar?.focus();
+			}
+		}
+	}
+
+	private async renderReplayedHistory(messages: ReplayedMessage[]): Promise<void> {
+		if (!this.messagesEl) return;
+		if (messages.length === 0) {
+			this.resetEmptyState();
+			return;
+		}
+		for (const message of messages) {
+			if (message.role === 'user') {
+				const userMsg = this.messagesEl.createDiv({
+					cls: 'anti-dian-message anti-dian-message-user is-replayed',
+				});
+				userMsg.createEl('p', { text: message.text });
+			} else {
+				const agentMsg = this.messagesEl.createDiv({
+					cls: 'anti-dian-message anti-dian-message-agent is-replayed',
+				});
+				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
+				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
+				linkifyCodeWikilinks(this.app, answerEl, '');
+			}
+		}
+		this.scrollToBottom();
+	}
+
+	private clearMessages(): void {
+		this.messagesEl?.empty();
+	}
+
+	private resetEmptyState(): void {
+		this.clearMessages();
+		if (this.rootEl) {
+			this.rootEl.removeClass('has-chat');
+			this.rootEl.addClass('is-empty-session');
+		}
+	}
+
+	private resetSessionStats(): void {
+		this.sessionPromptTokens = 0;
+		this.sessionCandidateTokens = 0;
+		this.sessionTotalTokens = 0;
+		this.sessionCachedReadTokens = 0;
+		this.sessionThoughtTokens = 0;
+		this.lastTurnPromptTokens = 0;
 	}
 
 	private updateContextNav(context: ActiveContext): void {
@@ -258,17 +404,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.activeThinking?.cancelPendingApprovals();
 		}
 		this.history = [];
+		this.loadingSession = null;
+		this.resumedTitle = null;
+		this.resetSessionStats();
 		void this.agent.resetSession();
+		this.updateSessionTitle();
 		this.promptBar?.clearStagedMedia();
 		this.promptBar?.setText('');
 		this.promptBar?.focus();
-		if (this.messagesEl) {
-			this.messagesEl.empty();
-		}
-		if (this.rootEl) {
-			this.rootEl.removeClass('has-chat');
-			this.rootEl.addClass('is-empty-session');
-		}
+		this.resetEmptyState();
 	}
 
 	private async loadModels(): Promise<void> {
@@ -492,6 +636,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 
 			this.history = result.updatedHistory;
+			this.updateSessionTitle();
 
 			if (result.cancelled) {
 				thinkingState.settle({ cancelled: true });

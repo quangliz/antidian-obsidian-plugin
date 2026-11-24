@@ -31,6 +31,15 @@ export class ContextCompiler {
 		this.skillsInjectedInSession = false;
 	}
 
+	/**
+	 * Prepares for continuing a stored session: skills were already disclosed
+	 * in it, but the active note is unknown, so it is re-sent on the next turn.
+	 */
+	resumeSession(): void {
+		this.reset();
+		this.skillsInjectedInSession = true;
+	}
+
 	async compile(
 		userMessage: string,
 		context?: ActiveContext,
@@ -137,4 +146,47 @@ export class ContextCompiler {
 		if (parts.length === 0) return '';
 		return `\n[Active Note Outline: ${parts.join('; ')}]`;
 	}
+}
+
+/**
+ * Removes the context blocks `ContextCompiler.compile` prepends, recovering the
+ * text the user typed. Used to show replayed history from a stored session.
+ * Blocks are only stripped from the start, so user text is never altered.
+ */
+export function stripCompiledContext(prompt: string): string {
+	let rest = prompt;
+	for (;;) {
+		const end = compiledBlockEnd(rest);
+		if (end === null) return rest;
+		rest = rest.slice(end);
+	}
+}
+
+/** Length of the leading context block plus its `\n\n` separator, or null. */
+function compiledBlockEnd(text: string): number | null {
+	const singleLine = [
+		'[Vault Skills: none configured]',
+		'[Mode: Plan (read-only).',
+	];
+	if (text.startsWith('[Available Vault Skills')) {
+		return endAfter(text, '\n]\n\n');
+	}
+	if (singleLine.some((p) => text.startsWith(p))) {
+		return endAfter(text, ']\n\n');
+	}
+	if (text.startsWith('[Current Active Note: ')) {
+		// Optional outline line, then an optional multi-line selection block.
+		const selection = text.indexOf('\n[Selected Text in Editor:\n');
+		const firstBreak = text.indexOf('\n\n');
+		if (selection !== -1 && (firstBreak === -1 || selection < firstBreak)) {
+			return endAfter(text, '\n]\n\n', selection);
+		}
+		return endAfter(text, ']\n\n');
+	}
+	return null;
+}
+
+function endAfter(text: string, marker: string, from = 0): number | null {
+	const i = text.indexOf(marker, from);
+	return i === -1 ? null : i + marker.length;
 }
