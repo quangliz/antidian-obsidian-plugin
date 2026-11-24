@@ -1,50 +1,43 @@
 # Anti-dian
 
-A general-purpose AI noting harness for Obsidian, powered by the official **Antigravity CLI (`agy`)** over ACP (Agent Client Protocol).
+An AI noting assistant for **Obsidian Desktop**, powered by the official **Antigravity CLI (`agy`)**.
 
-Anti-dian works with your existing vault without forcing a specific note-taking methodology (PARA, Zettelkasten, or mandatory schemas). It pairs Obsidian-native context with a safe, inspectable mutation pipeline.
+Anti-dian works with your existing vault without forcing a folder structure or methodology—pair your notes with safe, reviewable AI edits.
 
-## Features
+## Highlights
 
-- **Obsidian-native sidebar**: Stream reasoning and answers alongside live active note and editor selection context, model selection, quota/context usage, and clickable `[[wikilink]]` references.
-- **Structured vault tools (via local MCP)**: Exposes vault operations to the Antigravity CLI through a loopback MCP server (`anti-dian-vault`) so the agent never bypasses Obsidian's vault boundaries:
-  - Read & explore: `list_notes`, `get_note_outline`, `search_notes`, `read_note`
-  - Structural mutations: `replace_block`, `patch_note`, `append_note`, `update_frontmatter`, `create_note`, `edit_note`
-  - Vault skills: `list_skills`, `load_skill`
-- **Staged mutations, diff & rollback**: Write operations are staged into a `ChangeSet`, reflected immediately to subsequent reads within the same turn (`StagedVaultOverlay`), validated for path safety and stale edits, rendered as a diff, and backed by before-state snapshots for rollback.
-- **Permission modes**:
-  - `Ask` (default): Free reads; each write pauses for your approval when the agent makes it (diff + Approve/Reject on the tool row), and the agent continues with the outcome.
-  - `Plan`: Read-only analysis; write tools are blocked at the MCP layer.
-  - `Auto`: Each valid write is applied as soon as the agent makes it (snapshots are still captured, so every change can be undone).
-- **Vault Skills**: Add reusable Markdown workflows in `.anti-dian/skills/` without modifying plugin code.
+- **Chat with your vault**: Open the sidebar to ask questions, summarize, compare, or draft notes with live active-note context and clickable `[[wikilink]]` previews.
+- **Rich input**: Mention notes with `@`, run quick actions with `/` (`/compare`, `/plan`, `/search`, `/summarize`, `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
+- **Safe, reviewable edits**:
+  - **Ask** *(default)*: Reads are automatic; every edit shows a diff in the sidebar and inline in your note for you to **Accept** or **Reject**.
+  - **Plan**: Read-only mode—the assistant can explore and propose changes without modifying files.
+  - **Auto**: Applies valid edits immediately.
+  - Every applied edit can be rolled back with **Undo**.
+- **Organized conversations**: Search, pin, rename, delete, and **fork** conversations in a resizable per-vault drawer.
+- **Custom Vault Skills**: Drop reusable Markdown instructions into `.anti-dian/skills/` to teach Anti-dian your own workflows.
 
-## Requirements
+## Getting Started
 
-- **Obsidian Desktop** `1.7.2` or newer (desktop-only plugin).
-- **Antigravity CLI (`agy`)** installed on your `PATH` or `~/.local/bin/agy` (or configured manually in plugin settings).
+**Requirements**: Obsidian Desktop `1.7.2+` and a Google account.
 
-## Setup
-
-1. Install dependencies and build the plugin:
+1. Build the plugin (or copy a release into `<vault>/.obsidian/plugins/anti-dian/`):
    ```bash
-   npm install
-   npm run build
+   npm install && npm run build
    ```
-2. Enable **Anti-dian** in Obsidian under **Settings → Community plugins**.
-3. Open **Settings → Anti-dian**:
-   - Confirm the Antigravity CLI path (leave blank to auto-detect).
-   - Click **Sign in with Google** if not already authenticated.
-   - Choose your default model and permission mode (`Ask`, `Plan`, or `Auto`).
-4. Open the sidebar using the ribbon icon or the command palette (`Anti-dian: Open sidebar`).
+2. Enable **Anti-dian** in **Settings → Community plugins**.
+3. Open **Settings → Anti-dian** and click **Sign in with Google** (the `agy` backend downloads automatically on first use).
+4. Open the sidebar from the ribbon icon or run `Anti-dian: Open sidebar`.
+
+## Useful Commands
+
+- `Anti-dian: Open sidebar` — Open or focus the chat sidebar.
+- `Anti-dian: Add selection to chat` — Attach the current editor selection (also in the editor right-click menu as **Add to anti-dian**).
+- `Anti-dian: Accept pending inline diff change` / `Reject pending inline diff change` — Review edits directly from the editor.
+- `Anti-dian: Undo last agent change` — Revert the most recent edit.
 
 ## Vault Skills
 
-Place custom workflow instructions inside your vault under `.anti-dian/skills/`:
-
-- Single-file skill: `.anti-dian/skills/<name>.md`
-- Folder skill: `.anti-dian/skills/<name>/SKILL.md`
-
-Optional YAML frontmatter supports `name` and `description`:
+Create `.anti-dian/skills/<name>.md` (or `.anti-dian/skills/<name>/SKILL.md`) with optional frontmatter:
 
 ```markdown
 ---
@@ -56,23 +49,8 @@ description: Summarize today's notes and extract open action items.
 ...
 ```
 
-Available skills are summarized once per session in context and loaded on demand via `load_skill`.
+Anti-dian discovers your skills automatically and loads them on demand.
 
-## Architecture
+## Technical Details & Development
 
-Anti-dian separates general harness logic from Obsidian integration:
-
-- `src/core/` — Pure harness runtime (`agent`, `context`, `models`, `skills`, `tools`, `transactions`, `types`). Never imports from `obsidian`.
-- `src/obsidian/` — Obsidian adapters (`Vault`, `MetadataCache`, `Workspace`, `Editor`), commands, and sidebar views.
-- `src/main.ts` — Thin composition root.
-
-See [AGENTS.md](./AGENTS.md) for detailed architecture rules and contribution guidelines.
-
-## Development
-
-```bash
-npm run dev     # Watch mode build (esbuild)
-npm test        # Run core unit tests (Node native test runner)
-npm run lint    # Run ESLint + obsidianmd rules
-npm run build   # Typecheck (tsc) + production build
-```
+For architecture, MCP vault tools, the mutation/diff pipeline, backend configuration, and development scripts, see [ARCHITECTURE.md](./ARCHITECTURE.md) (and [AGENTS.md](./AGENTS.md) for contributor guidelines).
