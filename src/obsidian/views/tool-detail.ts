@@ -276,7 +276,3 @@ export function buildToolDetail(
 	};
 }
 
-/** True when a mutating tool call was staged for review in the change card. */
-export function isStagedMutation(toolName: string, output: unknown): boolean {
-	return MUTATING_TOOLS.has(toolName) && isRecord(output) && output.staged === true;
-}

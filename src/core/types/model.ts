@@ -39,6 +39,12 @@ export interface TokenUsage {
 	promptTokens?: number;
 	candidatesTokens?: number;
 	totalTokens?: number;
+	/** Input tokens served from the provider's prompt cache. */
+	cachedReadTokens?: number;
+	/** Input tokens written to the provider's prompt cache. */
+	cachedWriteTokens?: number;
+	/** Reasoning ("thinking") tokens. */
+	thoughtTokens?: number;
 }
 
 export interface AgentResponse {

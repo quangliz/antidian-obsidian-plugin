@@ -1,4 +1,4 @@
-export type ChangeOperation =
+export type ChangeOperation = (
 	| {
 			type: 'create';
 			path: string;
@@ -38,7 +38,11 @@ export type ChangeOperation =
 			set?: Record<string, unknown>;
 			remove?: string[];
 			baseMtime?: number;
-	  };
+	  }
+) & {
+	/** Assigned by ChangeStagingManager.stage; identifies the op across UI and review. */
+	id?: string;
+};
 
 export type ChangeOperationType = ChangeOperation['type'];
 

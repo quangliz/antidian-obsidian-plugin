@@ -2,7 +2,7 @@ import { ActiveContext, ContextReference } from '../types/context';
 import { Message, MediaInput } from '../types/model';
 import { ChangeSet } from '../types/changes';
 import { HarnessPermissionMode, Tool, ToolRegistry } from '../tools';
-import { ChangeStagingManager } from '../transactions';
+import { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import { ContextCompiler } from '../context/compiler';
 import { AntigravityProvider } from '../models/antigravity-provider';
 
@@ -10,6 +10,8 @@ export interface AgentOptions {
 	provider: AntigravityProvider;
 	tools?: ToolRegistry | Tool[];
 	stagingManager?: ChangeStagingManager;
+	/** Reviews each staged mutation per tool call (ask/auto modes). */
+	mutationGate?: MutationGate;
 	contextCompiler?: ContextCompiler;
 	systemPrompt?: string;
 }
@@ -44,6 +46,9 @@ export interface AgentRunResult {
 		promptTokens: number;
 		candidatesTokens: number;
 		totalTokens: number;
+		cachedReadTokens: number;
+		cachedWriteTokens: number;
+		thoughtTokens: number;
 	};
 }
 
@@ -62,7 +67,7 @@ Recommended vault workflow:
    - \`append_note\` for adding content to the end of a note or under a heading
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
-3. All write tools stage changes for user diff/approval; \`read_note\` and \`get_note_outline\` automatically reflect edits staged earlier in the same turn.
+3. Each write tool call is reviewed immediately: in Ask mode the user approves or rejects it before the tool returns. The result says whether it was applied (\`applied: true\`) or rejected (\`rejectedByUser: true\`); if rejected, don't retry the same edit — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied and staged edits.
 4. Available vault skills are already injected into session context when present. Only call \`load_skill\` if a listed skill matches the request; do not call \`list_skills\` unless the user asks to inspect or refresh skills.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
 
@@ -74,11 +79,13 @@ export class Agent {
 	private provider: AntigravityProvider;
 	private registry: ToolRegistry;
 	private stagingManager?: ChangeStagingManager;
+	private mutationGate?: MutationGate;
 	private contextCompiler: ContextCompiler;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
 		this.stagingManager = options.stagingManager;
+		this.mutationGate = options.mutationGate;
 		this.contextCompiler = options.contextCompiler ?? new ContextCompiler();
 
 		if (options.tools instanceof ToolRegistry) {
@@ -114,6 +121,7 @@ export class Agent {
 		media?: MediaInput[],
 		beforeTool?: () => Promise<void>,
 		permissionMode: HarnessPermissionMode = 'ask',
+		requestApproval?: ApprovalHandler,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -151,6 +159,15 @@ export class Agent {
 					readMtimes.set(path, mtime);
 				},
 				getReadMtime: (path: string) => readMtimes.get(path),
+				reviewMutation:
+					this.mutationGate && permissionMode !== 'plan'
+						? (call) =>
+								this.mutationGate!.review(call, {
+									mode: permissionMode === 'auto' ? 'auto' : 'ask',
+									requestApproval,
+									recordReadMtime: (path, mtime) => readMtimes.set(path, mtime),
+								})
+						: undefined,
 			},
 			{
 				onToolStart: ({ callId, toolName, toolArgs }) => {
@@ -214,6 +231,9 @@ export class Agent {
 							result.usage.totalTokens ??
 							(result.usage.promptTokens ?? 0) +
 								(result.usage.candidatesTokens ?? 0),
+						cachedReadTokens: result.usage.cachedReadTokens ?? 0,
+						cachedWriteTokens: result.usage.cachedWriteTokens ?? 0,
+						thoughtTokens: result.usage.thoughtTokens ?? 0,
 					}
 				: undefined;
 

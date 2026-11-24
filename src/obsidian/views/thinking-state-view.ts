@@ -2,16 +2,20 @@ import {
 	App,
 	Component,
 	HoverParent,
+	ButtonComponent,
 	MarkdownRenderer,
+	Modal,
 	Notice,
+	Setting,
 	TFile,
 	setIcon,
 	setTooltip,
 } from 'obsidian';
 import type { ContextReference } from '../../core/types/context';
-import type { ChangeSetDiff, FileDiff } from '../../core/types/changes';
+import type { FileDiff } from '../../core/types/changes';
+import type { ApprovalDecision, ApprovalRequest } from '../../core/transactions';
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
-import { buildToolDetail, isStagedMutation } from './tool-detail';
+import { buildToolDetail } from './tool-detail';
 import { AgentStepEvent } from '../../core/agent';
 
 export interface SourceItem {
@@ -39,6 +43,24 @@ export interface ThinkingStep {
 	args?: Record<string, unknown>;
 	output?: unknown;
 	error?: string;
+	/** Human-in-the-loop state for a write call. */
+	approval?: StepApproval;
+}
+
+interface StepApproval {
+	state: 'pending' | 'applied' | 'rejected' | 'undone';
+	/** Resolves the agent's pending tool call (only while pending). */
+	resolve?: (decision: ApprovalDecision) => void;
+	appliedChangeSetId?: string;
+	autoApproved?: boolean;
+	busy?: boolean;
+}
+
+export interface ThinkingStateOptions {
+	hoverParent?: HoverParent;
+	getShowRawToolData?: () => boolean;
+	/** Roll back one applied write (by its single-op ChangeSet id). */
+	undoChange?: (changeSetId: string) => Promise<void>;
 }
 
 /** One contiguous run of model reasoning, shown between tool rows. */
@@ -101,16 +123,17 @@ export class ThinkingStateView {
 	/** Steps whose detail panel is open (errors open automatically). */
 	private openStepIds = new Set<string>();
 	private getShowRawToolData: () => boolean;
+	private undoChange?: (changeSetId: string) => Promise<void>;
 
 	constructor(
 		containerEl: HTMLElement,
 		app: App,
 		component: Component,
-		hoverParent?: HoverParent,
-		getShowRawToolData: () => boolean = () => false,
+		options: ThinkingStateOptions = {},
 	) {
-		this.hoverParent = hoverParent;
-		this.getShowRawToolData = getShowRawToolData;
+		this.hoverParent = options.hoverParent;
+		this.getShowRawToolData = options.getShowRawToolData ?? (() => false);
+		this.undoChange = options.undoChange;
 		this.app = app;
 		this.component = component;
 		this.containerEl = containerEl.createDiv({
@@ -181,6 +204,7 @@ export class ThinkingStateView {
 					'error' in step.toolOutput;
 				current.status = isError ? 'error' : 'done';
 				current.output = step.toolOutput;
+				this.applyReviewOutcome(current, step.toolOutput);
 				if (isError) {
 					current.error = String((step.toolOutput as { error: unknown }).error);
 					this.openStepIds.add(current.id);
@@ -443,7 +467,23 @@ export class ThinkingStateView {
 		if (count(['list_notes'])) clauses.push([{ text: 'listed notes' }]);
 		fileClause('read', pathsOf(['read_note', 'get_note_outline']));
 		fileClause('created', pathsOf(['create_note']));
-		fileClause('edited', pathsOf(['edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter']));
+		const writeTools = ['edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter'];
+		fileClause(
+			'edited',
+			[
+				...new Set(
+					this.steps
+						.filter(
+							(s) =>
+								writeTools.includes(s.toolName) &&
+								(s.approval === undefined || s.approval.state === 'applied'),
+						)
+						.map((s) => (typeof s.args?.path === 'string' ? s.args.path : s.secondary ?? ''))
+						.filter(Boolean),
+				),
+			],
+		);
+		const rejected = this.steps.filter((s) => s.approval?.state === 'rejected').length;
 		const skills = this.steps
 			.filter((s) => s.toolName === 'load_skill' && typeof s.args?.name === 'string')
 			.map((s) => String(s.args?.name));
@@ -464,6 +504,7 @@ export class ThinkingStateView {
 			if (i > 0) parts.push({ text: ', ' });
 			parts.push(...clause);
 		});
+		if (rejected) parts.push({ text: ` · ${rejected} rejected` });
 		if (failed) parts.push({ text: ` · ${failed} failed` });
 		const first = parts[0];
 		if (first && !first.file) first.text = first.text.charAt(0).toUpperCase() + first.text.slice(1);
@@ -644,15 +685,19 @@ export class ThinkingStateView {
 					showRaw: this.getShowRawToolData(),
 				},
 			);
-			const isOpen = renderDetail !== null && this.openStepIds.has(step.id);
+			const hasPanel = renderDetail !== null || step.approval !== undefined;
+			const isOpen = hasPanel && this.openStepIds.has(step.id);
 			const row = this.rowsContainerEl.createDiv({
 				cls: 'anti-dian-thinking-row',
 			});
-			row.toggleClass('is-expandable', renderDetail !== null);
+			row.toggleClass('is-expandable', hasPanel);
 			row.toggleClass('is-selected', isOpen);
 
 			// Status icon
-			if (step.status === 'running') {
+			if (step.approval?.state === 'pending') {
+				const wait = row.createSpan({ cls: 'anti-dian-thinking-row-await' });
+				setIcon(wait, 'hand');
+			} else if (step.status === 'running') {
 				row.createSpan({ cls: 'anti-dian-thinking-row-spinner' });
 			} else if (step.status === 'done') {
 				const check = row.createSpan({ cls: 'anti-dian-thinking-row-check' });
@@ -697,8 +742,22 @@ export class ThinkingStateView {
 				}
 			}
 
+			// Outcome tag for writes, visible even when the row is collapsed.
+			if (step.approval) {
+				const label = {
+					pending: 'Needs approval',
+					applied: step.approval.autoApproved ? 'Auto-applied' : 'Applied',
+					rejected: 'Rejected',
+					undone: 'Undone',
+				}[step.approval.state];
+				row.createSpan({
+					cls: `anti-dian-thinking-row-tag is-${step.approval.state}`,
+					text: label,
+				});
+			}
+
 			// Only rows with something to show are expandable.
-			if (renderDetail) {
+			if (hasPanel) {
 				const chevron = row.createSpan({
 					cls: `anti-dian-thinking-row-chevron collapse-icon ${isOpen ? '' : 'is-collapsed'}`,
 				});
@@ -723,10 +782,10 @@ export class ThinkingStateView {
 				};
 			}
 
-			if (isOpen && renderDetail) {
-				renderDetail(
-					this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-step-detail' }),
-				);
+			if (isOpen) {
+				const panel = this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-step-detail' });
+				renderDetail?.(panel);
+				this.renderApprovalControls(panel, step);
 			}
 
 			// Render matching sources if search returned items
@@ -812,36 +871,122 @@ export class ThinkingStateView {
 	}
 
 	/**
-	 * Attach each staged change's diff to the tool row that staged it and open
-	 * those rows. With `expand`, the trace stays open so changes awaiting
-	 * approval are visible without extra clicks.
+	 * Ask mode: show the write's diff on its tool row with Approve / Reject and
+	 * wait. The agent's tool call (and the model) stays paused until decided.
 	 */
-	public attachChangeSetDiff(diff: ChangeSetDiff, expand: boolean): void {
-		const staged = this.steps.filter((s) => isStagedMutation(s.toolName, s.output));
-		staged.forEach((step, ordinal) => {
-			const index =
-				isRecord(step.output) && typeof step.output.operationIndex === 'number'
-					? step.output.operationIndex
-					: ordinal;
-			const fileDiff = diff.files[index];
-			if (!fileDiff) return;
-			step.fileDiff = fileDiff;
-			if (expand) this.openStepIds.add(step.id);
+	public requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
+		const step =
+			this.steps.find((s) => s.callId === request.callId) ??
+			[...this.steps].reverse().find(
+				(s) => s.toolName === request.toolName && s.status === 'running',
+			);
+		if (!step) return Promise.resolve('reject');
+
+		return new Promise<ApprovalDecision>((resolve) => {
+			step.fileDiff = request.diff;
+			step.approval = {
+				state: 'pending',
+				resolve: (decision) => {
+					step.approval = { state: decision === 'approve' ? 'applied' : 'rejected' };
+					this.activeStatus = 'Thinking';
+					this.updateHeader();
+					this.renderSteps();
+					resolve(decision);
+				},
+			};
+			this.openStepIds.add(step.id);
+			this.isExpanded = true;
+			this.activeStatus = 'Waiting for approval';
+			this.updateHeader();
+			this.renderSteps();
+			this.containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		});
-		if (expand) this.isExpanded = true;
-		this.updateHeader();
-		this.renderSteps();
 	}
 
-	/** Open the trace and every staged change, and scroll it into view. */
-	public revealChanges(): void {
+	/** Reject every write still waiting (view closed or session reset). */
+	public cancelPendingApprovals(): void {
 		for (const step of this.steps) {
-			if (step.fileDiff) this.openStepIds.add(step.id);
+			if (step.approval?.state === 'pending') step.approval.resolve?.('reject');
 		}
-		this.isExpanded = true;
-		this.updateHeader();
+	}
+
+	/** Read the gate's outcome (applied / rejected) from the tool's final output. */
+	private applyReviewOutcome(step: ThinkingStep, output: unknown): void {
+		if (!isRecord(output)) return;
+		if (isRecord(output._diff)) step.fileDiff = output._diff as unknown as FileDiff;
+		if (output.applied === true) {
+			step.approval = {
+				state: 'applied',
+				appliedChangeSetId:
+					typeof output.appliedChangeSetId === 'string' ? output.appliedChangeSetId : undefined,
+				autoApproved: output.autoApproved === true,
+			};
+		} else if (output.rejectedByUser === true) {
+			step.approval = { state: 'rejected' };
+		}
+	}
+
+	/** Approve / Reject while pending; Applied + Undo or Rejected afterwards. */
+	private renderApprovalControls(parent: HTMLElement, step: ThinkingStep): void {
+		const approval = step.approval;
+		if (!approval) return;
+		const bar = parent.createDiv({ cls: 'anti-dian-approval-bar' });
+
+		if (approval.state === 'pending') {
+			bar.addClass('is-pending');
+			bar.createSpan({ cls: 'anti-dian-approval-label', text: 'Apply this change?' });
+			const actions = bar.createDiv({ cls: 'anti-dian-approval-actions' });
+			new ButtonComponent(actions)
+				.setButtonText('Reject')
+				.onClick(() => approval.resolve?.('reject'));
+			new ButtonComponent(actions)
+				.setCta()
+				.setButtonText('Approve')
+				.onClick(() => approval.resolve?.('approve'));
+			return;
+		}
+
+		if (approval.state === 'rejected') {
+			bar.createSpan({ cls: 'anti-dian-approval-status', text: 'Rejected' });
+			return;
+		}
+		if (approval.state === 'undone') {
+			bar.createSpan({ cls: 'anti-dian-approval-status', text: 'Undone' });
+			return;
+		}
+
+		bar.createSpan({
+			cls: 'anti-dian-approval-status is-applied',
+			text: approval.autoApproved ? 'Applied automatically' : 'Applied',
+		});
+		const changeSetId = approval.appliedChangeSetId;
+		if (changeSetId && this.undoChange) {
+			new ButtonComponent(bar.createDiv({ cls: 'anti-dian-approval-actions' }))
+				.setIcon('undo')
+				.setTooltip('Undo this change')
+				.setDisabled(approval.busy === true)
+				.onClick(() => void this.undoStep(step, changeSetId));
+		}
+	}
+
+	private async undoStep(step: ThinkingStep, changeSetId: string): Promise<void> {
+		const name = step.secondary ?? 'this note';
+		const confirmed = await confirmAction(this.app, {
+			title: 'Undo this change?',
+			message: `This restores ${name} to how it was before this change. Later changes to the same note may be lost.`,
+			cta: 'Undo',
+		});
+		if (!confirmed || !this.undoChange || !step.approval) return;
+		step.approval.busy = true;
 		this.renderSteps();
-		this.containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		try {
+			await this.undoChange(changeSetId);
+			step.approval = { state: 'undone' };
+		} catch (err) {
+			step.approval.busy = false;
+			new Notice(`Undo failed: ${err instanceof Error ? err.message : String(err)}`);
+		}
+		this.renderSteps();
 	}
 
 	private renderThoughtPhases(afterStep: number): void {
@@ -867,4 +1012,33 @@ export class ThinkingStateView {
 			this.updateClamp(phase);
 		}
 	}
+}
+
+interface ConfirmOptions {
+	title: string;
+	message: string;
+	cta: string;
+}
+
+/** Native confirmation dialog; resolves true only when the CTA is pressed. */
+function confirmAction(app: App, opts: ConfirmOptions): Promise<boolean> {
+	return new Promise((resolve) => {
+		let confirmed = false;
+		const modal = new Modal(app);
+		modal.setTitle(opts.title);
+		modal.contentEl.createEl('p', { text: opts.message });
+		new Setting(modal.contentEl)
+			.addButton((btn) => btn.setButtonText('Cancel').onClick(() => modal.close()))
+			.addButton((btn) =>
+				btn
+					.setButtonText(opts.cta)
+					.setWarning()
+					.onClick(() => {
+						confirmed = true;
+						modal.close();
+					}),
+			);
+		modal.onClose = () => resolve(confirmed);
+		modal.open();
+	});
 }

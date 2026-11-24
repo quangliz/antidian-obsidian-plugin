@@ -22,6 +22,8 @@ export interface ModelMenuContext {
 		promptTokens: number;
 		candidateTokens: number;
 		totalTokens: number;
+		cachedReadTokens: number;
+		thoughtTokens: number;
 	};
 }
 
@@ -312,6 +314,26 @@ export class ModelMenuController {
 			`${stats.promptTokens.toLocaleString()} in / ${stats.candidateTokens.toLocaleString()} out`,
 			'success',
 		);
+
+		if (stats.cachedReadTokens > 0 && stats.promptTokens > 0) {
+			const cachedPct = Math.round((stats.cachedReadTokens / stats.promptTokens) * 100);
+			this.renderUsageLimitRow(
+				sessionSec,
+				'Cached Input',
+				`${cachedPct}%`,
+				`${stats.cachedReadTokens.toLocaleString()} of ${stats.promptTokens.toLocaleString()} input tokens from cache`,
+				'success',
+			);
+		}
+		if (stats.thoughtTokens > 0) {
+			this.renderUsageLimitRow(
+				sessionSec,
+				'Thinking Tokens',
+				formatTokens(stats.thoughtTokens),
+				`${stats.thoughtTokens.toLocaleString()} reasoning tokens this session`,
+				'success',
+			);
+		}
 
 		const ctxUsage = this.ctx.getContextUsage();
 		if (ctxUsage && ctxUsage.size > 0) {

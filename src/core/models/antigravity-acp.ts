@@ -248,8 +248,15 @@ interface AcpPromptResponse {
 		inputTokens?: number;
 		outputTokens?: number;
 		totalTokens?: number;
+		thoughtTokens?: number;
+		cachedReadTokens?: number;
+		cachedWriteTokens?: number;
 	};
 }
+
+/** Untrusted JSON from the CLI: keep only finite, non-negative numbers. */
+const tokenCount = (v: unknown): number | undefined =>
+	typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
 
 export class AntigravityAcpClient {
 	private cliPath?: string;
@@ -537,9 +544,12 @@ export class AntigravityAcpClient {
 
 			const usage: TokenUsage | undefined = result?.usage
 				? {
-						promptTokens: result.usage.inputTokens,
-						candidatesTokens: result.usage.outputTokens,
-						totalTokens: result.usage.totalTokens,
+						promptTokens: tokenCount(result.usage.inputTokens),
+						candidatesTokens: tokenCount(result.usage.outputTokens),
+						totalTokens: tokenCount(result.usage.totalTokens),
+						thoughtTokens: tokenCount(result.usage.thoughtTokens),
+						cachedReadTokens: tokenCount(result.usage.cachedReadTokens),
+						cachedWriteTokens: tokenCount(result.usage.cachedWriteTokens),
 					}
 				: undefined;
 

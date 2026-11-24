@@ -20,7 +20,6 @@ import {
 	AvailableModel,
 	ModelGroup,
 } from '../../core/models/antigravity-acp';
-import { renderChangeSet } from './changeset-view';
 import { ModelMenuController } from './model-menu-view';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
@@ -38,6 +37,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private unsubscribeContext: (() => void) | null = null;
 	private modelMenuController: ModelMenuController;
 	private promptBar!: PromptBarView;
+	/** Trace of the current/last turn; holds any pending write approvals. */
+	private activeThinking: ThinkingStateView | null = null;
 
 	private rootEl: HTMLElement | null = null;
 	private topNavEl: HTMLElement | null = null;
@@ -53,6 +54,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private sessionPromptTokens = 0;
 	private sessionCandidateTokens = 0;
 	private sessionTotalTokens = 0;
+	private sessionCachedReadTokens = 0;
+	private sessionThoughtTokens = 0;
 	private lastTurnPromptTokens = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: AntiDianPlugin) {
@@ -79,6 +82,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 				promptTokens: this.sessionPromptTokens,
 				candidateTokens: this.sessionCandidateTokens,
 				totalTokens: this.sessionTotalTokens,
+				cachedReadTokens: this.sessionCachedReadTokens,
+				thoughtTokens: this.sessionThoughtTokens,
 			}),
 		});
 	}
@@ -128,6 +133,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	async onClose(): Promise<void> {
+		// A write waiting for approval must not hang the agent after the view is gone.
+		this.activeThinking?.cancelPendingApprovals();
 		if (this.unsubscribeContext) {
 			this.unsubscribeContext();
 			this.unsubscribeContext = null;
@@ -226,6 +233,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private startNewSession(): void {
+		this.activeThinking?.cancelPendingApprovals();
 		this.history = [];
 		void this.agent.resetSession();
 		this.promptBar?.clearStagedMedia();
@@ -303,13 +311,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const thinkingState = new ThinkingStateView(
-			agentMsg,
-			this.app,
-			this,
-			this,
-			() => this.plugin.settings.showRawToolData ?? false,
-		);
+		const thinkingState = new ThinkingStateView(agentMsg, this.app, this, {
+			hoverParent: this,
+			getShowRawToolData: () => this.plugin.settings.showRawToolData ?? false,
+			undoChange: async (changeSetId) => {
+				await this.plugin.applicator.rollback(changeSetId);
+			},
+		});
+		this.activeThinking = thinkingState;
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 		let receivedMarkdown = '';
 		let streamedMarkdown = '';
@@ -446,6 +455,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 					);
 				},
 				this.plugin.settings.permissionMode ?? 'ask',
+				// Ask mode: each write waits here for Approve / Reject on its tool row.
+				(request) => thinkingState.requestApproval(request),
 			);
 
 			this.history = result.updatedHistory;
@@ -469,26 +480,12 @@ export class AntiDianView extends ItemView implements HoverParent {
 				thinkingState.setAmbientContext(result.contextUsed);
 			}
 
-			if (result.changeSet && result.changeSet.operations.length > 0) {
-				const diff = await renderChangeSet(
-					agentMsg,
-					result.changeSet,
-					this.plugin,
-					() => thinkingState.revealChanges(),
-					this.validator,
-				);
-				if (diff) {
-					// Diffs live on the tool rows; keep them open while awaiting approval.
-					const awaitingApproval =
-						(this.plugin.settings.permissionMode ?? 'ask') === 'ask';
-					thinkingState.attachChangeSetDiff(diff, awaitingApproval);
-				}
-			}
-
 			if (result.usage) {
 				this.sessionPromptTokens += result.usage.promptTokens;
 				this.sessionCandidateTokens += result.usage.candidatesTokens;
 				this.sessionTotalTokens += result.usage.totalTokens;
+				this.sessionCachedReadTokens += result.usage.cachedReadTokens;
+				this.sessionThoughtTokens += result.usage.thoughtTokens;
 				this.lastTurnPromptTokens = result.usage.promptTokens;
 				this.renderUsageFooter(agentMsg, result.usage);
 			}
@@ -518,15 +515,40 @@ export class AntiDianView extends ItemView implements HoverParent {
 			promptTokens: number;
 			candidatesTokens: number;
 			totalTokens: number;
+			cachedReadTokens: number;
+			cachedWriteTokens: number;
+			thoughtTokens: number;
 		},
 	): void {
 		const footer = parent.createDiv({ cls: 'anti-dian-turn-usage-footer' });
 
 		const inSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
 		inSpan.setText(`${usage.promptTokens.toLocaleString()} in`);
+		// Cached input is part of "in"; only shown when the provider reports it.
+		if (usage.cachedReadTokens > 0) {
+			const cached = footer.createSpan({
+				cls: 'anti-dian-usage-item anti-dian-usage-cached',
+				text: `${formatTokens(usage.cachedReadTokens)} cached`,
+			});
+			const pct =
+				usage.promptTokens > 0
+					? Math.round((usage.cachedReadTokens / usage.promptTokens) * 100)
+					: 0;
+			setTooltip(
+				cached,
+				`${usage.cachedReadTokens.toLocaleString()} input tokens read from cache${pct ? ` (${pct}% of input)` : ''}`,
+			);
+		}
 
 		const outSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
 		outSpan.setText(`${usage.candidatesTokens.toLocaleString()} out`);
+		if (usage.thoughtTokens > 0) {
+			const thought = footer.createSpan({
+				cls: 'anti-dian-usage-item anti-dian-usage-thought',
+				text: `${formatTokens(usage.thoughtTokens)} thinking`,
+			});
+			setTooltip(thought, `${usage.thoughtTokens.toLocaleString()} reasoning tokens`);
+		}
 
 		const ctxSpan = footer.createSpan({
 			cls: 'anti-dian-usage-item anti-dian-usage-ctx',

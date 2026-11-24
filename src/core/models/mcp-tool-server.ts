@@ -231,7 +231,18 @@ export class McpToolServer {
 			}
 
 			try {
-				const output = await tool.execute(args, this.activeTurnContext);
+				const turnContext = this.activeTurnContext;
+				let output = await tool.execute(args, turnContext);
+				// Mutations are reviewed per call (approve/apply or reject) before
+				// the model sees the result.
+				if (tool.mutates && turnContext?.reviewMutation) {
+					output = await turnContext.reviewMutation({
+						callId,
+						toolName: name,
+						toolArgs: args,
+						output,
+					});
+				}
 				this.onToolEnd?.({
 					callId,
 					toolName: name,
@@ -245,7 +256,7 @@ export class McpToolServer {
 							text:
 								typeof output === 'string'
 									? output
-									: JSON.stringify(output),
+									: JSON.stringify(withoutPrivateFields(output)),
 						},
 					],
 				});
@@ -299,4 +310,12 @@ export class McpToolServer {
 			}),
 		);
 	}
+}
+
+/** Fields prefixed with `_` are for the UI only (e.g. diffs) and never sent to the model. */
+function withoutPrivateFields(value: unknown): unknown {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>).filter(([key]) => !key.startsWith('_')),
+	);
 }

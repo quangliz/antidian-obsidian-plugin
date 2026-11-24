@@ -5,10 +5,12 @@ export * from './overlay';
 export * from './validator';
 export * from './diff';
 export * from './applicator';
+export * from './gate';
 
 export class ChangeStagingManager {
 	private changeSets: Map<string, ChangeSet> = new Map();
 	private activeChangeSetId: string | null = null;
+	private opCounter = 0;
 
 	startTurn(): ChangeSet {
 		const id = `cs_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -35,8 +37,19 @@ export class ChangeStagingManager {
 			changeSet = this.startTurn();
 		}
 
+		op.id ??= `op_${++this.opCounter}`;
 		changeSet.operations.push(op);
 		return changeSet;
+	}
+
+	/** Take a staged operation out of its ChangeSet (to review it on its own). */
+	removeOperation(changeSetId: string, opId: string): ChangeOperation | undefined {
+		const changeSet = this.changeSets.get(changeSetId);
+		if (!changeSet) return undefined;
+		const index = changeSet.operations.findIndex((op) => op.id === opId);
+		if (index < 0) return undefined;
+		const [op] = changeSet.operations.splice(index, 1);
+		return op;
 	}
 
 	get(id: string): ChangeSet | undefined {

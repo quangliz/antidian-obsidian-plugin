@@ -1341,6 +1341,14 @@ button.anti-dian-thinking-header-btn:hover {
 	font-weight: var(--font-medium);
 }
 
+.anti-dian-usage-cached {
+	color: var(--color-green);
+}
+
+.anti-dian-usage-thought {
+	color: var(--text-faint);
+}
+
 /* ------------------------------------------------------------- */
 /* Media Attachment Tray & Preview                               */
 /* ------------------------------------------------------------- */
@@ -1362,4 +1370,69 @@ button.anti-dian-thinking-header-btn:hover {
 
 .anti-dian-hidden {
 	display: none !important;
+}
+
+/* ------------------------------------------------------------- */
+/* Per-call write approval (human-in-the-loop on the tool row)   */
+/* ------------------------------------------------------------- */
+
+.anti-dian-thinking-step-detail .anti-dian-diff-inline-box {
+	margin: 0;
+}
+
+.anti-dian-thinking-row-await {
+	display: flex;
+	align-items: center;
+	color: var(--text-accent);
+}
+
+.anti-dian-thinking-row-await svg {
+	width: 13px;
+	height: 13px;
+}
+
+.anti-dian-thinking-row-tag.is-pending {
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-thinking-row-tag.is-applied {
+	color: var(--color-green);
+}
+
+.anti-dian-thinking-row-tag.is-rejected,
+.anti-dian-thinking-row-tag.is-undone {
+	color: var(--text-faint);
+}
+
+.anti-dian-approval-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding-top: 4px;
+}
+
+.anti-dian-approval-bar.is-pending {
+	padding: 6px 0 2px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.anti-dian-approval-label {
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-approval-actions {
+	display: flex;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.anti-dian-approval-status {
+	color: var(--text-faint);
+}
+
+.anti-dian-approval-status.is-applied {
+	color: var(--color-green);
 }

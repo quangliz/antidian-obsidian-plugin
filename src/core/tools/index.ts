@@ -20,7 +20,20 @@ export interface ToolContext {
 	recordContext?: (ref: ContextReference) => void;
 	recordReadMtime?: (path: string, mtime: number) => void;
 	getReadMtime?: (path: string) => number | undefined;
+	/**
+	 * Per-call review of a staged mutation (human-in-the-loop in `ask` mode,
+	 * automatic in `auto`). Receives the tool's output and returns the output
+	 * the model should see instead.
+	 */
+	reviewMutation?: (call: MutationCall) => Promise<unknown>;
 	[key: string]: unknown;
+}
+
+export interface MutationCall {
+	callId: string;
+	toolName: string;
+	toolArgs: Record<string, unknown>;
+	output: unknown;
 }
 
 export interface Tool<I = unknown, O = unknown> {
@@ -322,8 +335,8 @@ export function createCreateNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'create',
 					path,
@@ -396,8 +409,8 @@ export function createPatchNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'patch-section',
 					path,
@@ -471,8 +484,8 @@ export function createReplaceBlockTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'replace-block',
 					path,
@@ -548,8 +561,8 @@ export function createAppendNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'append',
 					path,
@@ -629,8 +642,8 @@ export function createUpdateFrontmatterTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'update-frontmatter',
 					path,
@@ -695,8 +708,8 @@ export function createEditNoteTool(
 			return {
 				staged: true,
 				changeSetId: changeSet.id,
-				// Position in the ChangeSet, so the UI can pair this call with its diff.
-				operationIndex: changeSet.operations.length - 1,
+				// Identifies the staged op so it can be reviewed on its own.
+				operationId: changeSet.operations[changeSet.operations.length - 1]?.id,
 				operation: {
 					type: 'edit',
 					path,

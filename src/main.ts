@@ -19,6 +19,7 @@ import {
 	ChangeSetDiffGenerator,
 	ChangeSetApplicator,
 	StagedVaultOverlay,
+	MutationGate,
 } from './core/transactions';
 import { ContextCompiler } from './core/context/compiler';
 import {
@@ -117,6 +118,13 @@ export default class AntiDianPlugin extends Plugin {
 			provider: this.antigravityProvider,
 			tools: this.toolRegistry,
 			stagingManager: this.stagingManager,
+			mutationGate: new MutationGate({
+				staging: this.stagingManager,
+				validator: this.validator,
+				diffGenerator: this.diffGenerator,
+				applicator: this.applicator,
+				vault: this.vaultAdapter,
+			}),
 			contextCompiler: this.contextCompiler,
 		});
 
