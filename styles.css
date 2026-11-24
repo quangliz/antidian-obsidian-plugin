@@ -424,6 +424,12 @@ button.anti-dian-session-drawer-close:hover {
 	/* Reserve the scrollbar's width up front so content doesn't shift
 	   sideways when expanding something makes the list scrollable. */
 	scrollbar-gutter: stable;
+	/* overflow-y: auto also clips horizontally. Extend the scroller 6px into the
+	   sidebar padding on both sides (content stays put) so hover backgrounds that
+	   bleed past the text edge, like the thinking header's -6px, and focus rings
+	   aren't cut off. */
+	margin-inline: -6px;
+	padding-inline: 6px;
 }
 
 .anti-dian-sidebar-container.has-chat .anti-dian-center-card-container {
