@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
+import type { ReplayedAgentEvent, ReplayedMessage } from '../types/sessions';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -108,28 +109,10 @@ export interface AcpSessionSummary {
 	updatedAt?: string;
 }
 
-/** Reasoning or a tool call inside a replayed agent turn, in original order. */
-export type ReplayedAgentEvent =
-	| { type: 'thought'; text: string }
-	| {
-			type: 'tool';
-			callId?: string;
-			/** Display name (the `anti-dian-vault` MCP prefix is stripped). */
-			toolName: string;
-			toolArgs: Record<string, unknown>;
-			/** ACP status: `completed` / `failed`, or unfinished (`pending`, `in_progress`). */
-			status?: string;
-			output?: unknown;
-	  };
-
-/** One message of a stored conversation, replayed by ACP `session/load`. */
-export interface ReplayedMessage {
-	role: 'user' | 'agent';
-	/** User prompt, or the agent's answer text. */
-	text: string;
-	/** Agent turns only: reasoning and tool calls that preceded the answer. */
-	events?: ReplayedAgentEvent[];
-}
+export type {
+	ReplayedAgentEvent,
+	ReplayedMessage,
+} from '../types/sessions';
 
 /** Pages of `session/list` to follow before giving up (guards a looping cursor). */
 const MAX_SESSION_LIST_PAGES = 10;
@@ -1357,10 +1340,18 @@ export function normalizeReplayedToolOutput(
 	if (status === 'failed') {
 		const rec = asRecord(out);
 		if (!rec || !('error' in rec)) {
-			return { error: typeof out === 'string' ? out : JSON.stringify(out) };
+			return {
+				error:
+					out === undefined
+						? 'Tool call failed'
+						: typeof out === 'string'
+							? out
+							: JSON.stringify(out),
+			};
 		}
 	}
-	return out ?? { status };
+	// The CLI does not store MCP tool results: report "not stored", never a fake result.
+	return out;
 }
 
 /** Applies one `session/load` replay update to the buffer (pure; unit-tested). */

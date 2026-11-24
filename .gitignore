@@ -21,3 +21,5 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 beautiful-ui-main/
+# Per-session turn traces saved by the plugin (contain note excerpts)
+sessions/

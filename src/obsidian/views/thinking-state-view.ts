@@ -411,7 +411,12 @@ export class ThinkingStateView {
 	 * Finishes the trace. `replayed` marks a turn rebuilt from a stored session:
 	 * its duration is unknown, and calls that never finished are shown as stopped.
 	 */
-	public settle(options?: { cancelled?: boolean; replayed?: boolean }): void {
+	public settle(options?: {
+		cancelled?: boolean;
+		replayed?: boolean;
+		/** Original duration of a replayed turn, when it was saved. */
+		durationMs?: number;
+	}): void {
 		const cancelled = options?.cancelled === true;
 		const replayed = options?.replayed === true;
 		if (this.thoughtAnimationFrame !== null) {
@@ -438,13 +443,11 @@ export class ThinkingStateView {
 		this.closeOpenPhase();
 		this.isSettled = true;
 		this.endTime = performance.now();
-		const durationSec = Math.max(
-			1,
-			Math.round(((this.endTime - this.startTime) / 1000) * 10) / 10,
-		);
+		const elapsedMs = options?.durationMs ?? this.endTime - this.startTime;
+		const durationSec = Math.max(1, Math.round((elapsedMs / 1000) * 10) / 10);
 
 		const parts = this.buildSummary(cancelled);
-		if (replayed) {
+		if (replayed && options?.durationMs === undefined) {
 			if (!parts.length) parts.push({ text: 'Thought' });
 		} else {
 			parts.push({

@@ -2,6 +2,7 @@ import { App, HoverParent } from 'obsidian';
 import { FileDiff } from '../../core/types/changes';
 import { renderFileDiff } from './diff-lines';
 import { bindNoteLink } from './note-link';
+import { originalTextSize } from '../../core/sessions/trace';
 
 /** What the detail renderer needs to know about one tool call. */
 export interface ToolDetailInput {
@@ -132,16 +133,22 @@ function mutationDetail(input: ToolDetailInput): Renderer | null {
 function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer | null {
 	if (input.status !== 'done') return null;
 	const output = input.output;
+	// Replayed calls from before Anti-dian saved traces: the CLI kept no result.
+	if (output === undefined) {
+		return (el) => meta(el, 'Result was not saved for this earlier turn');
+	}
 
 	switch (input.toolName) {
 		case 'read_note': {
 			if (!isRecord(output)) return (el) => meta(el, 'Note not found');
 			const content = str(output.content) ?? '';
 			const heading = str(output.heading);
+			// Saved traces cut long content; they keep its real size.
+			const size = originalTextSize(output, 'content');
 			const parts = [
 				heading ? `#${heading}` : 'Whole note',
-				plural(content.length, 'char'),
-				plural(lineCount(content), 'line'),
+				plural(size?.chars ?? content.length, 'char'),
+				plural(size?.lines ?? lineCount(content), 'line'),
 			];
 			if (output.isStaged) parts.push('includes staged edits');
 			return (el) => meta(el, parts.join(' · '));

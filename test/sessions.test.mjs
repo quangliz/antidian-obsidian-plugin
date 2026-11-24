@@ -143,7 +143,8 @@ test('normalizeReplayedToolOutput parses JSON text and flags failures', () => {
 	assert.equal(normalizeReplayedToolOutput('plain stdout', 'completed'), 'plain stdout');
 	assert.deepEqual(normalizeReplayedToolOutput({ error: 'x' }, 'failed'), { error: 'x' });
 	assert.deepEqual(normalizeReplayedToolOutput([{ type: 'text', text: 'oops' }], 'failed'), { error: 'oops' });
-	assert.deepEqual(normalizeReplayedToolOutput(undefined, 'completed'), { status: 'completed' });
+	assert.equal(normalizeReplayedToolOutput(undefined, 'completed'), undefined);
+	assert.deepEqual(normalizeReplayedToolOutput(undefined, 'failed'), { error: 'Tool call failed' });
 });
 
 test('session picker helpers group, filter, and format recency', () => {
@@ -165,4 +166,74 @@ test('session picker helpers group, filter, and format recency', () => {
 	assert.equal(formatRelativeTime(undefined, now), '');
 	assert.deepEqual(filterSessions(sessions, 'QUANT bo').map((s) => s.sessionId), ['1']);
 	assert.deepEqual(filterSessions(sessions, 'untitled').map((s) => s.sessionId), ['4']);
+});
+
+const traceMod = await import('../src/core/sessions/trace.ts');
+const {
+	TurnTraceRecorder,
+	compactTraceValue,
+	mergeStoredTraces,
+	originalTextSize,
+	parseStoredTurns,
+	TRACE_MAX_STRING_CHARS,
+} = traceMod;
+
+test('TurnTraceRecorder pairs tool events and compacts large results', () => {
+	const rec = new TurnTraceRecorder();
+	const big = 'x\n'.repeat(TRACE_MAX_STRING_CHARS);
+	rec.record({ type: 'thinking' });
+	rec.record({ type: 'thought_delta', text: 'Read ' });
+	rec.record({ type: 'thought_delta', text: 'it.' });
+	rec.record({ type: 'tool_start', toolName: 'read_note', toolArgs: { path: 'A.md' }, callId: 'c1' });
+	rec.record({ type: 'tool_start', toolName: 'search_notes', toolArgs: { query: 'q' } });
+	rec.record({ type: 'tool_end', toolName: 'search_notes', toolOutput: { error: 'boom' } });
+	rec.record({ type: 'tool_end', toolName: 'read_note', toolOutput: { path: 'A.md', content: big }, callId: 'c1' });
+	rec.record({ type: 'answer_delta', text: 'ignored' });
+
+	const [thought, read, search] = rec.snapshot();
+	assert.deepEqual(thought, { type: 'thought', text: 'Read it.' });
+	assert.equal(read.status, 'completed');
+	assert.equal(read.output.content.length, TRACE_MAX_STRING_CHARS + 1);
+	assert.deepEqual(originalTextSize(read.output, 'content'), { chars: big.length, lines: TRACE_MAX_STRING_CHARS + 1 });
+	assert.equal(search.status, 'failed');
+	assert.deepEqual(search.output, { error: 'boom' });
+	assert.deepEqual(compactTraceValue({ a: 'short' }), { a: 'short' });
+});
+
+test('mergeStoredTraces overlays saved traces by typed text and keeps the rest', () => {
+	const replayed = [
+		{ role: 'user', text: 'hi' },
+		{ role: 'agent', text: 'Hello', events: [] },
+		{ role: 'user', text: 'summarize' },
+		{ role: 'agent', text: 'Summary', events: [{ type: 'tool', toolName: 'read_note', toolArgs: {}, status: 'completed' }] },
+		{ role: 'user', text: 'unsaved turn' },
+		{ role: 'agent', text: 'ok', events: [{ type: 'thought', text: 'cli thought' }] },
+	];
+	const usage = { promptTokens: 1, candidatesTokens: 2, totalTokens: 3, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 1 };
+	const stored = [
+		{ userText: 'summarize', events: [{ type: 'thought', text: 'saved thought' }, { type: 'tool', toolName: 'read_note', toolArgs: {}, status: 'completed', output: { content: 'c' } }], durationMs: 1900, usage, savedAt: '' },
+	];
+	const merged = mergeStoredTraces(replayed, stored);
+	assert.equal(merged[1].events.length, 0);
+	assert.equal(merged[3].events[0].text, 'saved thought');
+	assert.equal(merged[3].durationMs, 1900);
+	assert.deepEqual(merged[3].usage, usage);
+	assert.equal(merged[3].text, 'Summary');
+	assert.equal(merged[5].events[0].text, 'cli thought');
+	assert.equal(replayed[3].events.length, 1, 'input is not mutated');
+});
+
+test('parseStoredTurns drops malformed entries', () => {
+	const turns = parseStoredTurns({
+		version: 1,
+		turns: [
+			{ userText: 'a', events: [{ type: 'thought', text: 't' }, { type: 'tool' }, 5], durationMs: 'x', savedAt: 'now' },
+			{ events: [] },
+			null,
+		],
+	});
+	assert.deepEqual(turns, [
+		{ userText: 'a', events: [{ type: 'thought', text: 't' }], durationMs: undefined, usage: undefined, cancelled: undefined, savedAt: 'now' },
+	]);
+	assert.deepEqual(parseStoredTurns('garbage'), []);
 });
