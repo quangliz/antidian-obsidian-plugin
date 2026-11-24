@@ -37,6 +37,14 @@ import { ANTI_DIAN_ICON } from '../icon';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
 
+interface RenderedTurn {
+	userGroupEl: HTMLElement;
+	agentEl?: HTMLElement;
+	userText: string;
+	historyStartIndex: number;
+	thinkingState?: ThinkingStateView;
+}
+
 export class AntiDianView extends ItemView implements HoverParent {
 	hoverPopover: HoverPopover | null = null;
 	private plugin: AntiDianPlugin;
@@ -55,6 +63,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private promptBar!: PromptBarView;
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
+	private renderedTurns: RenderedTurn[] = [];
 
 	private rootEl: HTMLElement | null = null;
 	private heroTitleEl: HTMLElement | null = null;
@@ -309,32 +318,46 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.resetEmptyState();
 			return;
 		}
-		for (const message of messages) {
+		this.renderedTurns = [];
+		for (let i = 0; i < messages.length; i++) {
+			const message = messages[i]!;
 			if (message.role === 'user') {
-				const userMsg = this.messagesEl.createDiv({
+				const turn: RenderedTurn = {
+					userGroupEl: this.messagesEl.createDiv({
+						cls: 'anti-dian-message-user-group is-replayed',
+					}),
+					userText: message.text,
+					historyStartIndex: this.history.length,
+				};
+				const userMsg = turn.userGroupEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-user is-replayed',
 				});
 				userMsg.createEl('p', { text: message.text });
-				this.renderMessageActions(userMsg, { copyText: message.text });
+				this.renderUserMetaRow(turn.userGroupEl, {
+					text: message.text,
+					timestamp: message.timestamp,
+					onUndo: () => void this.undoFromTurn(turn),
+				});
+				this.renderedTurns.push(turn);
 			} else {
 				const agentMsg = this.messagesEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-agent is-replayed',
 				});
+				const lastTurn = this.renderedTurns[this.renderedTurns.length - 1];
+				if (lastTurn && !lastTurn.agentEl) {
+					lastTurn.agentEl = agentMsg;
+				}
 				if (message.events && message.events.length > 0) {
 					this.renderReplayedTrace(agentMsg, message.events, message.durationMs);
 				}
 				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
 				linkifyCodeWikilinks(this.app, answerEl, '');
-				if (message.usage) {
-					const footer = this.renderUsageFooter(agentMsg, message.usage);
-					this.renderMessageActions(footer, {
-						copyText: message.text,
-						inline: true,
-					});
-				} else if (message.text) {
-					this.renderMessageActions(agentMsg, { copyText: message.text });
-				}
+				this.renderAgentFooterRow(agentMsg, {
+					copyText: message.text,
+					timestamp: message.timestamp,
+					usage: message.usage,
+				});
 			}
 		}
 		this.scrollToBottom();
@@ -374,6 +397,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private clearMessages(): void {
+		this.renderedTurns = [];
 		this.messagesEl?.empty();
 	}
 
@@ -549,7 +573,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.rootEl.addClass('has-chat');
 		}
 
-		const userMsg = this.messagesEl.createDiv({
+		const sentAtIso = new Date().toISOString();
+		const turnRecord: RenderedTurn = {
+			userGroupEl: this.messagesEl.createDiv({
+				cls: 'anti-dian-message-user-group',
+			}),
+			userText: text,
+			historyStartIndex: this.history.length,
+		};
+		const userMsg = turnRecord.userGroupEl.createDiv({
 			cls: 'anti-dian-message anti-dian-message-user',
 		});
 
@@ -569,14 +601,21 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 		if (text) {
 			userMsg.createEl('p', { text });
-			this.renderMessageActions(userMsg, { copyText: text });
 		}
+
+		this.renderUserMetaRow(turnRecord.userGroupEl, {
+			text,
+			timestamp: sentAtIso,
+			onUndo: () => void this.undoFromTurn(turnRecord),
+		});
 
 		this.scrollToBottom();
 
 		const agentMsg = this.messagesEl.createDiv({
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
+		turnRecord.agentEl = agentMsg;
+		this.renderedTurns.push(turnRecord);
 
 		const thinkingState = new ThinkingStateView(agentMsg, this.app, this, {
 			hoverParent: this,
@@ -585,6 +624,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				await this.plugin.applicator.rollback(changeSetId);
 			},
 		});
+		turnRecord.thinkingState = thinkingState;
 		this.activeThinking = thinkingState;
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 		let receivedMarkdown = '';
@@ -815,18 +855,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.sessionCachedReadTokens += result.usage.cachedReadTokens;
 				this.sessionThoughtTokens += result.usage.thoughtTokens;
 				this.lastTurnPromptTokens = result.usage.promptTokens;
-				const footer = this.renderUsageFooter(agentMsg, result.usage);
-				this.renderMessageActions(footer, {
-					copyText: finalAnswerText,
-					thinkingState,
-					inline: true,
-				});
-			} else if (finalAnswerText || thinkingState.hasUndoableChanges()) {
-				this.renderMessageActions(agentMsg, {
-					copyText: finalAnswerText,
-					thinkingState,
-				});
 			}
+
+			this.renderAgentFooterRow(agentMsg, {
+				copyText: finalAnswerText,
+				timestamp: new Date().toISOString(),
+				usage: result.usage,
+			});
 		} catch (err) {
 			if (myToken !== this.turnToken) return;
 			thinkingState.settle();
@@ -850,79 +885,167 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 	}
 
-	private renderMessageActions(
+	private formatRelativeTimestamp(iso?: string): string {
+		if (!iso) return '';
+		const ms = Date.parse(iso);
+		if (!Number.isFinite(ms)) return '';
+		const diffSec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+		if (diffSec < 60) return 'Just now';
+		const diffMin = Math.floor(diffSec / 60);
+		if (diffMin < 60) return `${diffMin}m ago`;
+		const diffHour = Math.floor(diffMin / 60);
+		if (diffHour < 24) return `${diffHour}h ago`;
+		const diffDay = Math.floor(diffHour / 24);
+		return `${diffDay}d ago`;
+	}
+
+	private createCopyButton(parent: HTMLElement, textToCopy: string): void {
+		const copyBtn = parent.createEl('button', {
+			cls: 'anti-dian-msg-action-btn',
+			attr: { type: 'button', 'aria-label': 'Copy message' },
+		});
+		setIcon(copyBtn, 'copy');
+		setTooltip(copyBtn, 'Copy message');
+		copyBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			void navigator.clipboard
+				.writeText(textToCopy)
+				.then(() => {
+					setIcon(copyBtn, 'check');
+					copyBtn.addClass('is-copied');
+					window.setTimeout(() => {
+						setIcon(copyBtn, 'copy');
+						copyBtn.removeClass('is-copied');
+					}, 1500);
+				})
+				.catch(() => {
+					new Notice('Could not copy message to clipboard.');
+				});
+		});
+	}
+
+	private renderUserMetaRow(
+		parent: HTMLElement,
+		opts: {
+			text: string;
+			timestamp?: string;
+			onUndo: () => void;
+		},
+	): void {
+		const row = parent.createDiv({ cls: 'anti-dian-message-meta is-user' });
+		const rel = this.formatRelativeTimestamp(opts.timestamp);
+		if (rel) {
+			const timeEl = row.createSpan({
+				cls: 'anti-dian-message-time',
+				text: rel,
+			});
+			if (opts.timestamp) {
+				setTooltip(timeEl, new Date(opts.timestamp).toLocaleString());
+			}
+		}
+
+		if (opts.text.trim()) {
+			this.createCopyButton(row, opts.text);
+		}
+
+		const undoBtn = row.createEl('button', {
+			cls: 'anti-dian-msg-action-btn',
+			attr: { type: 'button', 'aria-label': 'Undo to before this message' },
+		});
+		setIcon(undoBtn, 'undo-2');
+		setTooltip(undoBtn, 'Undo to before this message');
+		undoBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			opts.onUndo();
+		});
+	}
+
+	private renderAgentFooterRow(
 		parent: HTMLElement,
 		opts: {
 			copyText?: string;
-			thinkingState?: ThinkingStateView;
-			inline?: boolean;
+			timestamp?: string;
+			usage?: {
+				promptTokens: number;
+				candidatesTokens: number;
+				totalTokens: number;
+				cachedReadTokens: number;
+				cachedWriteTokens: number;
+				thoughtTokens: number;
+			};
 		},
 	): void {
 		const hasCopy = Boolean(opts.copyText?.trim());
-		const hasUndo = Boolean(opts.thinkingState?.hasUndoableChanges());
-		if (!hasCopy && !hasUndo) return;
+		const rel = this.formatRelativeTimestamp(opts.timestamp);
+		if (!hasCopy && !rel && !opts.usage) return;
 
-		const bar = parent.createDiv({
-			cls: opts.inline
-				? 'anti-dian-message-actions is-inline'
-				: 'anti-dian-message-actions',
-		});
-
+		const row = parent.createDiv({ cls: 'anti-dian-message-meta is-agent' });
+		const left = row.createDiv({ cls: 'anti-dian-message-meta-left' });
 		if (hasCopy && opts.copyText) {
-			const textToCopy = opts.copyText;
-			const copyBtn = bar.createEl('button', {
-				cls: 'anti-dian-msg-action-btn',
-				attr: { type: 'button', 'aria-label': 'Copy message' },
+			this.createCopyButton(left, opts.copyText);
+		}
+		if (rel) {
+			const timeEl = left.createSpan({
+				cls: 'anti-dian-message-time',
+				text: rel,
 			});
-			setIcon(copyBtn, 'copy');
-			setTooltip(copyBtn, 'Copy message');
-			copyBtn.addEventListener('click', (e) => {
-				e.stopPropagation();
-				void navigator.clipboard
-					.writeText(textToCopy)
-					.then(() => {
-						setIcon(copyBtn, 'check');
-						copyBtn.addClass('is-copied');
-						window.setTimeout(() => {
-							setIcon(copyBtn, 'copy');
-							copyBtn.removeClass('is-copied');
-						}, 1500);
-					})
-					.catch(() => {
-						new Notice('Could not copy message to clipboard.');
-					});
-			});
+			if (opts.timestamp) {
+				setTooltip(timeEl, new Date(opts.timestamp).toLocaleString());
+			}
 		}
 
-		if (hasUndo && opts.thinkingState) {
-			const trace = opts.thinkingState;
-			const undoBtn = bar.createEl('button', {
-				cls: 'anti-dian-msg-action-btn',
-				attr: { type: 'button', 'aria-label': 'Undo changes' },
-			});
-			setIcon(undoBtn, 'undo');
-			setTooltip(undoBtn, 'Undo changes from this turn');
-			undoBtn.addEventListener('click', (e) => {
-				e.stopPropagation();
-				undoBtn.disabled = true;
-				void trace
-					.undoAllApplied()
-					.then((count) => {
-						if (count > 0) {
-							new Notice(
-								`Reverted ${count} change${count === 1 ? '' : 's'}.`,
-							);
-						}
-						if (!trace.hasUndoableChanges()) {
-							undoBtn.remove();
-						} else {
-							undoBtn.disabled = false;
-						}
-					})
-					.catch(() => {
-						undoBtn.disabled = false;
-					});
-			});
+		if (opts.usage) {
+			this.renderUsageFooter(row, opts.usage);
+		}
+	}
+
+	/**
+	 * Rewinds the conversation to just before `target`, rolling back any vault
+	 * edits made in `target` and later turns, and puts its prompt back in the
+	 * input box for editing.
+	 */
+	private async undoFromTurn(target: RenderedTurn): Promise<void> {
+		const idx = this.renderedTurns.indexOf(target);
+		if (idx === -1) return;
+
+		if (this.isRunning) {
+			this.handleCancel();
+		}
+
+		const affected = this.renderedTurns.slice(idx);
+		let revertedCount = 0;
+		for (const turn of [...affected].reverse()) {
+			if (turn.thinkingState?.hasUndoableChanges()) {
+				const reverted = await turn.thinkingState.undoAllApplied();
+				if (reverted === 0 && turn.thinkingState.hasUndoableChanges()) {
+					// User cancelled confirmation dialog
+					return;
+				}
+				revertedCount += reverted;
+			}
+		}
+
+		for (const turn of affected) {
+			turn.userGroupEl.remove();
+			turn.agentEl?.remove();
+		}
+		this.renderedTurns.splice(idx);
+		this.history = this.history.slice(0, target.historyStartIndex);
+
+		if (this.renderedTurns.length === 0) {
+			this.resetSessionStats();
+			this.resetEmptyState();
+		}
+
+		void this.agent.resetSession();
+		if (target.userText) {
+			this.promptBar.setText(target.userText);
+			this.promptBar.focus();
+		}
+		if (revertedCount > 0) {
+			new Notice(
+				`Undid turn and reverted ${revertedCount} change${revertedCount === 1 ? '' : 's'}.`,
+			);
 		}
 	}
 

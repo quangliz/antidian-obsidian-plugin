@@ -2265,38 +2265,71 @@ button.anti-dian-thinking-header-btn:hover {
 
 /* ── Message Copy & Undo Actions ──────────────────────────────────────────── */
 
-.anti-dian-message-user {
-	position: relative;
+.anti-dian-message-user-group {
+	align-self: flex-end;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	max-width: 88%;
 }
 
-.anti-dian-message-actions {
+.anti-dian-message-user-group .anti-dian-message-user {
+	max-width: 100%;
+}
+
+.anti-dian-message-meta {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	margin-top: 4px;
-	opacity: 0.7;
-	transition: opacity 0.15s ease;
+	margin-top: 6px;
+	color: var(--text-faint);
+	font-size: calc(var(--font-ui-smaller) * 0.92);
 }
 
-.anti-dian-message-user .anti-dian-message-actions {
+/* User turn: "2h ago  [copy] [undo]" right-aligned under the bubble. */
+.anti-dian-message-meta.is-user {
 	justify-content: flex-end;
-	opacity: 0;
-	margin-top: 2px;
 }
 
-.anti-dian-message-user:hover .anti-dian-message-actions,
-.anti-dian-message-user:focus-within .anti-dian-message-actions,
-.anti-dian-message-agent:hover .anti-dian-message-actions,
-.anti-dian-message-agent:focus-within .anti-dian-message-actions {
-	opacity: 1;
+.anti-dian-message-meta.is-user .anti-dian-message-time {
+	margin-right: 6px;
 }
 
-.anti-dian-message-actions.is-inline {
+/* Agent turn: "[copy]  2h ago" under the answer, usage on the right. */
+.anti-dian-message-meta.is-agent {
+	justify-content: space-between;
+	flex-wrap: wrap;
+	margin-top: 10px;
+	/* Pull the first button left so its icon lines up with the answer text. */
+	margin-left: -4px;
+}
+
+.anti-dian-message-meta-left {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.anti-dian-message-meta.is-agent .anti-dian-message-time {
+	margin-left: 6px;
+}
+
+.anti-dian-message-meta.is-agent .anti-dian-turn-usage-footer {
 	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
 	margin-left: auto;
 }
 
-.anti-dian-msg-action-btn {
+.anti-dian-message-time {
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	user-select: none;
+}
+
+.anti-dian-msg-action-btn,
+button.anti-dian-msg-action-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -2304,23 +2337,26 @@ button.anti-dian-thinking-header-btn:hover {
 	height: 22px;
 	padding: 0;
 	border: none;
-	border-radius: var(--radius-s);
+	border-radius: 6px;
 	background: transparent;
-	color: var(--text-muted);
-	cursor: pointer;
 	box-shadow: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.anti-dian-msg-action-btn:hover {
+.anti-dian-msg-action-btn:hover,
+button.anti-dian-msg-action-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-msg-action-btn.is-copied {
+.anti-dian-msg-action-btn.is-copied,
+button.anti-dian-msg-action-btn.is-copied {
 	color: var(--color-green);
 }
 
 .anti-dian-msg-action-btn svg {
-	width: 13px;
-	height: 13px;
+	width: 14px;
+	height: 14px;
 }

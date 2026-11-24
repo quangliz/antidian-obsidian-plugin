@@ -33,6 +33,8 @@ export interface ReplayedMessage {
 	role: 'user' | 'agent';
 	/** User prompt, or the agent's answer text. */
 	text: string;
+	/** ISO timestamp when this message was created, when known. */
+	timestamp?: string;
 	/** Agent turns only: reasoning and tool calls that preceded the answer. */
 	events?: ReplayedAgentEvent[];
 	/** Agent turns only, from Anti-dian's own trace when one was saved. */
