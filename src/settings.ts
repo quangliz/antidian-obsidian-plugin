@@ -110,7 +110,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 
 						dropdown.onChange(async (val) => {
 							this.plugin.settings.model = val;
-							this.plugin.geminiProvider.setModel(val);
+							this.plugin.antigravityProvider.setModel(val);
 							await this.plugin.saveSettings();
 						});
 					});

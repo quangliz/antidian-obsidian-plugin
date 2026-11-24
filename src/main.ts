@@ -10,7 +10,7 @@ import {
 } from './obsidian/views/antidian-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
-import { GeminiProvider } from './core/models/gemini-provider';
+import { AntigravityProvider } from './core/models/antigravity-provider';
 import {
 	ChangeStagingManager,
 	ChangeSetValidator,
@@ -37,7 +37,7 @@ export default class AntiDianPlugin extends Plugin {
 	validator!: ChangeSetValidator;
 	diffGenerator!: ChangeSetDiffGenerator;
 	applicator!: ChangeSetApplicator;
-	geminiProvider!: GeminiProvider;
+	antigravityProvider!: AntigravityProvider;
 	toolRegistry!: ToolRegistry;
 	agent!: Agent;
 
@@ -54,7 +54,7 @@ export default class AntiDianPlugin extends Plugin {
 			this.validator,
 		);
 
-		this.geminiProvider = new GeminiProvider({
+		this.antigravityProvider = new AntigravityProvider({
 			model: this.settings.model,
 		});
 
@@ -67,7 +67,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.toolRegistry.register(createWebSearchTool());
 
 		this.agent = new Agent({
-			provider: this.geminiProvider,
+			provider: this.antigravityProvider,
 			tools: this.toolRegistry,
 			stagingManager: this.stagingManager,
 		});
@@ -116,15 +116,15 @@ export default class AntiDianPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<AntiDianSettings>,
 		);
-		if (this.geminiProvider && this.settings.model) {
-			this.geminiProvider.setModel(this.settings.model);
+		if (this.antigravityProvider && this.settings.model) {
+			this.antigravityProvider.setModel(this.settings.model);
 		}
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-		if (this.geminiProvider && this.settings.model) {
-			this.geminiProvider.setModel(this.settings.model);
+		if (this.antigravityProvider && this.settings.model) {
+			this.antigravityProvider.setModel(this.settings.model);
 		}
 	}
 }

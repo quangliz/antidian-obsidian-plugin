@@ -13,15 +13,15 @@ import {
 import { httpRequest } from './http';
 import { createSSEParser } from './sse';
 
-export interface GeminiProviderOptions {
+export interface AntigravityProviderOptions {
 	model?: string;
 }
 
-export class GeminiProvider implements ModelProvider {
+export class AntigravityProvider implements ModelProvider {
 	private model: string;
 	private projectId?: string;
 
-	constructor(options: GeminiProviderOptions = {}) {
+	constructor(options: AntigravityProviderOptions = {}) {
 		this.model = options.model ?? 'gemini-3.7-flash-high';
 	}
 
@@ -43,7 +43,7 @@ export class GeminiProvider implements ModelProvider {
 		}
 
 		const targetModel = request.model ?? this.model;
-		const contents = this.formatGeminiContents(request.messages);
+		const contents = this.formatRequestContents(request.messages);
 
 		const body: Record<string, unknown> = {
 			model: targetModel,
@@ -137,7 +137,7 @@ export class GeminiProvider implements ModelProvider {
 		}
 	}
 
-	private formatGeminiContents(
+	private formatRequestContents(
 		messages: AgentRequest['messages'],
 	): Record<string, unknown>[] {
 		const contents: Record<string, unknown>[] = [];

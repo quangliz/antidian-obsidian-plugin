@@ -205,7 +205,7 @@ export class AntiDianView extends ItemView {
 
 	private selectModel(modelId: string): void {
 		this.plugin.settings.model = modelId;
-		this.plugin.geminiProvider.setModel(modelId);
+		this.plugin.antigravityProvider.setModel(modelId);
 		void this.plugin.saveSettings();
 
 		this.promptBar?.updateModelLabel(
@@ -236,7 +236,7 @@ export class AntiDianView extends ItemView {
 			this.modelGroups = groups;
 			if (!this.plugin.settings.model && defaultModelId) {
 				this.plugin.settings.model = defaultModelId;
-				this.plugin.geminiProvider.setModel(defaultModelId);
+				this.plugin.antigravityProvider.setModel(defaultModelId);
 			}
 			this.promptBar?.updateModelLabel();
 		} catch {
