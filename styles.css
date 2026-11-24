@@ -663,8 +663,8 @@ button.anti-dian-session-drawer-close:hover {
 /* Background + spread shadow give the chip padding without changing text layout. */
 .anti-dian-prompt-chip {
 	border-radius: 4px;
-	background: rgba(var(--interactive-accent-rgb), 0.2);
-	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 	-webkit-box-decoration-break: clone;
 	box-decoration-break: clone;
 }
@@ -1413,7 +1413,7 @@ button.anti-dian-promptbar-menu-row {
 	letter-spacing: 0.5px;
 	padding: 1px 5px;
 	border-radius: 4px;
-	background: rgba(var(--interactive-accent-rgb), 0.15);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 	color: var(--text-accent);
 	font-weight: var(--font-semibold);
 }
@@ -2158,7 +2158,7 @@ button.anti-dian-thinking-header-btn:hover {
 .diff-hunk-header {
 	color: var(--text-accent);
 	font-weight: var(--font-semibold);
-	background: rgba(var(--interactive-accent-rgb), 0.1);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
 }
 
 /* ------------------------------------------------------------- */
