@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Anti-dian: an AI for your Obsidian vault that's reliable</title>
+		<meta
+			name="description"
+			content="Anti-dian is a chat sidebar for Obsidian Desktop. It reads the notes a question needs, proposes edits as diffs, and waits for you to accept them."
+		/>
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="Anti-dian" />
+		<meta
+			property="og:description"
+			content="An AI for your Obsidian vault that's reliable."
+		/>
+		<meta name="color-scheme" content="light dark" />
+		<link rel="icon" type="image/png" href="./assets/logo-hero.png" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+			rel="stylesheet"
+		/>
+		<link rel="stylesheet" href="./styles.css" />
+	</head>
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></symbol>
+			<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14" /></symbol>
+			<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+			<symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8M10 9H8" /></symbol>
+			<symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /></symbol>
+			<symbol id="i-quote" viewBox="0 0 24 24"><path d="M17 6H3M21 12H8M21 18H8M3 12v6" /></symbol>
+			<symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></symbol>
+			<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></symbol>
+			<symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol>
+			<symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /></symbol>
+			<symbol id="i-unlock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></symbol>
+		</svg>
+
+		<a class="skip-link" href="#main">Skip to content</a>
+
+		<header class="site-header">
+			<div class="wrap header-inner">
+				<a class="brand" href="#top">
+					<img src="./assets/logo-hero.png" alt="" width="26" height="26" />
+					Anti-dian
+				</a>
+				<div class="header-actions">
+					<a class="header-link" href="https://github.com/quangliz/anti-dian">GitHub</a>
+					<a class="btn btn-small" href="obsidian://show-plugin?id=anti-dian">Install</a>
+				</div>
+			</div>
+		</header>
+
+		<div class="wrap page" id="top">
+			<nav class="outline" aria-label="On this page">
+				<p class="outline-title">Outline</p>
+				<ol>
+					<li><a href="#edits">Edits</a></li>
+					<li><a href="#context">Context</a></li>
+					<li><a href="#conversations">Conversations</a></li>
+					<li><a href="#skills">Vault Skills</a></li>
+					<li><a href="#privacy">Privacy</a></li>
+					<li><a href="#install">Install</a></li>
+				</ol>
+			</nav>
+
+			<main id="main">
+				<!-- ── Hero: the headline is itself a proposed edit ── -->
+				<section class="hero" id="hero" data-view="pending">
+					<div class="hero-diff">
+						<div class="diff-bar">
+							<span class="diff-bar-label" data-show="pending">Anti-dian proposed edit (+1 / -1)</span>
+							<span class="diff-bar-label" data-show="accepted" hidden>Applied</span>
+							<span class="diff-bar-label" data-show="rejected" hidden>Rejected</span>
+							<span class="diff-bar-actions">
+								<button class="mini is-accept" type="button" data-set="accepted" data-show="pending">Accept</button>
+								<button class="mini is-reject" type="button" data-set="rejected" data-show="pending">Reject</button>
+								<button class="mini" type="button" data-set="pending" data-show="accepted" hidden>Undo</button>
+								<button class="mini" type="button" data-set="pending" data-show="rejected" hidden>Show the edit again</button>
+							</span>
+						</div>
+						<p class="hero-del" data-show="pending"><del>An AI for your vault that edits your notes</del></p>
+						<p class="hero-kept" data-show="rejected" hidden>An AI for your vault that edits your notes</p>
+						<h1 class="hero-add" data-show="pending accepted">An AI for your vault that's reliable</h1>
+					</div>
+
+					<div class="hero-foot">
+						<div class="hero-lede">
+							<p>
+								Anti-dian is a chat sidebar for Obsidian Desktop. It reads the notes
+								a question needs, proposes edits as diffs, and waits for you to
+								accept them. Your folders, tags and naming stay as they are.
+							</p>
+							<div class="hero-cta">
+								<a class="btn" href="obsidian://show-plugin?id=anti-dian">Install in Obsidian</a>
+								<a class="btn btn-quiet" href="#edits">Try an edit</a>
+							</div>
+						</div>
+						<dl class="props" aria-label="Properties">
+							<div><dt>app</dt><dd>Obsidian Desktop 1.7.2+</dd></div>
+							<div><dt>backend</dt><dd>Antigravity CLI (<code>agy</code>)</dd></div>
+							<div><dt>sign-in</dt><dd>Google account</dd></div>
+							<div><dt>license</dt><dd>0BSD</dd></div>
+						</dl>
+					</div>
+				</section>
+
+				<!-- ── Edits ── -->
+				<section class="section" id="edits">
+					<div class="section-head">
+						<h2>Same request, three levels of trust</h2>
+						<p>
+							Pick a mode in the prompt bar and change it whenever you like. Switch
+							modes below to see what each one does with the same request.
+						</p>
+					</div>
+
+					<div class="demo" id="demo" data-view="ask">
+						<div class="mode-switch" role="group" aria-label="Permission mode">
+							<button type="button" data-mode="ask" aria-pressed="true">
+								<svg class="i" aria-hidden="true"><use href="#i-lock" /></svg>Ask
+							</button>
+							<button type="button" data-mode="plan" aria-pressed="false">
+								<svg class="i" aria-hidden="true"><use href="#i-shield" /></svg>Plan
+							</button>
+							<button type="button" data-mode="auto" aria-pressed="false">
+								<svg class="i" aria-hidden="true"><use href="#i-unlock" /></svg>Auto
+							</button>
+						</div>
+
+						<div class="demo-frame">
+							<article class="note" aria-label="Example note">
+								<p class="note-path">Weekly plan</p>
+								<h3>Thursday</h3>
+								<ul class="tasks">
+									<li><span class="box"></span><span>Return library books</span></li>
+									<li data-show="ask plan rejected undone" class="task-old"><span class="box"></span><span>Call the landlord</span></li>
+									<li data-show="applied auto" hidden><span class="box"></span><span>Call the landlord by Nov 30: <a class="wikilink">Lease</a> needs 60 days’ notice</span></li>
+									<li data-show="applied auto" hidden><span class="box"></span><span>Ask if the deposit carries over</span></li>
+								</ul>
+								<div class="inline-diff" data-show="ask">
+									<div class="diff-bar">
+										<span class="diff-bar-label">Anti-dian proposed edit (+2 / -1)</span>
+										<span class="diff-bar-actions">
+											<button class="mini is-accept" type="button" data-set="applied">Accept</button>
+											<button class="mini is-reject" type="button" data-set="rejected">Reject</button>
+										</span>
+									</div>
+									<p class="add-line">- [ ] Call the landlord by Nov 30: [[Lease]] needs 60 days’ notice</p>
+									<p class="add-line">- [ ] Ask if the deposit carries over</p>
+								</div>
+								<ul class="tasks">
+									<li><span class="box"></span><span>Draft notes for chapter 4</span></li>
+								</ul>
+							</article>
+
+							<aside class="chat" aria-label="Example conversation">
+								<div class="bubble">Check <span class="chip">@Lease</span> and make the landlord task specific</div>
+								<ul class="trace">
+									<li><span>Read</span> <code>Lease.md</code></li>
+									<li><span>Read</span> <code>Weekly plan.md</code></li>
+									<li data-show="ask applied rejected undone auto"><span>Replace block</span> <code>Weekly plan.md</code></li>
+								</ul>
+
+								<div class="approval" data-show="ask">
+									<span>Apply this change?</span>
+									<span class="approval-actions">
+										<button class="mini" type="button" data-set="rejected">Reject</button>
+										<button class="mini is-cta" type="button" data-set="applied">Approve</button>
+									</span>
+								</div>
+								<div class="approval" data-show="applied" hidden>
+									<span class="ok">Applied</span>
+									<button class="mini" type="button" data-set="undone">Undo</button>
+								</div>
+								<div class="approval" data-show="auto" hidden>
+									<span class="ok">Applied automatically</span>
+									<button class="mini" type="button" data-set="undone">Undo</button>
+								</div>
+								<div class="approval" data-show="rejected" hidden>
+									<span>Rejected</span>
+									<button class="mini" type="button" data-reset>Start over</button>
+								</div>
+								<div class="approval" data-show="undone" hidden>
+									<span>Undone</span>
+									<button class="mini" type="button" data-reset>Start over</button>
+								</div>
+
+								<div class="answer" aria-live="polite">
+									<p data-show="ask">Waiting for approval</p>
+									<p data-show="applied auto" hidden>The task now has a date and a reason. Your lease asks for 60 days’ notice, so I counted back from January 29.</p>
+									<p data-show="rejected" hidden>I left Weekly plan as it was. Tell me what to change and I’ll propose it again.</p>
+									<p data-show="undone" hidden>Weekly plan is back to how it was before this edit.</p>
+									<div data-show="plan" hidden>
+										<p>I’d replace “Call the landlord” with two tasks:</p>
+										<ol>
+											<li>Call by Nov 30, since the lease needs 60 days’ notice</li>
+											<li>Ask if the deposit carries over</li>
+										</ol>
+										<p>Switch to Ask and I’ll propose the edit.</p>
+									</div>
+								</div>
+							</aside>
+						</div>
+					</div>
+
+					<div class="table-scroll" tabindex="0" role="region" aria-label="Permission modes compared">
+						<table class="modes">
+							<thead>
+								<tr><th scope="col">Mode</th><th scope="col">Reading notes</th><th scope="col">Editing notes</th><th scope="col">Good for</th></tr>
+							</thead>
+							<tbody>
+								<tr><th scope="row">Ask <span class="tag">default</span></th><td>Automatic</td><td>Each edit waits for you</td><td>Everyday work</td></tr>
+								<tr><th scope="row">Plan</th><td>Automatic</td><td>Blocked</td><td>Auditing, comparing, outlining</td></tr>
+								<tr><th scope="row">Auto</th><td>Automatic</td><td>Valid edits apply at once</td><td>Repetitive cleanup</td></tr>
+							</tbody>
+						</table>
+					</div>
+
+					<div class="two-col">
+						<div>
+							<h3>Checked before it lands</h3>
+							<p>
+								In every mode, an edit has to target a path inside your vault, a note
+								that hasn’t changed since it was read, and text that matches exactly
+								one place. Otherwise it isn’t applied.
+							</p>
+						</div>
+						<div>
+							<h3>Undo, one edit at a time</h3>
+							<p>
+								Undo puts a note back to the moment before that edit, so later changes
+								to the same note can be lost. Undo history clears when Obsidian closes.
+							</p>
+						</div>
+					</div>
+				</section>
+
+				<!-- ── Context ── -->
+				<section class="section" id="context">
+					<div class="section-head">
+						<h2>Point at what matters</h2>
+						<p>
+							The outline of the note you’re in comes along automatically. Add
+							anything else from the prompt bar.
+						</p>
+					</div>
+					<dl class="inputs">
+						<div>
+							<dt><span class="chip">@Lease</span></dt>
+							<dd>Mention any note. Type <kbd>@</kbd> and pick it from the list.</dd>
+						</div>
+						<div>
+							<dt><span class="chip is-source">@Web search</span></dt>
+							<dd>Let the answer draw on live search results.</dd>
+						</div>
+						<div>
+							<dt><span class="chip is-command">/summarize</span></dt>
+							<dd>Run a quick action. <code>/compare</code>, <code>/plan</code> and <code>/search</code> work the same way.</dd>
+						</div>
+						<div>
+							<dt><span class="chip is-selection"><svg class="i" aria-hidden="true"><use href="#i-quote" /></svg>Weekly plan:12-14</span></dt>
+							<dd>Select lines in a note, right-click, then <b>Add to anti-dian</b>.</dd>
+						</div>
+						<div>
+							<dt><span class="chip is-file"><svg class="i" aria-hidden="true"><use href="#i-image" /></svg>whiteboard.png</span></dt>
+							<dd>Paste or drop images, video and audio.</dd>
+						</div>
+					</dl>
+				</section>
+
+				<!-- ── Conversations ── -->
+				<section class="section" id="conversations">
+					<div class="section-head">
+						<h2>Conversations you can find again</h2>
+						<p>
+							Each vault keeps its own list. Reopen a conversation and its tool
+							calls and diffs are still there.
+						</p>
+					</div>
+					<div class="drawers">
+						<figure>
+							<div class="drawer" aria-hidden="true">
+								<p class="drawer-label">Pinned</p>
+								<p class="row"><svg class="i"><use href="#i-pin" /></svg><span>Thesis outline</span><time>3d</time></p>
+								<p class="drawer-label has-icon"><svg class="i"><use href="#i-folder" /></svg>My vault</p>
+								<p class="row is-root is-current"><span>Moving apartments <svg class="i"><use href="#i-chevron" /></svg></span><time>12m</time></p>
+								<p class="row is-child"><span>Moving apartments (fork)</span><time>4m</time></p>
+								<p class="row is-root"><span>Recipe index cleanup</span><time>2h</time></p>
+								<p class="row is-root"><span>Điện toán lượng tử</span><time>1d</time></p>
+							</div>
+							<figcaption>
+								<b>Fork any answer</b> to try a second direction. The fork sits under its
+								parent, and the original stays untouched.
+							</figcaption>
+						</figure>
+						<figure>
+							<div class="drawer" aria-hidden="true">
+								<p class="drawer-search"><svg class="i"><use href="#i-search" /></svg>dien toan</p>
+								<p class="drawer-label has-icon"><svg class="i"><use href="#i-folder" /></svg>My vault</p>
+								<p class="row is-root is-current"><span><mark>Điện toán</mark> lượng tử</span><time>1d</time></p>
+								<p class="row is-root"><span>Bài tập <mark>điện toán</mark> tuần 3</span><time>6d</time></p>
+								<p class="row is-root"><span>Ôn thi <mark>điện toán</mark> đám mây</span><time>2w</time></p>
+							</div>
+							<figcaption>
+								<b>Search without the accents.</b> Typos, initials and partial words work
+								too. Pin the ones you return to.
+							</figcaption>
+						</figure>
+					</div>
+				</section>
+
+				<!-- ── Skills ── -->
+				<section class="section" id="skills">
+					<div class="section-head">
+						<h2>Teach it with a Markdown file</h2>
+						<p>
+							Save instructions in <code>.anti-dian/skills/</code> inside your vault.
+							Anti-dian finds each one by its description and loads it when a
+							conversation calls for it.
+						</p>
+					</div>
+					<div class="skill">
+						<div class="skill-bar">
+							<div class="skill-tabs" role="group" aria-label="Example skills">
+								<button type="button" data-skill="daily" aria-pressed="true">daily-review</button>
+								<button type="button" data-skill="meeting" aria-pressed="false">meeting-notes</button>
+								<button type="button" data-skill="books" aria-pressed="false">book-log</button>
+							</div>
+						</div>
+						<pre class="code" tabindex="0"><code id="skill-code">---
+name: daily-review
+description: Summarize today's notes and extract open action items.
+---
+
+# Daily review
+
+1. List the notes changed today and read them.
+2. Collect unfinished tasks, grouped by project.
+3. Append the result under "End of day" in today's daily note.
+4. Leave the existing paragraphs as they are.</code></pre>
+						<div class="skill-foot">
+							<p>Save as <code id="skill-path">.anti-dian/skills/daily-review.md</code></p>
+							<button class="mini" type="button" data-copy="#skill-code">Copy</button>
+						</div>
+					</div>
+				</section>
+
+				<!-- ── Privacy ── -->
+				<section class="section" id="privacy">
+					<div class="section-head">
+						<h2>What leaves your computer</h2>
+						<p>
+							Answers come from Google’s Antigravity backend, through its official
+							CLI. Anti-dian never uploads your whole vault.
+						</p>
+					</div>
+					<div class="two-col ledger">
+						<div>
+							<h3>Sent to Google</h3>
+							<ul>
+								<li>The messages you write</li>
+								<li>Images, video and audio you attach</li>
+								<li>The outline of your open note, unless you turn it off</li>
+								<li>Note names, search results and text read during that conversation</li>
+							</ul>
+						</div>
+						<div>
+							<h3>Stays on your computer</h3>
+							<ul>
+								<li>The text of every note a conversation doesn’t read</li>
+								<li>Undo snapshots</li>
+								<li>Titles and pins you give your conversations</li>
+							</ul>
+						</div>
+					</div>
+					<p class="fine">
+						If <code>agy</code> isn’t installed, Anti-dian downloads the official
+						binary and verifies its checksum before running it. You can point to your
+						own copy in Settings → Anti-dian → Advanced.
+					</p>
+				</section>
+
+				<!-- ── Install ── -->
+				<section class="section" id="install">
+					<div class="section-head">
+						<h2>Install</h2>
+						<p>
+							You need <a href="https://obsidian.md/download">Obsidian Desktop</a> 1.7.2
+							or newer and a Google account.
+						</p>
+					</div>
+					<ol class="steps">
+						<li>
+							<h3>Add the plugin</h3>
+							<p>This opens Anti-dian’s page inside Obsidian. Choose <b>Install</b>, then <b>Enable</b>.</p>
+							<div class="step-action"><a class="btn" href="obsidian://show-plugin?id=anti-dian">Install in Obsidian</a></div>
+						</li>
+						<li>
+							<h3>Sign in</h3>
+							<p>In Settings → Anti-dian, choose <b>Sign in with Google</b>. The backend downloads on first use.</p>
+						</li>
+						<li>
+							<h3>Ask about a note</h3>
+							<p>Open the sidebar from the ribbon icon, or run <b>Anti-dian: Open sidebar</b>.</p>
+						</li>
+					</ol>
+					<p class="fine">
+						Nothing opened? Start Obsidian, then search for Anti-dian in Settings →
+						Community plugins → Browse. To build it yourself, follow the
+						<a href="https://github.com/quangliz/anti-dian#getting-started">README</a>.
+					</p>
+				</section>
+			</main>
+		</div>
+
+		<footer class="site-footer">
+			<div class="wrap footer-inner">
+				<p>
+					Anti-dian is an independent, open-source plugin. It isn’t made by or
+					affiliated with Obsidian or Google.
+				</p>
+				<nav aria-label="Project links">
+					<a href="https://github.com/quangliz/anti-dian">GitHub</a>
+					<a href="https://github.com/quangliz/anti-dian/blob/main/ARCHITECTURE.md">Architecture</a>
+					<a href="https://github.com/quangliz/anti-dian/issues">Report an issue</a>
+				</nav>
+			</div>
+		</footer>
+
+		<script src="./app.js" defer></script>
+	</body>
+</html>
