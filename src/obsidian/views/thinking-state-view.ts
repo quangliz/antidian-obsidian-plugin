@@ -11,6 +11,7 @@ export interface SourceItem {
 
 export interface ThinkingStep {
 	id: string;
+	callId?: string;
 	toolName: string;
 	kind: 'search' | 'code' | 'step';
 	query?: string;
@@ -25,6 +26,33 @@ export interface ThinkingStep {
 	output?: unknown;
 	error?: string;
 }
+
+/** One contiguous run of model reasoning, shown between tool rows. */
+interface ThoughtPhase {
+	receivedText: string;
+	displayedText: string;
+	/** Index of the tool step this phase is rendered before (steps.length = after all). */
+	afterStep: number;
+	/** No more text will arrive (a tool started, a new phase began, or the turn ended). */
+	closed: boolean;
+	/** Live element; reused across re-renders so streaming only touches its text. */
+	el?: HTMLElement;
+	/** Set once the finished phase has been rendered as Markdown. */
+	renderedMarkdown?: boolean;
+	userExpanded?: boolean;
+}
+
+/** Typewriter catches up with the received text within roughly this many frames. */
+const THOUGHT_CATCHUP_FRAMES = 20;
+const THOUGHT_MIN_CHARS_PER_FRAME = 3;
+
+const basename = (path: unknown): string | undefined =>
+	typeof path === 'string'
+		? path.replace(/\.md$/, '').split('/').pop() || path
+		: undefined;
+
+const quoted = (value: unknown): string | undefined =>
+	typeof value === 'string' && value ? `"${value}"` : undefined;
 
 export class ThinkingStateView {
 	private app: App;
@@ -46,13 +74,8 @@ export class ThinkingStateView {
 	private startTime = 0;
 	private endTime = 0;
 	private activeStatus = 'Thinking';
-	private thoughtPhases: {
-		receivedText: string;
-		displayedText: string;
-		afterStep: number;
-	}[] = [];
+	private thoughtPhases: ThoughtPhase[] = [];
 	private thoughtAnimationFrame: number | null = null;
-	private thoughtLastFrame = 0;
 	private thoughtWaiters: (() => void)[] = [];
 	private selectedStepId: string | null = null;
 
@@ -75,25 +98,26 @@ export class ThinkingStateView {
 	public handleStep(step: AgentStepEvent): void {
 		if (step.type === 'thinking') {
 			this.activeStatus = 'Thinking';
-			this.thoughtPhases.push({
-				receivedText: '',
-				displayedText: '',
-				afterStep: this.steps.length,
-			});
 			this.isExpanded = true;
 			this.updateHeader();
-			this.renderSteps();
 		} else if (step.type === 'thought_delta') {
+			const isNewPhase = this.ensureOpenPhase();
 			const phase = this.thoughtPhases[this.thoughtPhases.length - 1];
 			if (phase) phase.receivedText += step.text;
-			this.isExpanded = true;
-			this.updateHeader();
+			if (!this.isExpanded || isNewPhase) {
+				this.isExpanded = true;
+				this.updateHeader();
+				this.renderSteps();
+			}
 			this.startThoughtStream();
 		} else if (step.type === 'tool_start') {
+			// Reasoning that arrives after this tool belongs below it.
+			this.closeOpenPhase();
 			const isSearch = step.toolName === 'search_notes' || step.toolName === 'web_search';
 			const formatted = this.formatToolStep(step.toolName, step.toolArgs);
 			const newStep: ThinkingStep = {
 				id: `step_${this.steps.length + 1}`,
+				callId: step.callId,
 				toolName: step.toolName,
 				kind: isSearch ? 'search' : 'code',
 				query: typeof step.toolArgs.query === 'string' ? step.toolArgs.query : undefined,
@@ -109,15 +133,21 @@ export class ThinkingStateView {
 				? step.toolName === 'web_search'
 					? 'Searching the web'
 					: 'Searching notes'
-				: `Running ${formatted.primary.toLowerCase()}...`;
+				: `Running ${formatted.primary.toLowerCase()}`;
 
 			this.isExpanded = true;
 			this.updateHeader();
 			this.renderSteps();
 		} else if (step.type === 'tool_end') {
-			const current = this.steps.find(
-				(s) => s.toolName === step.toolName && s.status === 'running',
-			) || this.steps[this.steps.length - 1];
+			// Pair by call id when available; otherwise the oldest running call
+			// of the same tool (calls of one tool finish roughly in order).
+			const current =
+				(step.callId
+					? this.steps.find((s) => s.callId === step.callId)
+					: undefined) ??
+				this.steps.find(
+					(s) => s.toolName === step.toolName && s.status === 'running',
+				);
 
 			if (current) {
 				const isError =
@@ -201,7 +231,7 @@ export class ThinkingStateView {
 					}
 				}
 			}
-			this.activeStatus = 'Thinking...';
+			this.activeStatus = 'Thinking';
 			this.updateHeader();
 			this.renderSteps();
 		} else if (step.type === 'error') {
@@ -221,23 +251,48 @@ export class ThinkingStateView {
 		return new Promise((resolve) => this.thoughtWaiters.push(resolve));
 	}
 
+	/** Start a new phase if there is none open, or tools ran since it began. */
+	private ensureOpenPhase(): boolean {
+		const last = this.thoughtPhases[this.thoughtPhases.length - 1];
+		if (last && !last.closed && last.afterStep === this.steps.length) return false;
+		if (last) last.closed = true;
+		this.thoughtPhases.push({
+			receivedText: '',
+			displayedText: '',
+			afterStep: this.steps.length,
+			closed: false,
+		});
+		return true;
+	}
+
+	private closeOpenPhase(): void {
+		const last = this.thoughtPhases[this.thoughtPhases.length - 1];
+		if (last && !last.closed) {
+			last.closed = true;
+			this.finalizePhaseIfDone(last);
+		}
+	}
+
 	private startThoughtStream(): void {
 		if (this.thoughtAnimationFrame !== null) return;
-		const advance = (timestamp: number) => {
-			if (timestamp - this.thoughtLastFrame < Math.round(100 / Math.sqrt(60))) {
-				this.thoughtAnimationFrame = window.requestAnimationFrame(advance);
-				return;
-			}
-			this.thoughtLastFrame = timestamp;
+		const advance = () => {
 			const phase = this.thoughtPhases.find(
 				(item) => item.displayedText.length < item.receivedText.length,
 			);
 			if (phase) {
+				// Speed scales with the backlog so long reasoning never lags far
+				// behind (tool calls wait for the typewriter to catch up).
+				const backlog = phase.receivedText.length - phase.displayedText.length;
+				const step = Math.max(
+					THOUGHT_MIN_CHARS_PER_FRAME,
+					Math.ceil(backlog / THOUGHT_CATCHUP_FRAMES),
+				);
 				phase.displayedText = phase.receivedText.slice(
 					0,
-					phase.displayedText.length + 4,
+					phase.displayedText.length + step,
 				);
-				this.renderSteps();
+				this.updatePhaseText(phase);
+				this.finalizePhaseIfDone(phase);
 			}
 
 			if (this.isThoughtStreaming()) {
@@ -250,7 +305,56 @@ export class ThinkingStateView {
 		this.thoughtAnimationFrame = window.requestAnimationFrame(advance);
 	}
 
+	/** Streaming frames only touch the phase's own text, never the whole trace. */
+	private updatePhaseText(phase: ThoughtPhase): void {
+		if (!phase.el) {
+			// First visible text for this phase: it needs a slot in the trace.
+			this.renderSteps();
+			return;
+		}
+		if (phase.renderedMarkdown) return;
+		phase.el.setText(phase.displayedText);
+		// While streaming, keep the newest line in view inside the clamped box.
+		phase.el.scrollTop = phase.el.scrollHeight;
+	}
+
+	/** Once a phase is closed and fully shown, render it as Markdown exactly once. */
+	private finalizePhaseIfDone(phase: ThoughtPhase): void {
+		if (
+			!phase.closed ||
+			phase.renderedMarkdown ||
+			!phase.el ||
+			phase.displayedText.length < phase.receivedText.length
+		) {
+			return;
+		}
+		phase.renderedMarkdown = true;
+		const el = phase.el;
+		el.empty();
+		el.removeClass('is-streaming');
+		el.scrollTop = 0;
+		const child = new Component();
+		this.component.addChild(child);
+		void MarkdownRenderer.render(this.app, phase.displayedText, el, '', child).then(
+			() => this.updateClamp(phase),
+		);
+	}
+
+	/** Long finished phases are clamped; clicking toggles the full text. */
+	private updateClamp(phase: ThoughtPhase): void {
+		const el = phase.el;
+		if (!el || !phase.renderedMarkdown) return;
+		if (phase.userExpanded) {
+			el.removeClass('is-clamped');
+			return;
+		}
+		// Height is only measurable while the trace is visible; re-checked on expand.
+		if (!el.isShown()) return;
+		el.toggleClass('is-clamped', el.scrollHeight > el.clientHeight + 4);
+	}
+
 	public settle(): void {
+		this.closeOpenPhase();
 		this.isSettled = true;
 		this.endTime = performance.now();
 		const durationSec = Math.max(
@@ -284,41 +388,57 @@ export class ThinkingStateView {
 		toolName: string,
 		args: Record<string, unknown>,
 	): { primary: string; secondary?: string; mono?: boolean } {
+		const file = (primary: string) => ({
+			primary,
+			secondary: basename(args.path),
+			mono: true,
+		});
 		switch (toolName) {
 			case 'search_notes':
+				return { primary: 'Search notes', secondary: quoted(args.query) };
+			case 'web_search':
+			case 'search_web':
+				return { primary: 'Web search', secondary: quoted(args.query) };
+			case 'list_notes':
 				return {
-					primary: 'Search notes',
-					secondary: typeof args.query === 'string' ? `"${args.query}"` : undefined,
+					primary: 'List notes',
+					secondary:
+						typeof args.folder === 'string' && args.folder
+							? args.folder
+							: quoted(args.query),
+					mono: typeof args.folder === 'string' && args.folder.length > 0,
 				};
 			case 'read_note':
-				return {
-					primary: 'Read',
-					secondary: typeof args.path === 'string' ? args.path.replace(/\.md$/, '').split('/').pop() : undefined,
-					mono: true,
-				};
+				return file('Read');
+			case 'get_note_outline':
+				return file('Outline');
 			case 'create_note':
-				return {
-					primary: 'Create',
-					secondary: typeof args.path === 'string' ? args.path.replace(/\.md$/, '').split('/').pop() : undefined,
-					mono: true,
-				};
+				return file('Create');
 			case 'edit_note':
 			case 'patch_note':
+				return file('Edit');
+			case 'replace_block':
+				return file('Replace block');
+			case 'append_note':
+				return file('Append');
+			case 'update_frontmatter':
+				return file('Update properties');
+			case 'list_skills':
+				return { primary: 'List skills' };
+			case 'load_skill':
 				return {
-					primary: 'Edit',
-					secondary: typeof args.path === 'string' ? args.path.replace(/\.md$/, '').split('/').pop() : undefined,
+					primary: 'Load skill',
+					secondary: typeof args.name === 'string' ? args.name : undefined,
 					mono: true,
 				};
-			case 'web_search':
-				return {
-					primary: 'Web search',
-					secondary: typeof args.query === 'string' ? `"${args.query}"` : undefined,
-				};
-			default:
-				return {
-					primary: toolName.replace(/_/g, ' '),
-					secondary: typeof args.path === 'string' ? args.path : undefined,
-				};
+			default: {
+				// Unknown tools: sentence case, same file display as known ones.
+				const words = toolName.replace(/[_-]+/g, ' ').trim();
+				const primary = words.charAt(0).toUpperCase() + words.slice(1);
+				return typeof args.path === 'string'
+					? file(primary)
+					: { primary, secondary: quoted(args.query) };
+			}
 		}
 	}
 
@@ -338,7 +458,7 @@ export class ThinkingStateView {
 
 		this.statusTextEl = this.headerBtnEl.createSpan({
 			cls: 'anti-dian-thinking-status-text is-shimmer',
-			text: 'Thinking...',
+			text: 'Thinking',
 		});
 
 		this.chevronIconEl = this.headerBtnEl.createSpan({
@@ -540,16 +660,24 @@ export class ThinkingStateView {
 	private renderThoughtPhases(afterStep: number): void {
 		for (const phase of this.thoughtPhases) {
 			if (!phase.displayedText || phase.afterStep !== afterStep) continue;
-			const thoughtEl = this.rowsContainerEl.createDiv({
-				cls: 'anti-dian-thinking-model-text',
-			});
-			void MarkdownRenderer.render(
-				this.app,
-				phase.displayedText,
-				thoughtEl,
-				'',
-				this.component,
-			);
+			if (!phase.el) {
+				const el = createDiv({
+					cls: 'anti-dian-thinking-model-text is-streaming',
+				});
+				el.setText(phase.displayedText);
+				el.onclick = (e) => {
+					if (!el.hasClass('is-clamped') && !phase.userExpanded) return;
+					e.stopPropagation();
+					phase.userExpanded = !phase.userExpanded;
+					el.toggleClass('is-expanded', phase.userExpanded);
+					this.updateClamp(phase);
+				};
+				phase.el = el;
+			}
+			// Re-attach the same element: no re-render, no new Markdown children.
+			this.rowsContainerEl.appendChild(phase.el);
+			this.finalizePhaseIfDone(phase);
+			this.updateClamp(phase);
 		}
 	}
 }

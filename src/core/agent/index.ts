@@ -19,8 +19,14 @@ export type AgentStepEvent =
 	| { type: 'thought_delta'; text: string }
 	| { type: 'answer_start' }
 	| { type: 'answer_delta'; text: string }
-	| { type: 'tool_start'; toolName: string; toolArgs: Record<string, unknown> }
-	| { type: 'tool_end'; toolName: string; toolOutput: unknown }
+	| {
+			type: 'tool_start';
+			toolName: string;
+			toolArgs: Record<string, unknown>;
+			/** Pairs this start with its tool_end when the source provides one. */
+			callId?: string;
+	  }
+	| { type: 'tool_end'; toolName: string; toolOutput: unknown; callId?: string }
 	| {
 			type: 'answer';
 			text: string;
@@ -147,12 +153,12 @@ export class Agent {
 				getReadMtime: (path: string) => readMtimes.get(path),
 			},
 			{
-				onToolStart: ({ toolName, toolArgs }) => {
+				onToolStart: ({ callId, toolName, toolArgs }) => {
 					void beforeTool?.();
-					onStep?.({ type: 'tool_start', toolName, toolArgs });
+					onStep?.({ type: 'tool_start', toolName, toolArgs, callId });
 				},
-				onToolEnd: ({ toolName, toolOutput }) => {
-					onStep?.({ type: 'tool_end', toolName, toolOutput });
+				onToolEnd: ({ callId, toolName, toolOutput }) => {
+					onStep?.({ type: 'tool_end', toolName, toolOutput, callId });
 				},
 			},
 		);
@@ -163,12 +169,22 @@ export class Agent {
 					onStep?.({ type: 'thought_delta', text }),
 				onAnswerDelta: (text) =>
 					onStep?.({ type: 'answer_delta', text }),
-				onToolStart: (toolName, toolArgs) => {
+				onToolStart: (toolName, toolArgs, callId) => {
 					void beforeTool?.();
-					onStep?.({ type: 'tool_start', toolName, toolArgs });
+					onStep?.({
+						type: 'tool_start',
+						toolName,
+						toolArgs,
+						callId: callId ? `acp-${callId}` : undefined,
+					});
 				},
-				onToolEnd: (toolName, toolOutput) => {
-					onStep?.({ type: 'tool_end', toolName, toolOutput });
+				onToolEnd: (toolName, toolOutput, callId) => {
+					onStep?.({
+						type: 'tool_end',
+						toolName,
+						toolOutput,
+						callId: callId ? `acp-${callId}` : undefined,
+					});
 				},
 			});
 

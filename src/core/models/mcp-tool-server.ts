@@ -9,6 +9,8 @@ export interface McpToolServerInfo {
 }
 
 export interface McpToolCallEvent {
+	/** Unique per call within this server, used to pair start/end events. */
+	callId: string;
 	toolName: string;
 	toolArgs: Record<string, unknown>;
 	toolOutput?: unknown;
@@ -28,6 +30,7 @@ export class McpToolServer {
 	private info: McpToolServerInfo | null = null;
 	private activeTurnContext: ToolContext | undefined;
 	private onToolStart?: (event: McpToolCallEvent) => void;
+	private callCounter = 0;
 	private onToolEnd?: (event: McpToolCallEvent) => void;
 
 	constructor(registry: ToolRegistry) {
@@ -198,7 +201,8 @@ export class McpToolServer {
 				return;
 			}
 
-			this.onToolStart?.({ toolName: name, toolArgs: args });
+			const callId = `mcp-${++this.callCounter}`;
+			this.onToolStart?.({ callId, toolName: name, toolArgs: args });
 
 			if (
 				tool.mutates &&
@@ -210,6 +214,7 @@ export class McpToolServer {
 					message: `Plan Mode (read-only) is active: "${name}" was not staged. Present your proposed changes to the user in markdown instead.`,
 				};
 				this.onToolEnd?.({
+					callId,
 					toolName: name,
 					toolArgs: args,
 					toolOutput: blockedOutput,
@@ -228,6 +233,7 @@ export class McpToolServer {
 			try {
 				const output = await tool.execute(args, this.activeTurnContext);
 				this.onToolEnd?.({
+					callId,
 					toolName: name,
 					toolArgs: args,
 					toolOutput: output,
@@ -248,6 +254,7 @@ export class McpToolServer {
 					error: err instanceof Error ? err.message : String(err),
 				};
 				this.onToolEnd?.({
+					callId,
 					toolName: name,
 					toolArgs: args,
 					toolOutput: errOutput,

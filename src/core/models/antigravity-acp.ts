@@ -67,8 +67,12 @@ export interface ContextWindowUsage {
 export interface AcpStreamCallbacks {
 	onThoughtDelta?: (text: string) => void;
 	onAnswerDelta?: (text: string) => void;
-	onToolStart?: (toolName: string, toolArgs: Record<string, unknown>) => void;
-	onToolEnd?: (toolName: string, toolOutput: unknown) => void;
+	onToolStart?: (
+		toolName: string,
+		toolArgs: Record<string, unknown>,
+		callId?: string,
+	) => void;
+	onToolEnd?: (toolName: string, toolOutput: unknown, callId?: string) => void;
 }
 
 export interface AcpPromptResult {
@@ -930,6 +934,7 @@ export class AntigravityAcpClient {
 				this.activeCallbacks?.onToolStart?.(
 					displayName,
 					update.args ?? update.rawInput ?? {},
+					update.toolCallId,
 				);
 			}
 			return;
@@ -947,6 +952,7 @@ export class AntigravityAcpClient {
 				this.activeCallbacks?.onToolEnd?.(
 					displayName,
 					update.rawOutput ?? { status: update.status },
+					toolCallId || undefined,
 				);
 			}
 		}
