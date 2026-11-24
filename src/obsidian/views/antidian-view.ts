@@ -302,7 +302,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-message anti-dian-message-agent',
 		});
 
-		const thinkingState = new ThinkingStateView(agentMsg, this.app, this, this);
+		const thinkingState = new ThinkingStateView(
+			agentMsg,
+			this.app,
+			this,
+			this,
+			() => this.plugin.settings.showRawToolData ?? false,
+		);
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 		let receivedMarkdown = '';
 		let streamedMarkdown = '';

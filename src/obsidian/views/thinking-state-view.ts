@@ -1,5 +1,6 @@
 import { App, Component, HoverParent, MarkdownRenderer, setIcon } from 'obsidian';
 import { bindNoteLink } from './note-link';
+import { buildToolDetail } from './tool-detail';
 import { AgentStepEvent } from '../../core/agent';
 
 export interface SourceItem {
@@ -77,15 +78,19 @@ export class ThinkingStateView {
 	private thoughtPhases: ThoughtPhase[] = [];
 	private thoughtAnimationFrame: number | null = null;
 	private thoughtWaiters: (() => void)[] = [];
-	private selectedStepId: string | null = null;
+	/** Steps whose detail panel is open (errors open automatically). */
+	private openStepIds = new Set<string>();
+	private getShowRawToolData: () => boolean;
 
 	constructor(
 		containerEl: HTMLElement,
 		app: App,
 		component: Component,
 		hoverParent?: HoverParent,
+		getShowRawToolData: () => boolean = () => false,
 	) {
 		this.hoverParent = hoverParent;
+		this.getShowRawToolData = getShowRawToolData;
 		this.app = app;
 		this.component = component;
 		this.containerEl = containerEl.createDiv({
@@ -158,6 +163,7 @@ export class ThinkingStateView {
 				current.output = step.toolOutput;
 				if (isError) {
 					current.error = String((step.toolOutput as { error: unknown }).error);
+					this.openStepIds.add(current.id);
 				}
 
 				// Extract search result sources
@@ -528,9 +534,28 @@ export class ThinkingStateView {
 			const step = this.steps[stepIndex];
 			if (!step) continue;
 			// Main Step Row
+			const renderDetail = buildToolDetail(
+				{
+					toolName: step.toolName,
+					status: step.status,
+					args: step.args,
+					output: step.output,
+					error: step.error,
+					sourceCount: step.sources?.length ?? 0,
+				},
+				{
+					app: this.app,
+					hoverParent: this.hoverParent,
+					showRaw: this.getShowRawToolData(),
+					revealChanges: () => this.revealChanges(),
+				},
+			);
+			const isOpen = renderDetail !== null && this.openStepIds.has(step.id);
 			const row = this.rowsContainerEl.createDiv({
-				cls: `anti-dian-thinking-row ${this.selectedStepId === step.id ? 'is-selected' : ''}`,
+				cls: 'anti-dian-thinking-row',
 			});
+			row.toggleClass('is-expandable', renderDetail !== null);
+			row.toggleClass('is-selected', isOpen);
 
 			// Status icon
 			if (step.status === 'running') {
@@ -570,12 +595,37 @@ export class ThinkingStateView {
 				}
 			}
 
-			// Click to toggle inspect args/error
-			row.onclick = (e) => {
-				e.stopPropagation();
-				this.selectedStepId = this.selectedStepId === step.id ? null : step.id;
-				this.renderSteps();
-			};
+			// Only rows with something to show are expandable.
+			if (renderDetail) {
+				const chevron = row.createSpan({
+					cls: `anti-dian-thinking-row-chevron collapse-icon ${isOpen ? '' : 'is-collapsed'}`,
+				});
+				setIcon(chevron, 'right-triangle');
+				row.setAttribute('role', 'button');
+				row.setAttribute('tabindex', '0');
+				row.setAttribute('aria-expanded', String(isOpen));
+				const toggle = () => {
+					if (this.openStepIds.has(step.id)) this.openStepIds.delete(step.id);
+					else this.openStepIds.add(step.id);
+					this.renderSteps();
+				};
+				row.onclick = (e) => {
+					e.stopPropagation();
+					toggle();
+				};
+				row.onkeydown = (e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						toggle();
+					}
+				};
+			}
+
+			if (isOpen && renderDetail) {
+				renderDetail(
+					this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-step-detail' }),
+				);
+			}
 
 			// Render matching sources if search returned items
 			if (step.sources && step.sources.length > 0) {
@@ -626,36 +676,22 @@ export class ThinkingStateView {
 				}
 			}
 
-			// Detail card if expanded
-			const hasArgs = Boolean(step.args && Object.keys(step.args).length > 0);
-			if (this.selectedStepId === step.id && (hasArgs || step.error)) {
-				const detailCard = this.rowsContainerEl.createDiv({
-					cls: 'anti-dian-thinking-step-detail',
-				});
-				if (hasArgs && step.args) {
-					const argsList = detailCard.createDiv({
-						cls: 'anti-dian-thinking-args-list',
-					});
-					for (const [k, v] of Object.entries(step.args)) {
-						const valStr =
-							typeof v === 'object' && v !== null
-								? JSON.stringify(v)
-								: String(v);
-						argsList.createDiv({
-							cls: 'anti-dian-thinking-arg-line',
-							text: `${k}: ${valStr}`,
-						});
-					}
-				}
-				if (step.error) {
-					detailCard.createDiv({
-						cls: 'anti-dian-thinking-error-text',
-						text: step.error,
-					});
-				}
-			}
 		}
 		this.renderThoughtPhases(this.steps.length);
+	}
+
+	/** Scroll to this turn's change card (rendered after the reply finishes). */
+	private revealChanges(): boolean {
+		const card = this.containerEl.parentElement?.querySelector<HTMLElement>(
+			'.anti-dian-diff-summary-card',
+		);
+		if (!card) return false;
+		card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		card.removeClass('is-flash');
+		// Restart the highlight animation.
+		void card.offsetWidth;
+		card.addClass('is-flash');
+		return true;
 	}
 
 	private renderThoughtPhases(afterStep: number): void {

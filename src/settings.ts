@@ -12,12 +12,15 @@ export interface AntiDianSettings {
 	model?: string;
 	permissionMode?: PermissionMode;
 	cliPath?: string;
+	/** Show raw tool arguments and output in the thinking trace (for debugging). */
+	showRawToolData?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AntiDianSettings = {
 	model: '',
 	permissionMode: 'ask',
 	cliPath: '',
+	showRawToolData: false,
 };
 
 export class AntiDianSettingTab extends PluginSettingTab {
@@ -93,6 +96,20 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					.onChange(async (val) => {
 						this.plugin.settings.permissionMode =
 							val as PermissionMode;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Show raw tool data')
+			.setDesc(
+				'Add the raw arguments and output of each tool call to its details in the thinking trace. Useful for debugging.',
+			)
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.showRawToolData ?? false)
+					.onChange(async (value) => {
+						this.plugin.settings.showRawToolData = value;
 						await this.plugin.saveSettings();
 					});
 			});

@@ -104,7 +104,9 @@
 	flex-direction: column;
 	gap: var(--size-4-3);
 	overflow-y: auto;
-	padding-right: 4px;
+	/* Reserve the scrollbar's width up front so content doesn't shift
+	   sideways when expanding something makes the list scrollable. */
+	scrollbar-gutter: stable;
 }
 
 .anti-dian-sidebar-container.has-chat .anti-dian-center-card-container {
@@ -1043,16 +1045,26 @@ button.anti-dian-thinking-header-btn:hover {
 	border-radius: 6px;
 	background: transparent;
 	border: none;
-	cursor: pointer;
+	cursor: default;
 	transition: background-color 0.12s ease;
 	font-size: 12px;
 	width: 100%;
 	box-sizing: border-box;
 }
 
-.anti-dian-thinking-row:hover,
+/* Only rows with a detail panel react to hover/click. */
+.anti-dian-thinking-row.is-expandable {
+	cursor: pointer;
+}
+
+.anti-dian-thinking-row.is-expandable:hover,
 .anti-dian-thinking-row.is-selected {
 	background: var(--background-modifier-hover);
+}
+
+.anti-dian-thinking-row-chevron {
+	margin-left: auto;
+	color: var(--text-faint);
 }
 
 .anti-dian-thinking-row-spinner {
@@ -1116,24 +1128,139 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-step-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 	margin: 2px 0 4px 18px;
 	background: var(--background-secondary);
-	border-radius: 6px;
+	border-radius: var(--radius-s);
 	padding: 6px 8px;
-	font-size: 11.5px;
-	font-family: var(--font-monospace);
-	animation: pop-in 150ms ease both;
-	border: none;
-}
-
-.anti-dian-thinking-arg-line {
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	word-break: break-all;
+	animation: pop-in 150ms ease both;
 }
 
-.anti-dian-thinking-error-text {
+.anti-dian-tool-detail-meta {
+	color: var(--text-muted);
+}
+
+.anti-dian-tool-detail-error {
 	color: var(--text-error);
-	margin-top: 2px;
+	white-space: pre-wrap;
+}
+
+.anti-dian-tool-detail-context {
+	color: var(--text-faint);
+}
+
+/* Inline old → new; only the changed span is highlighted. */
+.anti-dian-tool-detail-change {
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	word-break: break-word;
+	line-height: 1.5;
+}
+
+.anti-dian-tool-detail-change.is-block {
+	font-family: var(--font-monospace);
+}
+
+.anti-dian-thinking-step-detail del {
+	color: var(--color-red);
+	background: rgba(var(--color-red-rgb), 0.12);
+	text-decoration: line-through;
+	border-radius: 2px;
+	padding: 0 1px;
+}
+
+.anti-dian-thinking-step-detail ins {
+	color: var(--color-green);
+	background: rgba(var(--color-green-rgb), 0.12);
+	text-decoration: none;
+	border-radius: 2px;
+	padding: 0 1px;
+}
+
+.anti-dian-tool-detail-change del + ins {
+	margin-left: 4px;
+}
+
+.anti-dian-tool-detail-props {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 2px 10px;
+}
+
+.anti-dian-tool-detail-prop {
+	display: contents;
+}
+
+.anti-dian-tool-detail-prop-key {
+	font-family: var(--font-monospace);
+	color: var(--text-normal);
+}
+
+.anti-dian-tool-detail-skill {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+}
+
+.anti-dian-tool-detail-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+}
+
+.anti-dian-tool-detail-note {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.anti-dian-tool-detail-note:hover {
+	text-decoration: underline;
+}
+
+.anti-dian-tool-detail-outline-item {
+	padding-left: calc(var(--anti-dian-outline-level, 0) * 12px);
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.anti-dian-tool-detail-link {
+	align-self: flex-start;
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+}
+
+.anti-dian-tool-detail-raw {
+	margin: 2px 0 0;
+	padding: 6px;
+	max-height: 16em;
+	overflow: auto;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	background: var(--background-primary);
+	border-radius: var(--radius-s);
+	white-space: pre-wrap;
+	word-break: break-all;
+	user-select: text;
+}
+
+/* Briefly highlight the change card when "View in changes" scrolls to it. */
+@keyframes anti-dian-flash {
+	from {
+		box-shadow: 0 0 0 2px var(--interactive-accent);
+	}
+	to {
+		box-shadow: 0 0 0 2px transparent;
+	}
+}
+
+.anti-dian-diff-summary-card.is-flash {
+	animation: anti-dian-flash 1.2s ease-out;
 }
 
 /* ------------------------------------------------------------- */
