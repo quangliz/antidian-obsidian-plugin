@@ -41,6 +41,8 @@ export interface AntiDianSettings {
 	>;
 	/** Custom user-assigned conversation titles keyed by session ID. */
 	sessionTitles?: Record<string, string>;
+	/** Width in px of the conversation drawer, when the user resized it. */
+	sessionDrawerWidth?: number;
 	/** Session IDs deleted by the user (filtered from the conversation list). */
 	deletedSessions?: string[];
 }

@@ -105,6 +105,8 @@ button.anti-dian-nav-btn {
 	bottom: 0;
 	left: 0;
 	width: min(260px, 85%);
+	/* A remembered (dragged) width never covers the whole sidebar. */
+	max-width: calc(100% - 40px);
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
@@ -138,6 +140,40 @@ button.anti-dian-nav-btn {
 @keyframes anti-dian-drawer-fade-out {
 	from { opacity: 1; }
 	to { opacity: 0; }
+}
+
+/* Drag handle on the drawer's right edge (see setupResize). */
+.anti-dian-session-drawer-resize {
+	position: absolute;
+	top: 0;
+	right: -4px;
+	bottom: 0;
+	z-index: 2;
+	width: 8px;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.anti-dian-session-drawer-resize::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 3px;
+	width: 2px;
+	background: var(--interactive-accent);
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.anti-dian-session-drawer-resize:hover::after,
+.anti-dian-session-drawer.is-resizing .anti-dian-session-drawer-resize::after {
+	opacity: 1;
+}
+
+.anti-dian-session-drawer.is-resizing {
+	cursor: col-resize;
+	user-select: none;
 }
 
 @keyframes anti-dian-drawer-slide {

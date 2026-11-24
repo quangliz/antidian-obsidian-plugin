@@ -230,6 +230,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.plugin.antigravityProvider.getSessionId(),
 			getSessionForks: () => this.plugin.settings.sessionForks ?? {},
 			getSessionTitles: () => this.plugin.settings.sessionTitles ?? {},
+			loadDrawerWidth: () => {
+				const width = this.plugin.settings.sessionDrawerWidth;
+				return typeof width === 'number' && Number.isFinite(width) ? width : null;
+			},
+			saveDrawerWidth: (width) => {
+				this.plugin.settings.sessionDrawerWidth = width ?? undefined;
+				void this.plugin.saveSettings();
+			},
 			onSelectSession: (session) => void this.switchSession(session),
 			onNewSession: () => this.startNewSession(),
 			onRenameSession: (sessionId, newTitle) =>

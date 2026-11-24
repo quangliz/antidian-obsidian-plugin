@@ -23,7 +23,14 @@ export interface SessionMenuOptions {
 	onNewSession: () => void;
 	onRenameSession?: (sessionId: string, newTitle: string) => void | Promise<void>;
 	onDeleteSession?: (sessionId: string) => void | Promise<void>;
+	/** Remembered drawer width in px (null = default). */
+	loadDrawerWidth?: () => number | null;
+	saveDrawerWidth?: (width: number | null) => void;
 }
+
+const MIN_DRAWER_WIDTH = 200;
+/** Always leave this much of the sidebar visible next to the drawer. */
+const DRAWER_EDGE_GAP = 40;
 
 export interface SessionDrawerOpenOptions {
 	/** Show and focus the search field (opened from the nav's search button). */
@@ -90,6 +97,7 @@ export class SessionMenuController {
 			attr: { role: 'dialog', 'aria-label': 'Conversations' },
 		});
 		panel.addEventListener('keydown', (e) => this.onKeyDown(e));
+		this.setupResize(panel);
 
 		const closeBtn = panel.createEl('button', {
 			cls: 'anti-dian-session-drawer-close',
@@ -171,6 +179,46 @@ export class SessionMenuController {
 			this.triggerEl.removeClass('is-active');
 			this.triggerEl = null;
 		}
+	}
+
+	/** Drag handle on the panel's right edge; double-click resets the width. */
+	private setupResize(panel: HTMLElement): void {
+		const clamp = (width: number) => {
+			const max = Math.max(MIN_DRAWER_WIDTH, this.hostEl.clientWidth - DRAWER_EDGE_GAP);
+			return Math.round(Math.min(Math.max(width, MIN_DRAWER_WIDTH), max));
+		};
+		const apply = (width: number | null) => {
+			panel.setCssProps({ width: width === null ? '' : `${clamp(width)}px` });
+		};
+		apply(this.options.loadDrawerWidth?.() ?? null);
+
+		const handle = panel.createDiv({
+			cls: 'anti-dian-session-drawer-resize',
+			attr: { role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize' },
+		});
+		handle.addEventListener('pointerdown', (e) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
+			handle.setPointerCapture(e.pointerId);
+			const left = panel.getBoundingClientRect().left;
+			const root = panel.closest('.anti-dian-session-drawer');
+			root?.addClass('is-resizing');
+			const onMove = (ev: PointerEvent) => apply(ev.clientX - left);
+			const onUp = () => {
+				handle.removeEventListener('pointermove', onMove);
+				handle.removeEventListener('pointerup', onUp);
+				handle.removeEventListener('pointercancel', onUp);
+				root?.removeClass('is-resizing');
+				this.options.saveDrawerWidth?.(clamp(panel.getBoundingClientRect().width));
+			};
+			handle.addEventListener('pointermove', onMove);
+			handle.addEventListener('pointerup', onUp);
+			handle.addEventListener('pointercancel', onUp);
+		});
+		handle.addEventListener('dblclick', () => {
+			apply(null);
+			this.options.saveDrawerWidth?.(null);
+		});
 	}
 
 	/** Slide the panel back out and fade the backdrop, then remove the drawer. */
