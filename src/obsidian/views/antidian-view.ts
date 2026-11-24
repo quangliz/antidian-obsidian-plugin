@@ -315,6 +315,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 					cls: 'anti-dian-message anti-dian-message-user is-replayed',
 				});
 				userMsg.createEl('p', { text: message.text });
+				this.renderMessageActions(userMsg, { copyText: message.text });
 			} else {
 				const agentMsg = this.messagesEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-agent is-replayed',
@@ -325,7 +326,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
 				linkifyCodeWikilinks(this.app, answerEl, '');
-				if (message.usage) this.renderUsageFooter(agentMsg, message.usage);
+				if (message.usage) {
+					const footer = this.renderUsageFooter(agentMsg, message.usage);
+					this.renderMessageActions(footer, {
+						copyText: message.text,
+						inline: true,
+					});
+				} else if (message.text) {
+					this.renderMessageActions(agentMsg, { copyText: message.text });
+				}
 			}
 		}
 		this.scrollToBottom();
@@ -560,6 +569,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 		if (text) {
 			userMsg.createEl('p', { text });
+			this.renderMessageActions(userMsg, { copyText: text });
 		}
 
 		this.scrollToBottom();
@@ -794,6 +804,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 				thinkingState.setAmbientContext(result.contextUsed);
 			}
 
+			const finalAnswerText = result.cancelled
+				? result.answer || streamedMarkdown.trim()
+				: result.answer;
+
 			if (result.usage) {
 				this.sessionPromptTokens += result.usage.promptTokens;
 				this.sessionCandidateTokens += result.usage.candidatesTokens;
@@ -801,7 +815,17 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.sessionCachedReadTokens += result.usage.cachedReadTokens;
 				this.sessionThoughtTokens += result.usage.thoughtTokens;
 				this.lastTurnPromptTokens = result.usage.promptTokens;
-				this.renderUsageFooter(agentMsg, result.usage);
+				const footer = this.renderUsageFooter(agentMsg, result.usage);
+				this.renderMessageActions(footer, {
+					copyText: finalAnswerText,
+					thinkingState,
+					inline: true,
+				});
+			} else if (finalAnswerText || thinkingState.hasUndoableChanges()) {
+				this.renderMessageActions(agentMsg, {
+					copyText: finalAnswerText,
+					thinkingState,
+				});
 			}
 		} catch (err) {
 			if (myToken !== this.turnToken) return;
@@ -826,6 +850,82 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 	}
 
+	private renderMessageActions(
+		parent: HTMLElement,
+		opts: {
+			copyText?: string;
+			thinkingState?: ThinkingStateView;
+			inline?: boolean;
+		},
+	): void {
+		const hasCopy = Boolean(opts.copyText?.trim());
+		const hasUndo = Boolean(opts.thinkingState?.hasUndoableChanges());
+		if (!hasCopy && !hasUndo) return;
+
+		const bar = parent.createDiv({
+			cls: opts.inline
+				? 'anti-dian-message-actions is-inline'
+				: 'anti-dian-message-actions',
+		});
+
+		if (hasCopy && opts.copyText) {
+			const textToCopy = opts.copyText;
+			const copyBtn = bar.createEl('button', {
+				cls: 'anti-dian-msg-action-btn',
+				attr: { type: 'button', 'aria-label': 'Copy message' },
+			});
+			setIcon(copyBtn, 'copy');
+			setTooltip(copyBtn, 'Copy message');
+			copyBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				void navigator.clipboard
+					.writeText(textToCopy)
+					.then(() => {
+						setIcon(copyBtn, 'check');
+						copyBtn.addClass('is-copied');
+						window.setTimeout(() => {
+							setIcon(copyBtn, 'copy');
+							copyBtn.removeClass('is-copied');
+						}, 1500);
+					})
+					.catch(() => {
+						new Notice('Could not copy message to clipboard.');
+					});
+			});
+		}
+
+		if (hasUndo && opts.thinkingState) {
+			const trace = opts.thinkingState;
+			const undoBtn = bar.createEl('button', {
+				cls: 'anti-dian-msg-action-btn',
+				attr: { type: 'button', 'aria-label': 'Undo changes' },
+			});
+			setIcon(undoBtn, 'undo');
+			setTooltip(undoBtn, 'Undo changes from this turn');
+			undoBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				undoBtn.disabled = true;
+				void trace
+					.undoAllApplied()
+					.then((count) => {
+						if (count > 0) {
+							new Notice(
+								`Reverted ${count} change${count === 1 ? '' : 's'}.`,
+							);
+						}
+						if (!trace.hasUndoableChanges()) {
+							undoBtn.remove();
+						} else {
+							undoBtn.disabled = false;
+						}
+					})
+					.catch(() => {
+						undoBtn.disabled = false;
+					});
+			});
+		}
+	}
+
 	private renderUsageFooter(
 		parent: HTMLElement,
 		usage: {
@@ -836,7 +936,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cachedWriteTokens: number;
 			thoughtTokens: number;
 		},
-	): void {
+	): HTMLElement {
 		const footer = parent.createDiv({ cls: 'anti-dian-turn-usage-footer' });
 
 		const inSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
@@ -871,6 +971,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-usage-item anti-dian-usage-ctx',
 		});
 		ctxSpan.setText(`${formatTokens(usage.promptTokens)} ctx`);
+		return footer;
 	}
 
 	private scrollToBottom(): void {

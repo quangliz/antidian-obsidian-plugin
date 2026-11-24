@@ -2256,3 +2256,65 @@ button.anti-dian-thinking-header-btn:hover {
 .anti-dian-cm-diff-text {
 	color: var(--text-normal);
 }
+
+/* ── Message Copy & Undo Actions ──────────────────────────────────────────── */
+
+.anti-dian-message-user {
+	position: relative;
+}
+
+.anti-dian-message-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 4px;
+	opacity: 0.7;
+	transition: opacity 0.15s ease;
+}
+
+.anti-dian-message-user .anti-dian-message-actions {
+	justify-content: flex-end;
+	opacity: 0;
+	margin-top: 2px;
+}
+
+.anti-dian-message-user:hover .anti-dian-message-actions,
+.anti-dian-message-user:focus-within .anti-dian-message-actions,
+.anti-dian-message-agent:hover .anti-dian-message-actions,
+.anti-dian-message-agent:focus-within .anti-dian-message-actions {
+	opacity: 1;
+}
+
+.anti-dian-message-actions.is-inline {
+	margin-top: 0;
+	margin-left: auto;
+}
+
+.anti-dian-msg-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.anti-dian-msg-action-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.anti-dian-msg-action-btn.is-copied {
+	color: var(--color-green);
+}
+
+.anti-dian-msg-action-btn svg {
+	width: 13px;
+	height: 13px;
+}

@@ -1057,6 +1057,63 @@ export class ThinkingStateView {
 		return true;
 	}
 
+	/** True if this turn has at least one applied edit that can be undone. */
+	public hasUndoableChanges(): boolean {
+		return (
+			Boolean(this.undoChange) &&
+			this.steps.some(
+				(s) =>
+					s.approval?.state === 'applied' &&
+					Boolean(s.approval.appliedChangeSetId),
+			)
+		);
+	}
+
+	/** Undoes every applied edit from this turn in reverse (LIFO) order. */
+	public async undoAllApplied(): Promise<number> {
+		if (!this.undoChange) return 0;
+		const targets = [...this.steps]
+			.reverse()
+			.filter(
+				(s) =>
+					s.approval?.state === 'applied' &&
+					Boolean(s.approval.appliedChangeSetId),
+			);
+		if (targets.length === 0) return 0;
+
+		const confirmed = await confirmAction(this.app, {
+			title:
+				targets.length === 1
+					? 'Undo this change?'
+					: `Undo ${targets.length} changes from this turn?`,
+			message:
+				'This restores the affected note(s) to how they were before this turn. Later edits to the same note may be lost.',
+			cta: 'Undo',
+		});
+		if (!confirmed) return 0;
+
+		let reverted = 0;
+		for (const step of targets) {
+			const id = step.approval?.appliedChangeSetId;
+			if (!id || !step.approval) continue;
+			step.approval.busy = true;
+			this.renderSteps();
+			try {
+				await this.undoChange(id);
+				step.approval = { state: 'undone' };
+				reverted++;
+			} catch (err) {
+				step.approval.busy = false;
+				new Notice(
+					`Undo failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				break;
+			}
+		}
+		this.renderSteps();
+		return reverted;
+	}
+
 	/** Reject every write still waiting (view closed or session reset). */
 	public cancelPendingApprovals(): void {
 		for (const step of this.steps) {
