@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project
-Anti-dian is a general-purpose AI noting harness implemented as an **Obsidian Community Plugin**.
+Anti-dian is a general-purpose AI noting harness implemented as a **desktop-only Obsidian Community Plugin** (`isDesktopOnly: true`).
 
 It must support casual notes, research, journaling, learning, writing, projects, and custom workflows without forcing one methodology.
 
@@ -12,9 +12,21 @@ It must support casual notes, research, journaling, learning, writing, projects,
 anti-dian/
 ├── src/
 │   ├── core/
+│   │   ├── agent/         # Agent orchestration loop & system prompt
+│   │   ├── context/       # ContextCompiler (session skills, mode notice, active note/selection)
+│   │   ├── models/        # Antigravity CLI (ACP) client, provider, local HTTP MCP tool server
+│   │   ├── skills/        # Pure Markdown skill parser & constants
+│   │   ├── tools/         # ToolRegistry and vault/skill tool definitions
+│   │   ├── transactions/  # ChangeStagingManager, StagedVaultOverlay, Validator, Diff, Applicator
+│   │   └── types/         # Core domain & service contracts (vault, context, changes, model, skills)
 │   ├── obsidian/
-│   ├── main.ts
-│   └── settings.ts
+│   │   ├── adapters/      # Vault, Metadata, Workspace, Editor, Skills adapters
+│   │   ├── commands/      # Obsidian command registrations
+│   │   ├── views/         # Sidebar view, prompt bar, diff table, thinking trace, model menu
+│   │   └── icon.ts        # Custom ribbon/view icon registration
+│   ├── main.ts            # Composition root / plugin entrypoint
+│   └── settings.ts        # Plugin settings & setting tab
+├── test/                  # Node native unit tests (no Obsidian runtime required)
 ├── manifest.json
 ├── styles.css
 ├── package.json
@@ -23,24 +35,50 @@ anti-dian/
 
 Boundary:
 ```text
-src/core/      General harness logic
-src/obsidian/  Obsidian-specific integration
+src/core/      General harness logic (no Obsidian SDK imports)
+src/obsidian/  Obsidian-specific adapters, commands, and views
 src/main.ts    Composition root / plugin entrypoint
 ```
 
 ## Core Rules
 - `src/core/` MUST NOT import from `obsidian`.
-- Core may contain agent, tools, retrieval, context compilation, transactions, skills, model abstractions, and shared contracts.
-- Define stable interfaces in core; implement them in `src/obsidian/`.
+- Core contains agent orchestration, tools, context compilation, transactions, skill parsing, model/MCP transport, and shared contracts.
+- Define stable interfaces in `src/core/types/`; implement them in `src/obsidian/adapters/`.
+- Note: `src/core/models/` uses Node.js APIs (`child_process`, `http`, `fs`, `crypto`) because the plugin is desktop-only and communicates with the local Antigravity CLI. Keep pure logic modules (such as `transactions/`, `skills/`, `context/`, `tools/`) free of Node-specific I/O where practical so they stay easy to test.
 - Do not create unused framework layers or empty directories in advance.
 
-Example:
+Example contract (`src/core/types/vault.ts`):
 ```ts
-export interface VaultService {
-  read(path: string): Promise<Note>;
-  search(query: string): Promise<SearchResult[]>;
+export interface VaultService
+  extends VaultInspectionService,
+    VaultMutationService {
+  searchNotes(params: SearchNotesParams): Promise<SearchResult[]>;
+  readNote(params: ReadNoteParams): Promise<NoteContent | null>;
+  listNotes?(params?: ListNotesParams): Promise<NoteListItem[]>;
+  getNoteOutline?(path: string): Promise<NoteOutline | null>;
 }
 ```
+
+## Runtime & Transport Architecture
+Anti-dian delegates reasoning to the official **Antigravity CLI (`agy`)** via ACP (Agent Client Protocol) while enforcing Obsidian safety boundaries through a local MCP server:
+
+```text
+AntiDianView (Obsidian UI)
+  → Agent (src/core/agent/)
+      → ContextCompiler (deduplicated active note/selection, outline hint, skills list, mode notice)
+      → AntigravityProvider / AntigravityAcpClient (spawns `agy` CLI over ACP)
+      → McpToolServer (127.0.0.1 HTTP MCP server `anti-dian-vault` with bearer token)
+          → ToolRegistry (12 vault & skill tools)
+              → ObsidianVaultAdapter / StagedVaultOverlay / ChangeStagingManager / ObsidianSkillAdapter
+```
+
+Key invariants:
+- Vault operations MUST go through the `anti-dian-vault` MCP tools; the model must never bypass Obsidian via raw CLI filesystem/shell tools.
+- `McpToolServer` binds per-turn `ToolContext` (active context, `permissionMode`, read mtimes, context recording) and enforces Plan Mode by rejecting mutating tools (`tool.mutates === true`).
+- Three permission modes are supported (`src/settings.ts`):
+  - `ask` (default): free reads; writes are staged for diff inspection and explicit approval.
+  - `plan`: read-only; mutating tools are blocked at the MCP boundary.
+  - `auto`: valid staged ChangeSets are auto-applied after validation, still capturing before-state snapshots for rollback.
 
 ## Obsidian Layer
 `src/obsidian/` may use the Obsidian SDK.
@@ -48,40 +86,41 @@ export interface VaultService {
 Prefer native APIs:
 ```text
 read/write       -> Vault
-rename/move      -> FileManager / Vault
+rename/move/del  -> FileManager / Vault
 links/backlinks  -> MetadataCache
 active note      -> Workspace
-selection        -> Editor
+selection/cursor -> Editor
 ```
 
-Avoid raw filesystem mutation when native APIs are appropriate.
+Avoid raw filesystem mutation when native APIs are appropriate. (Note: `ObsidianSkillAdapter` reads `.anti-dian/skills/` via `app.vault.adapter` because dot-folders are hidden from `Vault.getMarkdownFiles()`.)
 
 ## main.ts
 Keep `src/main.ts` small. It should only:
-- load settings
-- construct adapters/services
-- construct runtime
-- register views/commands
-- register cleanup
+- load/save settings
+- construct adapters and core services
+- register tools on `ToolRegistry`
+- construct `McpToolServer`, `AntigravityProvider`, and `Agent`
+- register views, hover link source, ribbon icon, commands, and setting tab
+- register cleanup in `onunload()`
 
 Do not put retrieval, LLM orchestration, or mutation logic in `main.ts`.
 
-## Current Priority
-Build this vertical slice first:
-```text
-sidebar
-→ active note + selection
-→ search_notes
-→ read_note
-→ minimal agent loop
-→ staged create/patch
-→ diff + approval
-→ undo/history
-```
+## Current Status & Priorities
+Implemented foundation:
+- Sidebar chat UI with streaming thoughts/answers, tool trace, model picker, quota/context usage, and permission mode selector
+- Active note + selection tracking (`ObsidianWorkspaceAdapter` + `ObsidianEditorAdapter`)
+- `ContextCompiler` with session-level skill injection, Plan Mode notice, and deduplicated active note outline + selection
+- 12 MCP tools: `list_notes`, `get_note_outline`, `search_notes`, `read_note`, `create_note`, `patch_note`, `replace_block`, `append_note`, `update_frontmatter`, `edit_note`, `list_skills`, `load_skill`
+- Transactional mutation pipeline: `ChangeStagingManager` → `StagedVaultOverlay` (read-your-own-writes within a turn) → `ChangeSetValidator` → `ChangeSetDiffGenerator` → diff UI & approval → `ChangeSetApplicator` (with before-state snapshot & rollback)
+- Vault Skills loaded from `.anti-dian/skills/`
 
-Only then prioritize Skills, better Context Compiler, Extensions, semantic retrieval, external sources, Packs, and Profiles.
+Next priorities:
+- Extract search ranking/fusion from `ObsidianVaultAdapter.searchNotes` into `src/core/retrieval/` when retrieval grows beyond basic scoring
+- Add native `rename`/`move` mutation primitives using `FileManager.renameFile`
+- Improve persistent ChangeSet history / multi-step undo beyond in-memory snapshots
+- Only after real workflows demand them: Extensions, semantic retrieval, external sources, Packs, and Profiles
 
-Do not build Pack infrastructure, vector search, or web/PDF/video ingestion before the basic loop works.
+Do not build Pack infrastructure, vector search, or web/PDF/video ingestion until concrete workflows require them.
 
 ## Retrieval
 Do not make vector search the foundation.
@@ -93,14 +132,14 @@ Start with:
 - properties/tags
 - wikilinks/backlinks
 - active-note context
-- scope
-- recency where useful
+- scope (folder/tag filters)
+- recency (`mtime`) where useful
 
-Keep separate:
+Target separation:
 ```text
-retrieval        finds candidates
-ranking/fusion   prioritizes candidates
-context compiler builds final model context
+retrieval        finds candidates (currently in ObsidianVaultAdapter)
+ranking/fusion   prioritizes candidates (to be extracted to src/core/retrieval/ as needed)
+context compiler builds final model context (src/core/context/compiler.ts)
 ```
 
 Prefer Markdown-aware headings/sections over arbitrary chunks when practical.
@@ -108,36 +147,39 @@ Vector search may later be one provider.
 
 ## Mutation
 Prefer structural edits over whole-file rewrites:
-- set property
-- insert under heading
-- replace section
-- append block
-- native rename/move
+- `update_frontmatter` (set/remove YAML properties)
+- `replace_block` (targeted unique exact-text replacement)
+- `patch_note` (replace a heading section)
+- `append_note` (append to note or under a heading)
+- `create_note` (new file)
+- `edit_note` (full-file rewrite, fallback only)
+- Planned: native `rename`/`move` via `FileManager`
 
-Target flow:
+Pipeline:
 ```text
 tool request
-→ stage ChangeSet
-→ validate
-→ diff
-→ approve
-→ apply
-→ record history
+→ stage ChangeSet (ChangeStagingManager)
+→ overlay reads within turn (StagedVaultOverlay)
+→ validate (ChangeSetValidator: path boundary, stale mtime, conflicts, target checks)
+→ diff (ChangeSetDiffGenerator)
+→ approve (in `ask` mode; auto-applied if valid in `auto` mode; blocked in `plan` mode)
+→ capture snapshot & apply (ChangeSetApplicator + ObsidianVaultAdapter)
+→ rollback via snapshot when requested
 ```
 
-Do not silently perform high-impact writes.
+Do not silently perform unvalidated or high-impact writes in default (`ask`) mode.
 A ChangeSet must keep affected files and operations inspectable.
-Support rejection before apply and rollback where feasible.
+Support rejection before apply and rollback after apply.
 
 ## Extension Model
 Use these terms consistently:
 
-- **Tool**: model-callable operation such as `search_notes`, `read_note`, `patch_note`.
-- **Skill**: dynamically loaded instruction-defined workflow.
-- **Schema**: domain-specific structure; core must not hard-code its semantics.
-- **Extension**: executable Anti-dian capability such as Zotero, semantic search, calendar, or PDF processing.
-- **Pack**: composition/distribution of Skills, Schemas, Templates, Policies, retrieval config, and optional Extensions.
-- **Profile**: selected/scoped composition for a user, vault, project, or folder.
+- **Tool** *(implemented)*: model-callable operation exposed via `ToolRegistry` / MCP (e.g., `search_notes`, `read_note`, `patch_note`).
+- **Skill** *(implemented)*: dynamically loaded instruction-defined workflow stored in `.anti-dian/skills/<name>.md` or `.anti-dian/skills/<name>/SKILL.md`, progressively disclosed via `ContextCompiler` and `load_skill`.
+- **Schema** *(planned)*: domain-specific structure; core must not hard-code its semantics.
+- **Extension** *(planned)*: executable Anti-dian capability such as Zotero, semantic search, calendar, or PDF processing.
+- **Pack** *(planned)*: composition/distribution of Skills, Schemas, Templates, Policies, retrieval config, and optional Extensions.
+- **Profile** *(planned)*: selected/scoped composition for a user, vault, project, or folder.
 
 Use `Extension`, not `plugin`, for internal executable components.
 Do not make Pack a runtime god object.
@@ -194,12 +236,12 @@ Use native context when useful: active file, selected text, workspace state, Met
 Treat model output as untrusted input.
 
 Validate:
-- paths
+- paths (`isPathWithinVault`, no `..`, absolute paths, or URI schemes)
 - tool arguments
-- operations
-- scopes
+- operations and stale `baseMtime`
+- scopes and `permissionMode`
 - schemas
-- resource existence
+- resource existence and unique match targets
 
 Never allow an LLM-provided path to escape allowed vault boundaries.
 Do not dump the whole vault into context.
@@ -232,17 +274,16 @@ Do not build:
 - a registry for one provider
 - Pack resolution before a real Pack exists
 - a complex extension host before isolation is needed
-- a large model-provider framework before the minimal path works
+- a large model-provider framework before multiple providers exist
 
 Small interfaces protecting the `core` / `obsidian` boundary are encouraged early.
 
 ## Testing
-Prefer core tests without Obsidian.
+Prefer core tests without Obsidian (run via Node's native test runner with `--experimental-strip-types`).
 
 Use:
-- unit tests for parsing/ranking/validation
-- fixture vaults for search/links/mutations
-- integration tests for adapters where practical
+- unit tests in `test/*.test.mjs` for parsing, validation, overlay, diffing, context compilation, and MCP server behavior
+- fixture vaults / mock `VaultService` for search, links, and mutations
 - manual Obsidian tests for views, commands, editor context, and diff UX
 
 ## Development Workflow
@@ -252,10 +293,13 @@ Before a substantial change:
 3. Search related interfaces and callers.
 4. Preserve `core` / `obsidian` boundaries.
 5. Implement the smallest complete behavior.
-6. Add/update tests.
-7. Run typecheck, lint, and build.
-8. Manually test Obsidian behavior if affected.
-9. Update docs when public contracts or architecture change.
+6. Add/update tests in `test/`.
+7. Verify with:
+   - `npm test` (core unit tests)
+   - `npm run lint` (ESLint + `eslint-plugin-obsidianmd`)
+   - `npm run build` (`tsc -noEmit -skipLibCheck` + production esbuild bundle)
+8. Manually test Obsidian behavior if views, adapters, or commands changed.
+9. Update `AGENTS.md` and `README.md` when public contracts or architecture change.
 
 Do not infer architecture only from file names.
 
@@ -266,7 +310,7 @@ Do not:
 - make vector search the only retrieval path
 - dump the whole vault into context
 - import Obsidian SDK from `src/core/`
-- perform silent high-impact writes
+- perform silent unvalidated writes in `ask` mode or bypass Plan Mode blocks
 - bypass native Obsidian APIs without reason
 - make Packs executable god objects
 - treat Skills as trusted executable code
