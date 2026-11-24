@@ -433,6 +433,7 @@ export class AntiDianView extends ItemView {
 						),
 					);
 				},
+				this.plugin.settings.permissionMode ?? 'ask',
 			);
 
 			this.history = result.updatedHistory;

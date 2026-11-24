@@ -202,8 +202,9 @@ export class DiffTableView {
 				}
 			}
 
-			// If in manual 'ask' mode, provide Apply & Reject buttons at bottom
-			if (!this.isAccepted && !this.isRejected) {
+			// If in manual 'ask' mode (not read-only 'plan'), provide Apply & Reject buttons at bottom
+			const mode = this.plugin.settings.permissionMode ?? 'ask';
+			if (!this.isAccepted && !this.isRejected && mode !== 'plan') {
 				const bottomBar = this.containerEl.createDiv({
 					cls: 'anti-dian-diff-bottom-bar',
 				});

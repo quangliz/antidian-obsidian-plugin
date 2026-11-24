@@ -5,6 +5,9 @@ import {
 	ReadNoteParams,
 	SearchResult,
 	NoteContent,
+	ListNotesParams,
+	NoteListItem,
+	NoteOutline,
 } from '../../core/types/vault';
 import {
 	AppliedChangeSet,
@@ -15,6 +18,7 @@ import {
 	MutationService,
 	RollbackResult,
 } from '../../core/types/changes';
+import { applyOperationToContent } from '../../core/transactions/overlay';
 import { ObsidianMetadataAdapter } from './metadata';
 
 export class ObsidianVaultAdapter implements VaultService, MutationService {
@@ -343,6 +347,139 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 		};
 	}
 
+	async listNotes(params?: ListNotesParams): Promise<NoteListItem[]> {
+		const folderFilter = params?.folder
+			? params.folder.trim().replace(/^\/+|\/+$/g, '').toLowerCase()
+			: '';
+		const tagFilter = params?.tag
+			? params.tag.trim().replace(/^#/, '').toLowerCase()
+			: '';
+		const sortBy = params?.sortBy ?? 'mtime';
+		const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
+
+		const files = this.app.vault.getMarkdownFiles();
+		const items: NoteListItem[] = [];
+
+		for (const file of files) {
+			if (folderFilter) {
+				const pathLower = file.path.toLowerCase();
+				if (
+					!pathLower.startsWith(`${folderFilter}/`) &&
+					pathLower !== folderFilter
+				) {
+					continue;
+				}
+			}
+
+			const cache = this.metadataAdapter.getFileCache(file);
+			const tagSet = new Set<string>();
+			if (cache?.tags) {
+				for (const t of cache.tags) {
+					tagSet.add(t.tag.startsWith('#') ? t.tag : `#${t.tag}`);
+				}
+			}
+			const fmTags: unknown = cache?.frontmatter?.tags;
+			if (Array.isArray(fmTags)) {
+				for (const t of fmTags) {
+					if (typeof t === 'string' && t.trim()) {
+						tagSet.add(t.startsWith('#') ? t : `#${t}`);
+					}
+				}
+			} else if (typeof fmTags === 'string' && fmTags.trim()) {
+				tagSet.add(fmTags.startsWith('#') ? fmTags : `#${fmTags}`);
+			}
+
+			const tags = Array.from(tagSet);
+			if (tagFilter) {
+				const matchesTag = tags.some((t) => {
+					const clean = t.replace(/^#/, '').toLowerCase();
+					return (
+						clean === tagFilter ||
+						clean.startsWith(`${tagFilter}/`)
+					);
+				});
+				if (!matchesTag) continue;
+			}
+
+			items.push({
+				path: file.path,
+				basename: file.basename,
+				mtime: file.stat.mtime,
+				tags: tags.length > 0 ? tags : undefined,
+			});
+		}
+
+		if (sortBy === 'name') {
+			items.sort((a, b) => a.path.localeCompare(b.path));
+		} else {
+			items.sort((a, b) => b.mtime - a.mtime);
+		}
+
+		return items.slice(0, limit);
+	}
+
+	async getNoteOutline(path: string): Promise<NoteOutline | null> {
+		const targetPath = path.trim();
+		if (!targetPath) return null;
+
+		let file = this.app.vault.getAbstractFileByPath(targetPath);
+		if (!(file instanceof TFile)) {
+			file = this.metadataAdapter.getFirstLinkpathDest(targetPath, '');
+		}
+		if (!(file instanceof TFile)) return null;
+
+		const content = await this.app.vault.cachedRead(file);
+		const cache = this.metadataAdapter.getFileCache(file);
+
+		const headings = (cache?.headings ?? []).map((h) => ({
+			heading: h.heading,
+			level: h.level,
+			line: h.position.start.line,
+		}));
+
+		let frontmatter: Record<string, unknown> | undefined;
+		if (cache?.frontmatter) {
+			const cleaned: Record<string, unknown> = {};
+			for (const [k, v] of Object.entries(cache.frontmatter)) {
+				if (k !== 'position') {
+					cleaned[k] = v;
+				}
+			}
+			if (Object.keys(cleaned).length > 0) {
+				frontmatter = cleaned;
+			}
+		}
+
+		const tagSet = new Set<string>();
+		for (const t of cache?.tags ?? []) {
+			tagSet.add(t.tag.startsWith('#') ? t.tag : `#${t.tag}`);
+		}
+		const fmTags: unknown = frontmatter?.tags;
+		if (Array.isArray(fmTags)) {
+			for (const t of fmTags) {
+				if (typeof t === 'string' && t.trim()) {
+					tagSet.add(t.startsWith('#') ? t : `#${t}`);
+				}
+			}
+		}
+
+		const outgoingLinks = Array.from(
+			new Set((cache?.links ?? []).map((l) => l.link)),
+		);
+		const backlinks = this.metadataAdapter.getBacklinks(file.path);
+
+		return {
+			path: file.path,
+			headings,
+			frontmatter,
+			tags: Array.from(tagSet),
+			outgoingLinks,
+			backlinks,
+			mtime: file.stat.mtime,
+			charCount: content.length,
+		};
+	}
+
 	async createNote(path: string, content: string): Promise<void> {
 		const norm = this.normalizePath(path);
 		const parts = norm.split('/');
@@ -469,6 +606,30 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 				} else {
 					throw new Error(`File not found to edit: "${op.path}"`);
 				}
+				appliedOps.push({
+					operation: op,
+					appliedAt: Date.now(),
+					previousContent,
+				});
+			} else if (
+				op.type === 'replace-block' ||
+				op.type === 'append' ||
+				op.type === 'update-frontmatter'
+			) {
+				const norm = this.normalizePath(op.path);
+				let file = this.app.vault.getAbstractFileByPath(norm);
+				if (!(file instanceof TFile)) {
+					file = this.metadataAdapter.getFirstLinkpathDest(op.path, '');
+				}
+				if (!(file instanceof TFile)) {
+					throw new Error(`File not found for ${op.type}: "${op.path}"`);
+				}
+				previousContent = await this.app.vault.read(file);
+				const next = applyOperationToContent(previousContent, op);
+				if (!next.ok) {
+					throw new Error(next.message);
+				}
+				await this.app.vault.modify(file, next.content);
 				appliedOps.push({
 					operation: op,
 					appliedAt: Date.now(),

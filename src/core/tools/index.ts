@@ -1,15 +1,22 @@
-import {
+import type {
 	VaultService,
 	SearchResult,
 	SearchNotesParams,
 	ReadNoteParams,
 	NoteContent,
+	ListNotesParams,
+	NoteListItem,
+	NoteOutline,
 } from '../types/vault';
-import { ActiveContext, ContextReference } from '../types/context';
-import { ChangeStagingManager } from '../transactions';
+import type { ActiveContext, ContextReference } from '../types/context';
+import type { SkillDocument, SkillService, SkillSummary } from '../types/skills';
+import type { ChangeStagingManager, StagedVaultOverlay } from '../transactions';
+
+export type HarnessPermissionMode = 'ask' | 'plan' | 'auto';
 
 export interface ToolContext {
 	context?: ActiveContext;
+	permissionMode?: HarnessPermissionMode;
 	recordContext?: (ref: ContextReference) => void;
 	recordReadMtime?: (path: string, mtime: number) => void;
 	getReadMtime?: (path: string) => number | undefined;
@@ -20,6 +27,7 @@ export interface Tool<I = unknown, O = unknown> {
 	name: string;
 	description: string;
 	schema: Record<string, unknown>;
+	mutates?: boolean;
 	execute(input: I, ctx?: ToolContext): Promise<O>;
 }
 
@@ -56,6 +64,104 @@ export class ToolRegistry {
 			parameters: t.schema,
 		}));
 	}
+}
+
+export function createListNotesTool(
+	vaultService: VaultService,
+): Tool<ListNotesParams, NoteListItem[]> {
+	return {
+		name: 'list_notes',
+		description:
+			'List markdown notes in the vault with optional folder prefix, tag filter, and sort order (mtime or name). Use this to explore vault organization before reading specific notes.',
+		schema: {
+			type: 'object',
+			properties: {
+				folder: {
+					type: 'string',
+					description:
+						'Optional folder prefix to filter by (e.g. "Projects" or "Daily")',
+				},
+				tag: {
+					type: 'string',
+					description:
+						'Optional tag filter without or with # (e.g. "research" or "#project")',
+				},
+				sortBy: {
+					type: 'string',
+					enum: ['mtime', 'name'],
+					description:
+						'Sort order: "mtime" (most recently modified first, default) or "name"',
+				},
+				limit: {
+					type: 'number',
+					description: 'Maximum notes to return (default 50, max 200)',
+				},
+			},
+		},
+		execute: async (input: ListNotesParams): Promise<NoteListItem[]> => {
+			if (!vaultService.listNotes) {
+				return [];
+			}
+			return await vaultService.listNotes({
+				folder:
+					typeof input?.folder === 'string' ? input.folder : undefined,
+				tag: typeof input?.tag === 'string' ? input.tag : undefined,
+				sortBy:
+					input?.sortBy === 'name' || input?.sortBy === 'mtime'
+						? input.sortBy
+						: 'mtime',
+				limit:
+					typeof input?.limit === 'number' ? input.limit : undefined,
+			});
+		},
+	};
+}
+
+export function createGetNoteOutlineTool(
+	vaultService: VaultService,
+	overlay?: StagedVaultOverlay,
+): Tool<{ path: string }, NoteOutline | null> {
+	return {
+		name: 'get_note_outline',
+		description:
+			'Get lightweight structural metadata for a note: headings (with levels), YAML frontmatter properties, tags, outgoing wikilinks, backlinks, and character count. Prefer calling this before reading long notes in full.',
+		schema: {
+			type: 'object',
+			properties: {
+				path: {
+					type: 'string',
+					description: 'Vault path or note title (e.g. "Projects/Roadmap.md")',
+				},
+			},
+			required: ['path'],
+		},
+		execute: async (
+			input: { path: string },
+			ctx?: ToolContext,
+		): Promise<NoteOutline | null> => {
+			const path = typeof input?.path === 'string' ? input.path : '';
+			const outline = overlay
+				? await overlay.getEffectiveOutline(path)
+				: vaultService.getNoteOutline
+					? await vaultService.getNoteOutline(path)
+					: null;
+
+			if (outline) {
+				if (ctx?.recordContext) {
+					ctx.recordContext({
+						path: outline.path,
+						reason: 'Note outline',
+						chars: outline.charCount,
+					});
+				}
+				if (outline.mtime && ctx?.recordReadMtime) {
+					ctx.recordReadMtime(outline.path, outline.mtime);
+				}
+			}
+
+			return outline;
+		},
+	};
 }
 
 export function createSearchNotesTool(
@@ -108,11 +214,12 @@ export function createSearchNotesTool(
 
 export function createReadNoteTool(
 	vaultService: VaultService,
+	overlay?: StagedVaultOverlay,
 ): Tool<ReadNoteParams, NoteContent | null> {
 	return {
 		name: 'read_note',
 		description:
-			'Read the content of a note or a specific heading section in the vault.',
+			'Read the content of a note or a specific heading section in the vault. Automatically reflects any pending edits staged earlier in the current turn.',
 		schema: {
 			type: 'object',
 			properties: {
@@ -134,14 +241,16 @@ export function createReadNoteTool(
 			const path = typeof input?.path === 'string' ? input.path : '';
 			const heading =
 				typeof input?.heading === 'string' ? input.heading : undefined;
-			const note = await vaultService.readNote({ path, heading });
+			const note = overlay
+				? await overlay.readEffectiveNote({ path, heading })
+				: await vaultService.readNote({ path, heading });
 
 			if (note) {
 				if (ctx?.recordContext) {
 					ctx.recordContext({
 						path: note.path,
 						heading: note.heading,
-						reason: 'Read note',
+						reason: note.isStaged ? 'Read note (staged)' : 'Read note',
 						chars: note.content.length,
 						snippet:
 							note.content.length > 200
@@ -169,6 +278,7 @@ export function createCreateNoteTool(
 ): Tool<CreateNoteInput, Record<string, unknown>> {
 	return {
 		name: 'create_note',
+		mutates: true,
 		description:
 			'Stage the creation of a new file in the vault (supports .md, .canvas, .json, .css, etc.). Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
 		schema: {
@@ -176,7 +286,8 @@ export function createCreateNoteTool(
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Target file path with extension (e.g. "Research/KV Cache.md", "Untitled.canvas"). Defaults to .md if no extension given.',
+					description:
+						'Target file path with extension (e.g. "Research/KV Cache.md", "Untitled.canvas"). Defaults to .md if no extension given.',
 				},
 				content: {
 					type: 'string',
@@ -232,6 +343,7 @@ export function createPatchNoteTool(
 ): Tool<PatchNoteInput, Record<string, unknown>> {
 	return {
 		name: 'patch_note',
+		mutates: true,
 		description:
 			'Stage an update to a specific heading section in an existing note. Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
 		schema: {
@@ -293,6 +405,232 @@ export function createPatchNoteTool(
 	};
 }
 
+export interface ReplaceBlockInput {
+	path: string;
+	oldText: string;
+	newText: string;
+}
+
+export function createReplaceBlockTool(
+	staging: ChangeStagingManager,
+): Tool<ReplaceBlockInput, Record<string, unknown>> {
+	return {
+		name: 'replace_block',
+		mutates: true,
+		description:
+			'Stage a targeted exact-text replacement within an existing note. Preferred over edit_note for localized changes. oldText must match uniquely in the note.',
+		schema: {
+			type: 'object',
+			properties: {
+				path: {
+					type: 'string',
+					description: 'Vault path to the note',
+				},
+				oldText: {
+					type: 'string',
+					description:
+						'Exact existing text to replace (must occur exactly once in the note)',
+				},
+				newText: {
+					type: 'string',
+					description: 'Replacement text',
+				},
+			},
+			required: ['path', 'oldText', 'newText'],
+		},
+		execute: async (
+			input: ReplaceBlockInput,
+			ctx?: ToolContext,
+		): Promise<Record<string, unknown>> => {
+			const path = typeof input?.path === 'string' ? input.path : '';
+			const oldText =
+				typeof input?.oldText === 'string' ? input.oldText : '';
+			const newText =
+				typeof input?.newText === 'string' ? input.newText : '';
+			const baseMtime = ctx?.getReadMtime?.(path);
+
+			const changeSet = staging.stage({
+				type: 'replace-block',
+				path,
+				oldText,
+				newText,
+				baseMtime,
+			});
+
+			if (ctx?.recordContext) {
+				ctx.recordContext({
+					path,
+					reason: 'Staged block replace',
+				});
+			}
+
+			return {
+				staged: true,
+				changeSetId: changeSet.id,
+				operation: {
+					type: 'replace-block',
+					path,
+				},
+				message: `Staged targeted block replacement in "${path}". Operation is queued for user review and approval.`,
+			};
+		},
+	};
+}
+
+export interface AppendNoteInput {
+	path: string;
+	content: string;
+	heading?: string;
+}
+
+export function createAppendNoteTool(
+	staging: ChangeStagingManager,
+): Tool<AppendNoteInput, Record<string, unknown>> {
+	return {
+		name: 'append_note',
+		mutates: true,
+		description:
+			'Stage appending new markdown content to the end of an existing note, or to the end of a specific heading section.',
+		schema: {
+			type: 'object',
+			properties: {
+				path: {
+					type: 'string',
+					description: 'Vault path to the note',
+				},
+				content: {
+					type: 'string',
+					description: 'Markdown content to append',
+				},
+				heading: {
+					type: 'string',
+					description:
+						'Optional heading under which to append the content',
+				},
+			},
+			required: ['path', 'content'],
+		},
+		execute: async (
+			input: AppendNoteInput,
+			ctx?: ToolContext,
+		): Promise<Record<string, unknown>> => {
+			const path = typeof input?.path === 'string' ? input.path : '';
+			const content =
+				typeof input?.content === 'string' ? input.content : '';
+			const heading =
+				typeof input?.heading === 'string' && input.heading.trim()
+					? input.heading.trim()
+					: undefined;
+			const baseMtime = ctx?.getReadMtime?.(path);
+
+			const changeSet = staging.stage({
+				type: 'append',
+				path,
+				content,
+				heading,
+				baseMtime,
+			});
+
+			if (ctx?.recordContext) {
+				ctx.recordContext({
+					path,
+					heading,
+					reason: 'Staged append',
+				});
+			}
+
+			return {
+				staged: true,
+				changeSetId: changeSet.id,
+				operation: {
+					type: 'append',
+					path,
+					heading,
+				},
+				message: heading
+					? `Staged append to "${path}" under heading "${heading}".`
+					: `Staged append to end of "${path}".`,
+			};
+		},
+	};
+}
+
+export interface UpdateFrontmatterInput {
+	path: string;
+	set?: Record<string, unknown>;
+	remove?: string[];
+}
+
+export function createUpdateFrontmatterTool(
+	staging: ChangeStagingManager,
+): Tool<UpdateFrontmatterInput, Record<string, unknown>> {
+	return {
+		name: 'update_frontmatter',
+		mutates: true,
+		description:
+			'Stage setting or removing YAML frontmatter properties on a note without modifying its markdown body.',
+		schema: {
+			type: 'object',
+			properties: {
+				path: {
+					type: 'string',
+					description: 'Vault path to the note',
+				},
+				set: {
+					type: 'object',
+					description:
+						'Key-value pairs to add or update in YAML frontmatter (supports strings, numbers, booleans, arrays)',
+				},
+				remove: {
+					type: 'array',
+					items: { type: 'string' },
+					description: 'Frontmatter property keys to remove',
+				},
+			},
+			required: ['path'],
+		},
+		execute: async (
+			input: UpdateFrontmatterInput,
+			ctx?: ToolContext,
+		): Promise<Record<string, unknown>> => {
+			const path = typeof input?.path === 'string' ? input.path : '';
+			const set =
+				input?.set && typeof input.set === 'object' && !Array.isArray(input.set)
+					? input.set
+					: undefined;
+			const remove = Array.isArray(input?.remove)
+				? input.remove.filter((k): k is string => typeof k === 'string')
+				: undefined;
+			const baseMtime = ctx?.getReadMtime?.(path);
+
+			const changeSet = staging.stage({
+				type: 'update-frontmatter',
+				path,
+				set,
+				remove,
+				baseMtime,
+			});
+
+			if (ctx?.recordContext) {
+				ctx.recordContext({
+					path,
+					reason: 'Staged frontmatter update',
+				});
+			}
+
+			return {
+				staged: true,
+				changeSetId: changeSet.id,
+				operation: {
+					type: 'update-frontmatter',
+					path,
+				},
+				message: `Staged frontmatter update for "${path}". Operation is queued for user review and approval.`,
+			};
+		},
+	};
+}
+
 export interface EditNoteInput {
 	path: string;
 	content: string;
@@ -303,14 +641,16 @@ export function createEditNoteTool(
 ): Tool<EditNoteInput, Record<string, unknown>> {
 	return {
 		name: 'edit_note',
+		mutates: true,
 		description:
-			'Stage an update/replacement of an entire existing file in the vault (supports .md, .canvas, .json, .css, etc.). Does NOT modify the vault immediately; creates a staged ChangeOperation for user review and approval.',
+			'Stage a full-file replacement of an existing file in the vault (supports .md, .canvas, .json, .css, etc.). Prefer replace_block, patch_note, append_note, or update_frontmatter for localized markdown edits.',
 		schema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Vault path to the existing file with extension (e.g. "llama.cpp.md", "Untitled.canvas")',
+					description:
+						'Vault path to the existing file with extension (e.g. "llama.cpp.md", "Untitled.canvas")',
 				},
 				content: {
 					type: 'string',
@@ -355,8 +695,60 @@ export function createEditNoteTool(
 	};
 }
 
+export function createListSkillsTool(
+	skillService: SkillService,
+): Tool<Record<string, never>, SkillSummary[]> {
+	return {
+		name: 'list_skills',
+		description:
+			'List available vault workflow skills (from .anti-dian/skills/) with their names and descriptions.',
+		schema: {
+			type: 'object',
+			properties: {},
+		},
+		execute: async (): Promise<SkillSummary[]> => {
+			return await skillService.listSkills();
+		},
+	};
+}
 
-
-
-
-
+export function createLoadSkillTool(
+	skillService: SkillService,
+): Tool<{ name: string }, SkillDocument | { error: string }> {
+	return {
+		name: 'load_skill',
+		description:
+			'Load the full markdown instructions for a specific vault skill by name when it matches the user request.',
+		schema: {
+			type: 'object',
+			properties: {
+				name: {
+					type: 'string',
+					description: 'Name of the vault skill to load',
+				},
+			},
+			required: ['name'],
+		},
+		execute: async (
+			input: { name: string },
+			ctx?: ToolContext,
+		): Promise<SkillDocument | { error: string }> => {
+			const name = typeof input?.name === 'string' ? input.name.trim() : '';
+			if (!name) {
+				return { error: 'Skill name is required.' };
+			}
+			const doc = await skillService.loadSkill(name);
+			if (!doc) {
+				return { error: `Skill "${name}" not found in .anti-dian/skills/.` };
+			}
+			if (ctx?.recordContext) {
+				ctx.recordContext({
+					path: doc.path,
+					reason: `Loaded skill (${doc.name})`,
+					chars: doc.body.length,
+				});
+			}
+			return doc;
+		},
+	};
+}

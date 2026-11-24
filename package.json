@@ -7,7 +7,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"test": "node --experimental-strip-types --test test/*.test.mjs",
+		"test": "node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/*.test.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},

@@ -17,7 +17,30 @@ export type ChangeOperation =
 			path: string;
 			content: string;
 			baseMtime?: number;
+	  }
+	| {
+			type: 'replace-block';
+			path: string;
+			oldText: string;
+			newText: string;
+			baseMtime?: number;
+	  }
+	| {
+			type: 'append';
+			path: string;
+			content: string;
+			heading?: string;
+			baseMtime?: number;
+	  }
+	| {
+			type: 'update-frontmatter';
+			path: string;
+			set?: Record<string, unknown>;
+			remove?: string[];
+			baseMtime?: number;
 	  };
+
+export type ChangeOperationType = ChangeOperation['type'];
 
 export interface ChangeSet {
 	id: string;
@@ -33,7 +56,9 @@ export type ValidationErrorCode =
 	| 'heading_not_found'
 	| 'operation_conflict'
 	| 'stale_base'
-	| 'invalid_content';
+	| 'invalid_content'
+	| 'target_not_found'
+	| 'ambiguous_match';
 
 export interface ValidationError {
 	operationIndex: number;
@@ -63,7 +88,7 @@ export interface DiffHunk {
 
 export interface FileDiff {
 	path: string;
-	operationType: 'create' | 'patch-section' | 'edit';
+	operationType: ChangeOperationType;
 	heading?: string;
 	oldContent: string;
 	newContent: string;

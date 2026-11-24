@@ -1,11 +1,11 @@
-import {
+import type {
 	AppliedChangeSet,
 	ChangeSet,
 	ChangeSetSnapshot,
 	MutationService,
 	RollbackResult,
 } from '../types/changes';
-import { ChangeSetValidator } from './validator';
+import type { ChangeSetValidator } from './validator';
 
 export class ChangeSetApplicator {
 	private mutationService: MutationService;

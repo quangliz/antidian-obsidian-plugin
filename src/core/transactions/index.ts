@@ -1,5 +1,7 @@
-import { ChangeOperation, ChangeSet } from '../types/changes';
+import type { ChangeOperation, ChangeSet } from '../types/changes';
 
+export * from './markdown';
+export * from './overlay';
 export * from './validator';
 export * from './diff';
 export * from './applicator';

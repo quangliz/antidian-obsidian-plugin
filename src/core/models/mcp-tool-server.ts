@@ -1,6 +1,6 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
-import { ToolContext, ToolRegistry } from '../tools';
+import type { ToolContext, ToolRegistry } from '../tools';
 
 export interface McpToolServerInfo {
 	url: string;
@@ -199,6 +199,31 @@ export class McpToolServer {
 			}
 
 			this.onToolStart?.({ toolName: name, toolArgs: args });
+
+			if (
+				tool.mutates &&
+				this.activeTurnContext?.permissionMode === 'plan'
+			) {
+				const blockedOutput = {
+					staged: false,
+					blockedByPlanMode: true,
+					message: `Plan Mode (read-only) is active: "${name}" was not staged. Present your proposed changes to the user in markdown instead.`,
+				};
+				this.onToolEnd?.({
+					toolName: name,
+					toolArgs: args,
+					toolOutput: blockedOutput,
+				});
+				this.sendResult(res, msg.id, {
+					content: [
+						{
+							type: 'text',
+							text: JSON.stringify(blockedOutput),
+						},
+					],
+				});
+				return;
+			}
 
 			try {
 				const output = await tool.execute(args, this.activeTurnContext);

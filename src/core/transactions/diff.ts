@@ -1,11 +1,13 @@
-import {
+import type {
 	ChangeSet,
 	ChangeSetDiff,
 	DiffHunk,
 	DiffLine,
 	FileDiff,
 } from '../types/changes';
-import { VaultService } from '../types/vault';
+import type { VaultService } from '../types/vault';
+import { applyOperationToContent } from './overlay';
+import { extractSection } from './markdown';
 
 export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
 	const oldLines = oldText ? oldText.split('\n') : [];
@@ -82,30 +84,60 @@ export class ChangeSetDiffGenerator {
 		const files: FileDiff[] = [];
 		let totalAdditions = 0;
 		let totalDeletions = 0;
+		const runningContents = new Map<string, string | null>();
+
+		const getCurrentContent = async (
+			path: string,
+		): Promise<string | null> => {
+			const norm = this.vaultService.normalizePath(path);
+			if (runningContents.has(norm)) {
+				return runningContents.get(norm) ?? null;
+			}
+			const existing = await this.vaultService.readNote({ path });
+			const content = existing?.content ?? null;
+			runningContents.set(norm, content);
+			return content;
+		};
 
 		for (const op of changeSet.operations) {
-			let oldContent = '';
-			let headingHeader: string | undefined;
+			const norm = this.vaultService.normalizePath(op.path);
+			const beforeFull = await getCurrentContent(op.path);
+			const applied = applyOperationToContent(beforeFull, op);
+			const afterFull = applied.ok
+				? applied.content
+				: (beforeFull ?? '');
 
-			if (op.type === 'create') {
-				oldContent = '';
-				headingHeader = undefined;
-			} else if (op.type === 'patch-section') {
-				const existing = await this.vaultService.readNote({
-					path: op.path,
-					heading: op.heading,
-				});
-				oldContent = existing?.content ?? '';
-				headingHeader = `## ${op.heading}`;
-			} else if (op.type === 'edit') {
-				const existing = await this.vaultService.readNote({
-					path: op.path,
-				});
-				oldContent = existing?.content ?? '';
-				headingHeader = undefined;
+			if (applied.ok) {
+				runningContents.set(norm, afterFull);
 			}
 
-			const lines = computeLineDiff(oldContent, op.content);
+			let oldDiffText = beforeFull ?? '';
+			let newDiffText = afterFull;
+			let headingHeader: string | undefined;
+			let headingValue: string | undefined;
+
+			if (op.type === 'patch-section') {
+				oldDiffText = beforeFull
+					? (extractSection(beforeFull, op.heading) ?? beforeFull)
+					: '';
+				newDiffText =
+					extractSection(afterFull, op.heading) ?? op.content;
+				headingHeader = `## ${op.heading}`;
+				headingValue = op.heading;
+			} else if (op.type === 'replace-block') {
+				oldDiffText = op.oldText;
+				newDiffText = op.newText;
+				headingHeader = 'Replace block';
+			} else if (op.type === 'append') {
+				headingHeader = op.heading
+					? `Append under ## ${op.heading}`
+					: 'Append to end';
+				headingValue = op.heading;
+			} else if (op.type === 'update-frontmatter') {
+				headingHeader = 'Frontmatter';
+			}
+
+			const lines = computeLineDiff(oldDiffText, newDiffText);
 
 			let additions = 0;
 			let deletions = 0;
@@ -127,9 +159,9 @@ export class ChangeSetDiffGenerator {
 			files.push({
 				path: op.path,
 				operationType: op.type,
-				heading: op.type === 'patch-section' ? op.heading : undefined,
-				oldContent,
-				newContent: op.content,
+				heading: headingValue,
+				oldContent: oldDiffText,
+				newContent: newDiffText,
 				hunks,
 				additions,
 				deletions,

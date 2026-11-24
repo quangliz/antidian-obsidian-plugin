@@ -1,14 +1,16 @@
 import { ActiveContext, ContextReference } from '../types/context';
 import { Message, MediaInput } from '../types/model';
 import { ChangeSet } from '../types/changes';
-import { Tool, ToolRegistry } from '../tools';
+import { HarnessPermissionMode, Tool, ToolRegistry } from '../tools';
 import { ChangeStagingManager } from '../transactions';
+import { ContextCompiler } from '../context/compiler';
 import { AntigravityProvider } from '../models/antigravity-provider';
 
 export interface AgentOptions {
 	provider: AntigravityProvider;
 	tools?: ToolRegistry | Tool[];
 	stagingManager?: ChangeStagingManager;
+	contextCompiler?: ContextCompiler;
 	systemPrompt?: string;
 }
 
@@ -39,19 +41,39 @@ export interface AgentRunResult {
 	};
 }
 
-export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent note-taking companion inside Obsidian.
-Use the anti-dian-vault MCP tools (search_notes, read_note, create_note, edit_note, patch_note) for all Obsidian vault operations so changes are staged safely for user review and approval.
-Never write directly to vault files via raw filesystem or shell tools.
-When citing notes, use [[Note Name]] wikilink syntax. Keep responses helpful and concise.`;
+export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent note-taking and knowledge harness running inside Obsidian.
+
+Tool rules (strict):
+- ALWAYS use the \`anti-dian-vault\` MCP tools for every vault operation.
+- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary.
+- Built-in web search (\`search_web\`) may be used when external information is needed.
+
+Recommended vault workflow:
+1. Discover & orient cheaply: use \`list_notes\` or \`search_notes\`, then \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading long notes in full with \`read_note\`.
+2. Prefer structural edits over whole-file rewrites:
+   - \`replace_block\` for localized exact-text edits
+   - \`patch_note\` for replacing a specific heading section
+   - \`append_note\` for adding content to the end of a note or under a heading
+   - \`update_frontmatter\` for setting or removing YAML properties
+   - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
+3. All write tools stage changes for user diff/approval; \`read_note\` and \`get_note_outline\` automatically reflect edits staged earlier in the same turn.
+4. If available vault skills are listed in context and match the request, call \`load_skill\` before proceeding.
+5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
+
+Formatting:
+- Cite vault notes with \`[[Note Name]]\` wikilink syntax.
+- Keep responses helpful, accurate, and concise.`;
 
 export class Agent {
 	private provider: AntigravityProvider;
 	private registry: ToolRegistry;
 	private stagingManager?: ChangeStagingManager;
+	private contextCompiler: ContextCompiler;
 
 	constructor(options: AgentOptions) {
 		this.provider = options.provider;
 		this.stagingManager = options.stagingManager;
+		this.contextCompiler = options.contextCompiler ?? new ContextCompiler();
 
 		if (options.tools instanceof ToolRegistry) {
 			this.registry = options.tools;
@@ -74,6 +96,7 @@ export class Agent {
 	}
 
 	async resetSession(): Promise<void> {
+		this.contextCompiler.reset();
 		await this.provider.resetSession();
 	}
 
@@ -84,32 +107,19 @@ export class Agent {
 		onStep?: (event: AgentStepEvent) => void,
 		media?: MediaInput[],
 		beforeTool?: () => Promise<void>,
+		permissionMode: HarnessPermissionMode = 'ask',
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
 		const activeTurnChangeSet = this.stagingManager?.startTurn();
 
-		let contextPrefix = '';
-		if (context?.activeFile) {
-			const noteName = context.activeFile
-				.replace(/\.md$/, '')
-				.split('/')
-				.pop();
-			contextPrefix += `[Current Active Note: [[${noteName}]] (path: ${context.activeFile})]`;
-			if (context.selection) {
-				contextPrefix += `\n[Selected Text in Editor:\n${context.selection}\n]`;
-			}
-			contextPrefix += '\n\n';
-
-			rawContextUsed.push({
-				path: context.activeFile,
-				reason: 'Active note',
-			});
-		}
-
-		const fullUserPrompt = contextPrefix
-			? `${contextPrefix}${userMessage}`
-			: userMessage;
+		const compiled = await this.contextCompiler.compile(
+			userMessage,
+			context,
+			permissionMode,
+		);
+		rawContextUsed.push(...compiled.contextRefs);
+		const fullUserPrompt = compiled.prompt;
 
 		const currentMessages: Message[] = [
 			...history,
@@ -127,6 +137,7 @@ export class Agent {
 		mcpServer?.setTurnContext(
 			{
 				context,
+				permissionMode,
 				recordContext: (ref: ContextReference) => {
 					rawContextUsed.push(ref);
 				},

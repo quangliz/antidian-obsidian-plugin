@@ -10,6 +10,7 @@ import {
 } from './obsidian/views/antidian-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
+import { ObsidianSkillAdapter } from './obsidian/adapters/skills';
 import { AntigravityProvider } from './core/models/antigravity-provider';
 import { McpToolServer } from './core/models/mcp-tool-server';
 import {
@@ -17,14 +18,23 @@ import {
 	ChangeSetValidator,
 	ChangeSetDiffGenerator,
 	ChangeSetApplicator,
+	StagedVaultOverlay,
 } from './core/transactions';
+import { ContextCompiler } from './core/context/compiler';
 import {
 	ToolRegistry,
+	createListNotesTool,
+	createGetNoteOutlineTool,
 	createSearchNotesTool,
 	createReadNoteTool,
 	createCreateNoteTool,
 	createEditNoteTool,
 	createPatchNoteTool,
+	createReplaceBlockTool,
+	createAppendNoteTool,
+	createUpdateFrontmatterTool,
+	createListSkillsTool,
+	createLoadSkillTool,
 } from './core/tools';
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
@@ -33,7 +43,10 @@ export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
+	skillAdapter!: ObsidianSkillAdapter;
 	stagingManager!: ChangeStagingManager;
+	vaultOverlay!: StagedVaultOverlay;
+	contextCompiler!: ContextCompiler;
 	validator!: ChangeSetValidator;
 	diffGenerator!: ChangeSetDiffGenerator;
 	applicator!: ChangeSetApplicator;
@@ -47,7 +60,16 @@ export default class AntiDianPlugin extends Plugin {
 
 		this.workspaceAdapter = new ObsidianWorkspaceAdapter(this.app);
 		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
+		this.skillAdapter = new ObsidianSkillAdapter(this.app);
 		this.stagingManager = new ChangeStagingManager();
+		this.vaultOverlay = new StagedVaultOverlay(
+			this.vaultAdapter,
+			this.stagingManager,
+		);
+		this.contextCompiler = new ContextCompiler({
+			vaultService: this.vaultAdapter,
+			skillService: this.skillAdapter,
+		});
 		this.validator = new ChangeSetValidator(this.vaultAdapter);
 		this.diffGenerator = new ChangeSetDiffGenerator(this.vaultAdapter);
 		this.applicator = new ChangeSetApplicator(
@@ -56,11 +78,24 @@ export default class AntiDianPlugin extends Plugin {
 		);
 
 		this.toolRegistry = new ToolRegistry();
+		this.toolRegistry.register(createListNotesTool(this.vaultAdapter));
+		this.toolRegistry.register(
+			createGetNoteOutlineTool(this.vaultAdapter, this.vaultOverlay),
+		);
 		this.toolRegistry.register(createSearchNotesTool(this.vaultAdapter));
-		this.toolRegistry.register(createReadNoteTool(this.vaultAdapter));
+		this.toolRegistry.register(
+			createReadNoteTool(this.vaultAdapter, this.vaultOverlay),
+		);
 		this.toolRegistry.register(createCreateNoteTool(this.stagingManager));
-		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
 		this.toolRegistry.register(createPatchNoteTool(this.stagingManager));
+		this.toolRegistry.register(createReplaceBlockTool(this.stagingManager));
+		this.toolRegistry.register(createAppendNoteTool(this.stagingManager));
+		this.toolRegistry.register(
+			createUpdateFrontmatterTool(this.stagingManager),
+		);
+		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
+		this.toolRegistry.register(createListSkillsTool(this.skillAdapter));
+		this.toolRegistry.register(createLoadSkillTool(this.skillAdapter));
 
 		this.mcpToolServer = new McpToolServer(this.toolRegistry);
 
@@ -80,6 +115,7 @@ export default class AntiDianPlugin extends Plugin {
 			provider: this.antigravityProvider,
 			tools: this.toolRegistry,
 			stagingManager: this.stagingManager,
+			contextCompiler: this.contextCompiler,
 		});
 
 		this.registerView(

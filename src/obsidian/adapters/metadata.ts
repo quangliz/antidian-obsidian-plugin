@@ -14,4 +14,16 @@ export class ObsidianMetadataAdapter {
 	getFirstLinkpathDest(linkpath: string, defaultPath = ''): TFile | null {
 		return this.cache.getFirstLinkpathDest(linkpath, defaultPath);
 	}
+
+	getBacklinks(targetPath: string): string[] {
+		const backlinks: string[] = [];
+		const resolved = this.cache.resolvedLinks;
+		for (const [sourcePath, targets] of Object.entries(resolved)) {
+			if (targets && Object.prototype.hasOwnProperty.call(targets, targetPath)) {
+				backlinks.push(sourcePath);
+			}
+		}
+		backlinks.sort();
+		return backlinks;
+	}
 }
