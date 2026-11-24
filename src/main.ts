@@ -11,7 +11,6 @@ import {
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
 import { ObsidianSkillAdapter } from './obsidian/adapters/skills';
-import { ObsidianSessionTraceStore } from './obsidian/adapters/session-traces';
 import { AntigravityProvider } from './core/models/antigravity-provider';
 import { McpToolServer } from './core/models/mcp-tool-server';
 import {
@@ -49,7 +48,6 @@ export default class AntiDianPlugin extends Plugin {
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
 	skillAdapter!: ObsidianSkillAdapter;
-	sessionTraceStore!: ObsidianSessionTraceStore;
 	stagingManager!: ChangeStagingManager;
 	vaultOverlay!: StagedVaultOverlay;
 	contextCompiler!: ContextCompiler;
@@ -68,10 +66,6 @@ export default class AntiDianPlugin extends Plugin {
 		this.workspaceAdapter = new ObsidianWorkspaceAdapter(this.app);
 		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
 		this.skillAdapter = new ObsidianSkillAdapter(this.app);
-		this.sessionTraceStore = new ObsidianSessionTraceStore(
-			this.app,
-			this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
-		);
 		this.stagingManager = new ChangeStagingManager();
 		this.vaultOverlay = new StagedVaultOverlay(
 			this.vaultAdapter,

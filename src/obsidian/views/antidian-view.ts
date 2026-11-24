@@ -27,10 +27,8 @@ import {
 import { ModelMenuController } from './model-menu-view';
 import { SessionMenuController } from './session-menu-view';
 import { UNTITLED_SESSION } from './session-format';
-import {
-	TurnTraceRecorder,
-	mergeStoredTraces,
-} from '../../core/sessions/trace';
+import { mergeStoredTraces } from '../../core/sessions/trace';
+import { loadAgyTranscriptTurns } from '../../core/sessions/transcript';
 import type { TurnUsage } from '../../core/types/sessions';
 import { PromptBarView } from './prompt-bar-view';
 import { ThinkingStateView } from './thinking-state-view';
@@ -278,9 +276,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		try {
 			const [replayed, stored] = await Promise.all([
 				this.agent.loadSession(session.sessionId),
-				this.plugin.sessionTraceStore
-					.loadTurns(session.sessionId)
-					.catch(() => []),
+				loadAgyTranscriptTurns(session.sessionId).catch(() => []),
 			]);
 			if (myToken !== this.turnToken) return;
 			loadingEl?.remove();
@@ -363,26 +359,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 		}
 		trace.settle({ replayed: true, durationMs });
-	}
-
-	/** Keeps this turn's reasoning and tool results; the CLI does not store them. */
-	private saveTurnTrace(
-		userText: string,
-		recorder: TurnTraceRecorder,
-		extra: { durationMs: number; usage?: TurnUsage; cancelled?: boolean },
-	): void {
-		const sessionId = this.plugin.antigravityProvider.getSessionId();
-		if (!sessionId || !userText) return;
-		void this.plugin.sessionTraceStore
-			.appendTurn(sessionId, {
-				userText,
-				events: recorder.snapshot(),
-				durationMs: Math.round(extra.durationMs),
-				usage: extra.usage,
-				cancelled: extra.cancelled || undefined,
-				savedAt: new Date().toISOString(),
-			})
-			.catch((err) => console.warn('Anti-dian: could not save turn trace', err));
 	}
 
 	private clearMessages(): void {
@@ -568,8 +544,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 			},
 		});
 		this.activeThinking = thinkingState;
-		const traceRecorder = new TurnTraceRecorder();
-		const turnStartedAt = performance.now();
 		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 		let receivedMarkdown = '';
 		let streamedMarkdown = '';
@@ -666,7 +640,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 				activeCtx,
 				this.history,
 				(step: AgentStepEvent) => {
-					traceRecorder.record(step);
 					if (step.type === 'answer_start') {
 						if (streamAnimationFrame !== null) {
 							window.cancelAnimationFrame(streamAnimationFrame);
@@ -798,12 +771,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.lastTurnPromptTokens = result.usage.promptTokens;
 				this.renderUsageFooter(agentMsg, result.usage);
 			}
-
-			this.saveTurnTrace(text, traceRecorder, {
-				durationMs: performance.now() - turnStartedAt,
-				usage: result.usage,
-				cancelled: result.cancelled,
-			});
 		} catch (err) {
 			if (myToken !== this.turnToken) return;
 			thinkingState.settle();

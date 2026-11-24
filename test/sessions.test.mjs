@@ -237,3 +237,124 @@ test('parseStoredTurns drops malformed entries', () => {
 	]);
 	assert.deepEqual(parseStoredTurns('garbage'), []);
 });
+
+const transcriptMod = await import('../src/core/sessions/transcript.ts');
+const {
+	getAgyTranscriptPaths,
+	loadAgyTranscriptTurns,
+	parseAgyTranscriptJsonl,
+} = transcriptMod;
+
+test('parseAgyTranscriptJsonl extracts turns, tool calls, outputs, durations, and usage', () => {
+	const jsonl = [
+		JSON.stringify({
+			step_index: 0,
+			type: 'USER_INPUT',
+			status: 'DONE',
+			created_at: '2026-11-24T12:40:46Z',
+			content:
+				'<USER_REQUEST>\n[Vault Skills: none configured]\n\n[Current Active Note: [[a]] (path: a.md)]\n\nsummarize note\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\ntime\n</ADDITIONAL_METADATA>',
+		}),
+		JSON.stringify({
+			step_index: 1,
+			type: 'PLANNER_RESPONSE',
+			status: 'DONE',
+			created_at: '2026-11-24T12:40:47Z',
+			input_tokens: 1000,
+			cache_read_tokens: 500,
+			output_tokens: 50,
+			tool_calls: [
+				{
+					name: 'mcp_anti-dian-vault_read_note',
+					args: { path: '"a.md"', toolSummary: '"Read a"' },
+				},
+			],
+		}),
+		JSON.stringify({
+			step_index: 2,
+			type: 'GENERIC',
+			status: 'DONE',
+			created_at: '2026-11-24T12:40:48Z',
+			content:
+				'Created At: 2026-11-24T12:40:48Z\nCompleted At: 2026-11-24T12:40:49Z\n{"path":"a.md","content":"hello"}',
+		}),
+		JSON.stringify({
+			step_index: 3,
+			type: 'PLANNER_RESPONSE',
+			status: 'DONE',
+			created_at: '2026-11-24T12:40:51Z',
+			input_tokens: 200,
+			cache_read_tokens: 1200,
+			output_tokens: 120,
+			content: 'Summary text',
+		}),
+		'not valid json',
+	].join('\n');
+
+	const turns = parseAgyTranscriptJsonl(jsonl);
+	assert.equal(turns.length, 1);
+	const [turn] = turns;
+	assert.equal(turn.userText, 'summarize note');
+	assert.equal(turn.durationMs, 5000);
+	assert.deepEqual(turn.usage, {
+		promptTokens: 2900,
+		candidatesTokens: 170,
+		totalTokens: 3070,
+		cachedReadTokens: 1700,
+		cachedWriteTokens: 0,
+		thoughtTokens: 0,
+	});
+	assert.equal(turn.events.length, 1);
+	assert.equal(turn.events[0].type, 'tool');
+	assert.equal(turn.events[0].toolName, 'read_note');
+	assert.deepEqual(turn.events[0].toolArgs, { path: 'a.md' });
+	assert.equal(turn.events[0].status, 'completed');
+	assert.deepEqual(turn.events[0].output, { path: 'a.md', content: 'hello' });
+});
+
+test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns reads from disk', async () => {
+	assert.deepEqual(getAgyTranscriptPaths('../evil'), []);
+
+	const fs = await import('node:fs');
+	const os = await import('node:os');
+	const path = await import('node:path');
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-tr-'));
+	try {
+		const logsDir = path.join(
+			tmpHome,
+			'.gemini',
+			'antigravity-anti-dian',
+			'brain',
+			'sess-123',
+			'.system_generated',
+			'logs',
+		);
+		fs.mkdirSync(logsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(logsDir, 'transcript_full.jsonl'),
+			JSON.stringify({
+				type: 'USER_INPUT',
+				created_at: '2026-11-24T12:00:00Z',
+				content: '<USER_REQUEST>\nhi\n</USER_REQUEST>',
+			}) +
+				'\n' +
+				JSON.stringify({
+					type: 'PLANNER_RESPONSE',
+					created_at: '2026-11-24T12:00:02Z',
+					input_tokens: 10,
+					output_tokens: 5,
+					content: 'hello',
+				}),
+		);
+		const turns = await loadAgyTranscriptTurns(
+			'sess-123',
+			'antigravity-anti-dian',
+			tmpHome,
+		);
+		assert.equal(turns.length, 1);
+		assert.equal(turns[0].userText, 'hi');
+		assert.equal(turns[0].durationMs, 2000);
+	} finally {
+		fs.rmSync(tmpHome, { recursive: true, force: true });
+	}
+});
