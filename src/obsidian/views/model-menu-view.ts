@@ -10,6 +10,7 @@ import {
 	formatTokens,
 	groupModels,
 } from '../../core/models/antigravity-acp';
+import { attachNativeMenuGlider } from './menu-glider';
 
 export interface ModelMenuContext {
 	getCurrentModelId: () => string;
@@ -136,6 +137,7 @@ export class ModelMenuController {
 
 		const menu = new Menu();
 		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
+		attachNativeMenuGlider(menu);
 		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
 
 		for (const group of groups) {
@@ -148,6 +150,7 @@ export class ModelMenuController {
 					const submenu = (item as MenuItemWithSubmenu).setSubmenu?.();
 					if (!submenu) return;
 					(submenu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
+					attachNativeMenuGlider(submenu);
 					submenu.addItem((sub) => sub.setTitle('Thinking effort').setIsLabel(true));
 					for (const variant of group.variants) {
 						submenu.addItem((sub) =>

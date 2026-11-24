@@ -46,7 +46,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private unsubscribeSessionInfo: (() => void) | null = null;
 	private modelMenuController: ModelMenuController;
 	private sessionMenu: SessionMenuController | null = null;
-	private sessionTriggerEl: HTMLElement | null = null;
 	private sessionTitleEl: HTMLElement | null = null;
 	/** Session being loaded; its title is shown until the CLI confirms the switch. */
 	private loadingSession: AcpSessionSummary | null = null;
@@ -153,7 +152,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 			if (
 				this.sessionMenu?.isOpen() &&
-				!target.closest('.anti-dian-session-menu') &&
+				!target.closest('.anti-dian-session-drawer-panel') &&
 				!target.closest('.anti-dian-session-trigger')
 			) {
 				this.sessionMenu.close();
@@ -191,21 +190,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.topNavEl = this.rootEl.createDiv({ cls: 'anti-dian-top-nav' });
 
 		const vaultName = this.app.vault.getName() || 'anti-dian';
-		const trigger = this.topNavEl.createEl('button', {
-			cls: 'anti-dian-nav-left anti-dian-session-trigger',
-			attr: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
-		});
-		this.sessionTriggerEl = trigger;
-		const sessionIcon = trigger.createSpan({ cls: 'anti-dian-nav-icon' });
-		setIcon(sessionIcon, 'messages-square');
-		this.sessionTitleEl = trigger.createSpan({ cls: 'anti-dian-nav-title' });
-		const chevronIcon = trigger.createSpan({
-			cls: 'anti-dian-nav-chevron',
-		});
-		setIcon(chevronIcon, 'chevron-down');
-		setTooltip(trigger, `Sessions in ${vaultName}`);
-
-		this.sessionMenu = new SessionMenuController(this.topNavEl, {
+		this.sessionMenu = new SessionMenuController(this.rootEl, {
 			getVaultName: () => vaultName,
 			listSessions: () => this.agent.listSessions(),
 			getCurrentSessionId: () =>
@@ -213,11 +198,26 @@ export class AntiDianView extends ItemView implements HoverParent {
 			onSelectSession: (session) => void this.switchSession(session),
 			onNewSession: () => this.startNewSession(),
 		});
-		trigger.onclick = (e) => {
-			e.stopPropagation();
-			this.modelMenuController.closeMenu();
-			this.sessionMenu?.toggle(trigger);
+
+		const leftGroup = this.topNavEl.createDiv({ cls: 'anti-dian-nav-left' });
+		const addDrawerButton = (icon: string, tooltip: string, search: boolean) => {
+			const btn = leftGroup.createEl('button', {
+				cls: 'anti-dian-nav-btn anti-dian-session-trigger',
+				attr: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
+			});
+			setIcon(btn, icon);
+			setTooltip(btn, tooltip);
+			btn.onclick = (e) => {
+				e.stopPropagation();
+				this.modelMenuController.closeMenu();
+				this.sessionMenu?.toggle(btn, { search });
+			};
+			return btn;
 		};
+		addDrawerButton('panel-left', `Conversations in ${vaultName}`, false);
+		addDrawerButton('search', 'Search conversations', true);
+
+		this.sessionTitleEl = this.topNavEl.createSpan({ cls: 'anti-dian-nav-title' });
 		this.updateSessionTitle();
 
 		const rightGroup = this.topNavEl.createDiv({
@@ -228,8 +228,9 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-nav-btn',
 		});
 		setIcon(newSessionBtn, 'plus');
-		setTooltip(newSessionBtn, 'New chat session');
+		setTooltip(newSessionBtn, 'New conversation');
 		newSessionBtn.onclick = () => {
+			this.sessionMenu?.close();
 			this.startNewSession();
 		};
 	}
@@ -245,7 +246,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 					? UNTITLED_SESSION
 					: 'New chat'));
 		this.sessionTitleEl.setText(title);
-		this.sessionTriggerEl?.toggleClass('is-loading', !!this.loadingSession);
+		this.sessionTitleEl.setAttribute('title', title);
+		this.sessionTitleEl.toggleClass('is-loading', !!this.loadingSession);
 	}
 
 	private async switchSession(session: AcpSessionSummary): Promise<void> {

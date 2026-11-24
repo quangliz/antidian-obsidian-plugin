@@ -11,6 +11,7 @@ import type AntiDianPlugin from '../../main';
 import { ActiveContext } from '../../core/types/context';
 import { MediaInput } from '../../core/types/model';
 import type { PermissionMode } from '../../settings';
+import { MenuGlider, attachNativeMenuGlider } from './menu-glider';
 
 export interface PromptBarCallbacks {
 	onSend: (text: string, media: MediaInput[]) => void | Promise<void>;
@@ -675,6 +676,7 @@ export class PromptBarView {
 
 		const currentMode = this.plugin.settings.permissionMode ?? 'ask';
 		const menu = new Menu();
+		attachNativeMenuGlider(menu);
 		menu.addItem((item) => item.setTitle('Permission').setIsLabel(true));
 		for (const option of PERMISSION_MODES) {
 			menu.addItem((item) => {
@@ -970,6 +972,7 @@ export class PromptBarView {
 		const listEl = menuEl.createDiv({
 			cls: 'anti-dian-context-menu-list',
 		});
+		new MenuGlider(listEl).trackHover('.anti-dian-context-menu-row');
 
 		for (const item of items) {
 			const rowBtn = listEl.createEl('button', {

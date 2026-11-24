@@ -15,6 +15,7 @@ import {
 	filterSessions,
 	formatRelativeTime,
 	groupSessionsByRecency,
+	searchSessions,
 } from '../src/obsidian/views/session-format.ts';
 
 test('stripCompiledContext recovers the typed text from every compiled prompt shape', async () => {
@@ -166,6 +167,39 @@ test('session picker helpers group, filter, and format recency', () => {
 	assert.equal(formatRelativeTime(undefined, now), '');
 	assert.deepEqual(filterSessions(sessions, 'QUANT bo').map((s) => s.sessionId), ['1']);
 	assert.deepEqual(filterSessions(sessions, 'untitled').map((s) => s.sessionId), ['4']);
+});
+
+test('searchSessions ranks diacritic-insensitive, acronym, typo and fuzzy matches', () => {
+	const sessions = [
+		{ sessionId: 'a', title: 'Antigravity Harness Usage' },
+		{ sessionId: 'b', title: 'Cập Nhật UI Antigravity cho sidebar' },
+		{ sessionId: 'c', title: 'AI Thinking And Tool Usage' },
+		{ sessionId: 'd', title: 'Review Repo Documentation' },
+		{ sessionId: 'e', title: 'Casual Greeting' },
+		{ sessionId: 'f', title: 'Đề cương điện toán lượng tử' },
+	];
+	const ids = (q) => searchSessions(sessions, q).map((h) => h.session.sessionId);
+
+	// Diacritics and đ fold away; highlight ranges point into the original title.
+	assert.deepEqual(ids('cap nhat'), ['b']);
+	assert.deepEqual(ids('dien toan'), ['f']);
+	const [hit] = searchSessions(sessions, 'nhat');
+	assert.equal('Cập Nhật UI Antigravity cho sidebar'.slice(...hit.ranges[0]), 'Nhật');
+
+	// Title starting with the word ranks above a mid-title match.
+	assert.deepEqual(ids('antigravity'), ['a', 'b']);
+	// Word initials.
+	assert.equal(ids('tatu')[0], 'c');
+	// Typos.
+	assert.deepEqual(ids('antigravty'), ['a', 'b']);
+	assert.deepEqual(ids('reveiw'), ['d']);
+	// Compact subsequence.
+	assert.deepEqual(ids('grtng'), ['e']);
+	// Every term must match; empty query keeps everything in order.
+	assert.deepEqual(ids('review greeting'), []);
+	assert.equal(ids('  ').length, sessions.length);
+	// Phrase match outranks scattered terms.
+	assert.equal(ids('tool usage')[0], 'c');
 });
 
 const traceMod = await import('../src/core/sessions/trace.ts');
