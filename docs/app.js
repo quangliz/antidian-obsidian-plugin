@@ -54,63 +54,6 @@ function press(buttons, active) {
 	buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === active)));
 }
 
-/* ── Example skills ──────────────────────────────────────────────────────── */
-
-const skillCode = document.getElementById('skill-code');
-const skillPath = document.getElementById('skill-path');
-const SKILLS = {
-	daily: skillCode.textContent,
-	meeting: `---
-name: meeting-notes
-description: Turn raw meeting notes into decisions, owners and next steps.
----
-
-# Meeting notes
-
-1. Read the active note and any project note it links to.
-2. Pull out decisions, open questions and who owns what.
-3. Link people and projects that already have a note.
-4. Replace only the "Summary" section.`,
-	books: `---
-name: book-log
-description: Add a finished book to the reading log with consistent properties.
----
-
-# Book log
-
-1. Read two existing book notes to match their properties.
-2. Create the new note in the same folder.
-3. Set author, finished and rating. Leave unknown values empty.
-4. Link the book from the reading list.`,
-};
-const SKILL_NAMES = { daily: 'daily-review', meeting: 'meeting-notes', books: 'book-log' };
-
-document.querySelectorAll('[data-skill]').forEach((btn, _, all) => {
-	btn.addEventListener('click', () => {
-		const key = btn.dataset.skill;
-		press(all, btn);
-		skillCode.textContent = SKILLS[key];
-		skillPath.textContent = `.anti-dian/skills/${SKILL_NAMES[key]}.md`;
-	});
-});
-
-/* ── Copy ────────────────────────────────────────────────────────────────── */
-
-document.querySelectorAll('[data-copy]').forEach((btn) => {
-	btn.addEventListener('click', async () => {
-		const source = document.querySelector(btn.dataset.copy);
-		try {
-			await navigator.clipboard.writeText(source.textContent);
-			btn.textContent = 'Copied';
-		} catch {
-			// Clipboard blocked: select the text so the user can copy it by hand.
-			window.getSelection()?.selectAllChildren(source);
-			btn.textContent = 'Selected';
-		}
-		window.setTimeout(() => (btn.textContent = 'Copy'), 1600);
-	});
-});
-
 /* ── Outline: mark the section being read ────────────────────────────────── */
 
 const links = [...document.querySelectorAll('.outline a')];

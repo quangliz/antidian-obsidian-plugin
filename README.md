@@ -1,66 +1,36 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Anti-dian logo" width="140">
+</p>
+
 # Anti-dian
 
-An AI noting assistant for **Obsidian Desktop**, powered by the official **Antigravity CLI (`agy`)**.
+**Antigravity for Obsidian.** Anti-dian brings Google's Antigravity agent into your vault, powered by the official **Antigravity CLI (`agy`)**.
 
-Anti-dian works with your existing vault without forcing a folder structure or methodology—pair your notes with safe, reviewable AI edits.
+Chat with your notes, and let the agent read, write, and edit them with you. It works with the vault you already have, and edits can be reviewed and undone.
 
-## Highlights
-
-- **Chat with your vault**: Open the sidebar to ask questions, summarize, compare, or draft notes with live active-note context and clickable `[[wikilink]]` previews.
-- **Rich input**: Mention notes with `@`, run commands and your skills with `/` (such as `/compact` or `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
-- **Reads more than notes**: Ask about images, PDFs, audio, video, and Office documents (`.docx`, `.xlsx`, `.pptx`) in your vault (up to 100 MB each), as well as canvases and other text files.
-- **Interactive questions**: When clarifying requirements or options, the assistant can present structured single-select or multi-select question cards above the input bar with numbered shortcuts, a write-in **Other** field, and multi-question step navigation.
-- **Live planning & progress tracking**: Multi-step turns show an updating step checklist card (`pending`, `in_progress`, `done`, `skipped`, `failed`) below the collapsible thinking trace together with the current focus status and a live elapsed timer.
-- **Safe, reviewable edits**:
-  - **Ask** *(default)*: Reads are automatic; every edit shows a diff in the sidebar and inline in your note for you to **Accept** or **Reject**.
-  - **Plan**: Read-only mode—the assistant can explore and propose changes without modifying files.
-  - **Auto**: Applies valid edits immediately.
-  - Every applied edit can be rolled back with **Undo**.
-- **Organized conversations**: Search, pin, rename, delete, and **fork** conversations in a resizable per-vault drawer.
-- **Custom Vault Skills**: Drop reusable Markdown instructions into `.agents/skills/` to teach Anti-dian your own workflows.
-
-## Getting Started
+## Install
 
 **Requirements**: Obsidian Desktop `1.7.2+` and a Google account.
 
-1. Build the plugin (or copy a release into `<vault>/.obsidian/plugins/anti-dian/`):
-   ```bash
-   npm install && npm run build
+1. [Open Anti-dian in Obsidian](obsidian://show-plugin?id=anti-dian), then install and enable it. If the link is not clickable, paste this into your browser:
+   ```text
+   obsidian://show-plugin?id=anti-dian
    ```
-2. Enable **Anti-dian** in **Settings → Community plugins**.
-3. Open **Settings → Anti-dian** and click **Sign in with Google** (the `agy` backend downloads automatically on first use).
-4. Open the sidebar from the ribbon icon or run `Anti-dian: Open sidebar`.
+2. Open **Settings → Anti-dian** and click **Sign in with Google**. The `agy` backend downloads automatically on first use.
+3. Open the sidebar from the ribbon icon or run `Anti-dian: Open sidebar`.
 
-## Useful Commands
+## How It Works
 
-- `Anti-dian: Open sidebar` — Open or focus the chat sidebar.
-- `Anti-dian: Add selection to chat` — Attach the current editor selection (also in the editor right-click menu as **Add to anti-dian**).
-- `Anti-dian: Accept pending inline diff change` / `Reject pending inline diff change` — Review edits directly from the editor.
-- `Anti-dian: Undo last agent change` — Revert the most recent edit.
+Anti-dian runs `agy` in the background and talks to it over the **Agent Client Protocol (ACP)**:
 
-## Vault Skills
-
-Create `.agents/skills/<name>/SKILL.md` with a `name` and `description`:
-
-```markdown
----
-name: daily-review
-description: Summarize today's notes and extract open action items.
----
-
-# Daily Review
-...
-```
-
-The backend discovers skills when a conversation starts and loads them on demand, or you can run one with `/<name>`. Your global Antigravity skills are available too. Skills cannot run scripts or shell commands.
-
-Skills in the older `.anti-dian/skills/` folder are no longer loaded: move each one to `.agents/skills/<name>/SKILL.md`.
+- **From `agy`**: the agent itself, along with its models, conversations, slash commands, and skills.
+- **From Anti-dian**: its own **MCP server**, which gives the agent tools to search, read, and edit your vault through Obsidian, plus the chat interface and edit review.
 
 ## Privacy & Network Use
 
 - **Google account & AI requests**: Anti-dian authenticates with your Google account and sends your prompts, attached media, and the notes and files accessed during a conversation to Google's Antigravity backend via the `agy` CLI. It never uploads your entire vault.
 - **Backend binary**: If `agy` is not already installed, Anti-dian downloads and verifies the official Antigravity CLI binary from Google's release endpoint (or you can provide a local binary path in **Settings → Anti-dian → Advanced**).
 
-## Technical Details & Development
+## Development
 
-For architecture, MCP vault tools, the mutation/diff pipeline, backend configuration, and development scripts, see [ARCHITECTURE.md](./ARCHITECTURE.md) (and [AGENTS.md](./AGENTS.md) for contributor guidelines).
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for how it works and how to build it, and [AGENTS.md](./AGENTS.md) for contributor guidelines.
