@@ -266,16 +266,7 @@ export class ModelMenuController {
 		panel.empty();
 
 		const tier = quotaData?.accountTier ?? this.ctx.getAccountTier();
-		const accountSec = panel.createDiv({
-			cls: 'anti-dian-usage-section anti-dian-usage-account-section',
-		});
-		const accountHeader = accountSec.createDiv({
-			cls: 'anti-dian-usage-account-header',
-		});
-		const userCol = accountHeader.createDiv({
-			cls: 'anti-dian-usage-user-col',
-		});
-		const tierRow = userCol.createDiv({
+		const tierRow = panel.createDiv({
 			cls: 'anti-dian-usage-tier-row',
 		});
 		tierRow.createSpan({
@@ -292,13 +283,12 @@ export class ModelMenuController {
 		const groups = quotaData?.groups ?? [];
 		if (isLoadingQuota && groups.length === 0) {
 			panel.createDiv({ cls: 'anti-dian-menu-divider' });
-			const loadingSec = panel.createDiv({
-				cls: 'anti-dian-usage-section',
-			});
-			loadingSec.createDiv({
-				text: 'Loading quota limits...',
-				cls: 'anti-dian-usage-row-detail',
-			});
+			panel
+				.createDiv({ cls: 'anti-dian-usage-row' })
+				.createSpan({
+					text: 'Loading quota limits...',
+					cls: 'anti-dian-usage-row-detail',
+				});
 		}
 
 		for (const group of groups) {
@@ -338,7 +328,7 @@ export class ModelMenuController {
 			cls: 'anti-dian-usage-section',
 		});
 		sessionSec.createDiv({
-			text: 'Session Token Usage (Live)',
+			text: 'This session',
 			cls: 'anti-dian-usage-sec-title',
 		});
 
