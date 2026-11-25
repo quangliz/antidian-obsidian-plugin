@@ -102,8 +102,9 @@ export class AntigravityProvider {
 
 	async login(
 		onProgress?: (progress: BinaryDownloadProgress) => void,
+		switchAccount = false,
 	): Promise<void> {
-		return this.client.login(onProgress);
+		return this.client.login(onProgress, switchAccount);
 	}
 
 	async fetchModelConfig(): Promise<ModelConfig | null> {

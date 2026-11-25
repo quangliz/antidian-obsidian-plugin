@@ -200,3 +200,31 @@ test('AntigravityAcpClient reports why a sign-in failed and keeps the session', 
 		assert.deepEqual(agy.requests(), [`prompt ${id}`]);
 	});
 });
+
+test('AntigravityAcpClient signs out before switching accounts', async () => {
+	const cache = [];
+	await withClient(
+		async (client, agy) => {
+			await client.prompt('hi');
+			const id = client.getSessionId();
+			await client.login(undefined, true);
+			const auth = () => agy.rawLog().map((r) => r.method).filter((m) => /^(logout|authenticate)$/.test(m));
+			assert.deepEqual(auth(), ['logout', 'authenticate']);
+			assert.equal(cache.at(-1).accountTier, null);
+			assert.equal(cache.at(-1).quota, undefined);
+
+			// Once signed out, the old process is gone even if the sign-in fails.
+			await client.prompt('again');
+			agy.denyLogin();
+			await assert.rejects(client.login(undefined, true), /sign-in was denied/);
+			agy.requests();
+			await client.prompt('third');
+			assert.deepEqual(agy.requests(), [`resume ${id}`, `prompt ${id}`]);
+
+			// A plain sign-in never signs out.
+			await assert.rejects(client.login());
+			assert.equal(auth().filter((m) => m === 'logout').length, 2);
+		},
+		{ onCacheUpdate: (c) => cache.push(c) },
+	);
+});

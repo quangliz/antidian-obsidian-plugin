@@ -79,6 +79,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Account').setHeading();
 
 		let authButton: ButtonComponent | null = null;
+		let signedIn = false;
 		const authSetting = new Setting(containerEl)
 			.setName('Google account')
 			.setDesc(
@@ -106,15 +107,18 @@ export class AntiDianSettingTab extends PluginSettingTab {
 									: progress.message,
 							);
 							authSetting.setDesc(progress.message);
-						});
+						}, signedIn);
 						new Notice('Sign-in successful.');
 						this.display();
 					} catch (err) {
 						const message = err instanceof Error ? err.message : String(err);
 						new Notice(`Login failed: ${message}`);
 						authSetting.setDesc(`Not signed in (${message})`);
+						signedIn = false;
 						button.setDisabled(false);
 						button.setButtonText('Sign in with Google');
+						button.setTooltip('');
+						button.setCta();
 					}
 				});
 		});
@@ -361,8 +365,12 @@ export class AntiDianSettingTab extends PluginSettingTab {
 							? ` · ${status.tier.tierName}`
 							: '';
 						authSetting.setDesc(`Connected${tierLabel}`);
+						signedIn = true;
 						if (authButton) {
 							authButton.setButtonText('Re-authenticate');
+							authButton.setTooltip(
+								'Signs out of this account, which the agy CLI may share, then signs in again',
+							);
 							authButton.removeCta();
 						}
 

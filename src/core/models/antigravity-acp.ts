@@ -693,8 +693,13 @@ export class AntigravityAcpClient {
 		}
 	}
 
+	/**
+	 * @param switchAccount Sign out first. `agy` otherwise accepts any stored
+	 * credentials, even revoked ones, without opening the browser.
+	 */
 	async login(
 		onProgress?: (progress: BinaryDownloadProgress) => void,
+		switchAccount = false,
 	): Promise<void> {
 		await this.ensureBinary(onProgress);
 		// A separate process, so that a running conversation survives a sign-in
@@ -712,6 +717,15 @@ export class AntigravityAcpClient {
 			message: 'Finish signing in in your browser...',
 		});
 		try {
+			if (switchAccount) {
+				await client.ensureInitialized();
+				await client.sendRequest('logout', {});
+				// Signed out from here on, even if the new sign-in fails.
+				this.destroyProcess();
+				this.cachedTier = null;
+				this.cachedQuota = null;
+				this.emitCacheUpdate();
+			}
 			await client.authenticate();
 		} finally {
 			client.destroyProcess();
