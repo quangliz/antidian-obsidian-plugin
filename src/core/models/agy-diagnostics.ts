@@ -151,13 +151,20 @@ export function buildAgySecurityEnv(
 	}
 
 	if (options.extraBinDirs && options.extraBinDirs.length > 0) {
-		const parts = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+		const delimiter = platform === 'win32' ? ';' : ':';
+		// Windows names it `Path`. A second `PATH` key would replace it in the
+		// child, hiding System32, which `agy` needs to open the browser.
+		const pathKey =
+			platform === 'win32'
+				? (Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'Path')
+				: 'PATH';
+		const parts = (env[pathKey] ?? '').split(delimiter).filter(Boolean);
 		for (const dir of [...options.extraBinDirs].reverse()) {
 			if (dir && !parts.includes(dir)) {
 				parts.unshift(dir);
 			}
 		}
-		env.PATH = parts.join(path.delimiter);
+		env[pathKey] = parts.join(delimiter);
 	}
 
 	return env;

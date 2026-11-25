@@ -69,7 +69,13 @@ export interface BinarySidecarMetadata {
 }
 
 export interface BinaryDownloadProgress {
-	phase: 'manifest' | 'downloading' | 'verifying' | 'extracting' | 'installing';
+	phase:
+		| 'manifest'
+		| 'downloading'
+		| 'verifying'
+		| 'extracting'
+		| 'installing'
+		| 'signing-in';
 	message: string;
 	downloadedBytes?: number;
 	totalBytes?: number;

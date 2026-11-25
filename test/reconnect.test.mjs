@@ -21,7 +21,13 @@ import * as readline from 'node:readline';
 const send = (o) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...o }) + '\\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
 	const { id, method, params } = JSON.parse(line);
-	fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method, sessionId: params?.sessionId }) + '\\n');
+	fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method, sessionId: params?.sessionId, methodId: params?.methodId, pid: process.pid }) + '\\n');
+	if (method === 'authenticate') {
+		if (fs.existsSync(${JSON.stringify(path.join(dir, 'deny'))})) {
+			return send({ id, error: { code: -32603, message: 'sign-in was denied' } });
+		}
+		return send({ id, result: {} });
+	}
 	if (method === 'session/new') return send({ id, result: { sessionId: 'new-' + process.pid + '-' + id } });
 	if (method === 'session/load') {
 		if (params.sessionId === 'missing') return send({ id, error: { code: -32603, message: 'Session not found' } });
@@ -60,7 +66,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 			.map((r) => [r.method.slice(8), r.sessionId].filter(Boolean).join(' '));
 	};
 	try {
-		await run(client, { requests, loseSessions: () => fs.writeFileSync(gone, '') });
+		await run(client, {
+			requests,
+			loseSessions: () => fs.writeFileSync(gone, ''),
+			denyLogin: () => fs.writeFileSync(path.join(dir, 'deny'), ''),
+			rawLog: () => fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
+		});
 	} finally {
 		await client.destroy();
 		fs.rmSync(dir, { recursive: true, force: true });
@@ -155,5 +166,37 @@ test('AntigravityAcpClient reports a conversation it cannot resume instead of fo
 		await client.resetSession();
 		await client.prompt('fresh');
 		assert.notEqual(client.getSessionId(), id);
+	});
+});
+
+test('AntigravityAcpClient signs in through the browser auth method', async () => {
+	await withClient(async (client, agy) => {
+		await client.prompt('hi');
+		const id = client.getSessionId();
+		const progress = [];
+		await client.login((p) => progress.push(p.phase));
+		assert.deepEqual(progress, ['signing-in']);
+
+		const log = agy.rawLog();
+		const auth = log.find((r) => r.method === 'authenticate');
+		assert.equal(auth.methodId, 'oauth-personal');
+		assert.notEqual(auth.pid, log.find((r) => r.method === 'session/new').pid);
+
+		// The conversation goes on in a process with the new credentials.
+		agy.requests();
+		await client.prompt('again');
+		assert.deepEqual(agy.requests(), [`resume ${id}`, `prompt ${id}`]);
+	});
+});
+
+test('AntigravityAcpClient reports why a sign-in failed and keeps the session', async () => {
+	await withClient(async (client, agy) => {
+		await client.prompt('hi');
+		const id = client.getSessionId();
+		agy.denyLogin();
+		await assert.rejects(client.login(), /sign-in was denied/);
+		agy.requests();
+		await client.prompt('again');
+		assert.deepEqual(agy.requests(), [`prompt ${id}`]);
 	});
 });

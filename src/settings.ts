@@ -110,9 +110,9 @@ export class AntiDianSettingTab extends PluginSettingTab {
 						new Notice('Sign-in successful.');
 						this.display();
 					} catch (err) {
-						new Notice(
-							`Login failed: ${err instanceof Error ? err.message : String(err)}`,
-						);
+						const message = err instanceof Error ? err.message : String(err);
+						new Notice(`Login failed: ${message}`);
+						authSetting.setDesc(`Not signed in (${message})`);
 						button.setDisabled(false);
 						button.setButtonText('Sign in with Google');
 					}

@@ -582,6 +582,17 @@ test('diagnostics detect CPU flags, failure categories, suspend drift, CA env, a
 	assert.equal(env.NODE_USE_SYSTEM_CA, '1');
 	assert.ok(env.PATH?.startsWith('/home/u/.gemini/bin'));
 
+	// Windows names the variable `Path`; a second `PATH` would hide System32.
+	const winEnv = buildAgySecurityEnv(
+		{ Path: 'C:\\Windows\\System32;C:\\Windows' },
+		{ platform: 'win32', extraBinDirs: ['C:\\Users\\u\\.gemini\\bin'] },
+	);
+	assert.equal(
+		winEnv.Path,
+		'C:\\Users\\u\\.gemini\\bin;C:\\Windows\\System32;C:\\Windows',
+	);
+	assert.equal('PATH' in winEnv, false);
+
 	const fakeHome = makeTempDir();
 	try {
 		const logDir = path.join(fakeHome, '.gemini', 'antigravity-anti-dian');

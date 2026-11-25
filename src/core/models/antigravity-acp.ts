@@ -215,6 +215,10 @@ const SAFE_BUILTIN_TOOLS = new Set([
 /** Built-in progress/tracking tools rendered as live plan/focus UI rather than trace rows. */
 const PROGRESS_BUILTIN_TOOLS = new Set(['update_steps', 'update_focus']);
 
+/** ACP auth method for a Google account sign-in through the browser. */
+const LOGIN_METHOD_ID = 'oauth-personal';
+const LOGIN_TIMEOUT_MS = 5 * 60_000;
+
 export function formatTokens(tokens?: number): string {
 	if (!tokens) return '';
 	if (tokens >= 1_000_000) {
@@ -329,6 +333,8 @@ export class AntigravityAcpClient {
 	private appDataDir: string;
 
 	private proc: ChildProcess | null = null;
+	/** Runs a pending Google sign-in. */
+	private loginClient: AntigravityAcpClient | null = null;
 	private intentionalStop = false;
 	private procSpawnedAtWallMs = 0;
 	private procSpawnedAtUptimeMs = 0;
@@ -690,41 +696,51 @@ export class AntigravityAcpClient {
 	async login(
 		onProgress?: (progress: BinaryDownloadProgress) => void,
 	): Promise<void> {
-		const { binaryPath: bin } = await this.ensureBinary(onProgress);
-		await new Promise<void>((resolve, reject) => {
-			const args = ['acp', '--login', ...this.appDataDirArgs()];
-			const child = spawn(bin, args, {
-				cwd: this.cwd,
-				stdio: ['ignore', 'pipe', 'pipe'],
-				env: this.buildEnv(),
-			});
-
-			let stderr = '';
-			child.stderr?.on('data', (chunk: Buffer | string) => {
-				stderr += chunk.toString();
-			});
-
-			child.on('error', (err) => {
-				reject(
-					new Error(
-						`Failed to launch "${bin} acp --login": ${err.message}`,
-					),
-				);
-			});
-
-			child.on('close', (code) => {
-				if (code === 0) {
-					this.destroyProcess();
-					resolve();
-				} else {
-					reject(
-						new Error(
-							`Antigravity login exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`,
-						),
-					);
-				}
-			});
+		await this.ensureBinary(onProgress);
+		// A separate process, so that a running conversation survives a sign-in
+		// that fails or is abandoned.
+		this.loginClient?.destroyProcess();
+		const client = new AntigravityAcpClient({
+			cliPath: this.cliPath,
+			caCertificates: this.caCertificates,
+			cwd: this.cwd,
+			appDataDir: this.appDataDir,
 		});
+		this.loginClient = client;
+		onProgress?.({
+			phase: 'signing-in',
+			message: 'Finish signing in in your browser...',
+		});
+		try {
+			await client.authenticate();
+		} finally {
+			client.destroyProcess();
+			if (this.loginClient === client) this.loginClient = null;
+		}
+		// The next request starts a process that uses the new credentials.
+		this.destroyProcess();
+	}
+
+	/**
+	 * `agy` opens the browser and receives the result on a loopback port. Its
+	 * `acp --login` flag instead reads a pasted code from stdin, for terminals.
+	 */
+	private async authenticate(): Promise<void> {
+		await this.ensureInitialized();
+		let timer: ReturnType<typeof nodeSetTimeout> | null = null;
+		try {
+			await Promise.race([
+				this.sendRequest('authenticate', { methodId: LOGIN_METHOD_ID }),
+				new Promise<never>((_, reject) => {
+					timer = nodeSetTimeout(
+						() => reject(new Error('Timed out waiting for the browser sign-in.')),
+						LOGIN_TIMEOUT_MS,
+					);
+				}),
+			]);
+		} finally {
+			if (timer) nodeClearTimeout(timer);
+		}
 	}
 
 	async fetchModelConfig(): Promise<ModelConfig | null> {
@@ -1006,6 +1022,7 @@ export class AntigravityAcpClient {
 
 	async destroy(): Promise<void> {
 		await this.resetSession();
+		this.loginClient?.destroyProcess();
 		this.destroyProcess();
 		if (this.mcpToolServer) {
 			await this.mcpToolServer.stop();
