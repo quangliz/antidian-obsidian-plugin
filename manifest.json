@@ -1,7 +1,7 @@
 {
 	"id": "antidian",
 	"name": "Antidian",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.7.2",
 	"description": "Noting harness powered by the official Antigravity CLI (ACP).",
 	"author": "Quang",
