@@ -150,3 +150,10 @@ export function registerInternalLinkHandlers(
 		});
 	});
 }
+
+/** Classes the wrapper `MarkdownRenderer` puts around each table, so wide tables scroll in it. */
+export function markTableWrappers(el: HTMLElement): void {
+	for (const table of Array.from(el.querySelectorAll(':scope > div > table'))) {
+		table.parentElement?.addClass('anti-dian-answer-table');
+	}
+}

@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Agent rules and guardrails for **Anti-dian** (a desktop-only Obsidian Community Plugin, `isDesktopOnly: true`).
+Agent rules and guardrails for **Antidian** (a desktop-only Obsidian Community Plugin, `isDesktopOnly: true`).
 For system architecture, MCP tools, mutation pipeline, and session/backend internals, read [ARCHITECTURE.md](./ARCHITECTURE.md). For user-facing docs, see [README.md](./README.md).
 
 ## Core Philosophy
-- **General runtime**: Anti-dian is a general-purpose AI noting harness (casual notes, research, journaling, writing, projects). Put domain-specific workflows in Skills (or future Extensions/Packs), not in core TypeScript.
+- **General runtime**: Antidian is a general-purpose AI noting harness (casual notes, research, journaling, writing, projects). Put domain-specific workflows in Skills (or future Extensions/Packs), not in core TypeScript.
 - **Core vs Domain test**: Before adding anything to `src/core/`, ask: *"Is this useful across many unrelated note-taking workflows?"* Never hard-code research or methodology-specific semantics into core.
 - **Unstructured vaults are first-class**: Work with existing vaults without requiring PARA, Zettelkasten, atomic notes, folder migrations, or mandatory schemas.
 - **Pressure-driven abstractions**: Do not build Pack resolution, Extension hosts, vector search, web/PDF/video ingestion, or unused framework layers before concrete workflows demand them.

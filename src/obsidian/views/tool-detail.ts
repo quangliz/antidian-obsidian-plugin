@@ -249,9 +249,8 @@ function fallbackDetail(input: ToolDetailInput): Renderer | null {
 	return (el) => {
 		const box = el.createDiv({ cls: 'anti-dian-tool-detail-props' });
 		for (const [key, value] of entries) {
-			const row = box.createDiv({ cls: 'anti-dian-tool-detail-prop' });
-			row.createSpan({ cls: 'anti-dian-tool-detail-prop-key', text: key });
-			row.createSpan({ text: truncate(formatValue(value), PREVIEW_CHARS) });
+			box.createSpan({ cls: 'anti-dian-tool-detail-prop-key', text: key });
+			box.createSpan({ text: truncate(formatValue(value), PREVIEW_CHARS) });
 		}
 	};
 }

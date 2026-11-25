@@ -278,7 +278,7 @@ function reconstructDiffFromToolArgs(
 /**
  * Parses `agy`'s native `transcript_full.jsonl` / `transcript.jsonl` into
  * per-turn traces (tool calls, tool outputs, durations, and token usage) so
- * Anti-dian does not have to persist duplicate session files.
+ * Antidian does not have to persist duplicate session files.
  */
 export function parseAgyTranscriptJsonl(
 	jsonlText: string,
@@ -594,7 +594,7 @@ export function forkedTurnsToReplayedMessages(
 
 /**
  * Safely deletes local `agy` session files (`brain/<id>` and `conversations/<id>.db*`)
- * inside Anti-dian's isolated app-data directory.
+ * inside Antidian's isolated app-data directory.
  */
 export async function deleteAgySessionData(
 	sessionId: string,

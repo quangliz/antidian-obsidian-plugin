@@ -747,7 +747,7 @@ export class ThinkingStateView {
 		this.sparkleIconEl = this.headerBtnEl.createSpan({
 			cls: 'anti-dian-thinking-sparkle-icon',
 		});
-		// Anti-dian logo; spins around its vertical axis while the turn is running.
+		// Antidian logo; spins around its vertical axis while the turn is running.
 		setIcon(this.sparkleIconEl, ANTI_DIAN_ICON);
 
 		this.statusTextEl = this.headerBtnEl.createSpan({
@@ -1480,7 +1480,8 @@ function confirmAction(app: App, opts: ConfirmOptions): Promise<boolean> {
 			.addButton((btn) =>
 				btn
 					.setButtonText(opts.cta)
-					.setWarning()
+					// setWarning() is deprecated since 1.13; setDestructive() needs 1.13.
+					.setClass('mod-warning')
 					.onClick(() => {
 						confirmed = true;
 						modal.close();

@@ -57,7 +57,7 @@ export class SignInView {
 				if (customPath) {
 					this.addText(
 						'Antigravity not found',
-						`There is no file at ${customPath}. Change the custom binary path in the Anti-dian settings.`,
+						`There is no file at ${customPath}. Change the custom binary path in the Antidian settings.`,
 					);
 					this.addButton('Check again', checkAgain, true);
 					return;
@@ -70,7 +70,7 @@ export class SignInView {
 			case 'signed-out':
 				this.addText(
 					'Sign in to start',
-					'Anti-dian works with your Google account through Antigravity.',
+					'Antidian works with your Google account through Antigravity.',
 				);
 				break;
 			case 'error':

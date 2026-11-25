@@ -146,7 +146,7 @@ export interface AntigravityAcpOptions {
 	/**
 	 * Subdirectory of `~/.gemini` where `agy acp` stores conversations,
 	 * brain artifacts, and logs. Defaults to a dedicated directory so
-	 * Anti-dian sessions do not appear in the user's `agy` CLI `/resume`
+	 * Antidian sessions do not appear in the user's `agy` CLI `/resume`
 	 * list. Authentication is shared across data dirs.
 	 */
 	appDataDir?: string;
@@ -181,13 +181,13 @@ const AUTO_RECOVER_MAX_ATTEMPTS = 3;
 const AUTO_RECOVER_WINDOW_MS = 10 * 60_000;
 const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
 
-/** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
+/** Dedicated agy data dir that keeps Antidian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
 
 /**
  * Built-in agy commands left out of the slash menu: they spawn subagents, run
  * on timers outside a reviewed turn, or write files directly (`plan` also
- * clashes with Anti-dian's own Plan permission mode).
+ * clashes with Antidian's own Plan permission mode).
  */
 const HIDDEN_COMMANDS = new Set([
 	'boost',

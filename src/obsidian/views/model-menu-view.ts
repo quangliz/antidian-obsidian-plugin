@@ -115,6 +115,7 @@ export class ModelMenuController {
 			menu.addItem((item) => {
 				// Arrow keys skip the row while it is collapsed.
 				item.setTitle(title).setDisabled(!config.thoughtLevel);
+				(item as MenuItemWithDom).dom?.addClass('anti-dian-effort-item');
 				this.effortItem = item;
 			});
 			this.effortSlider = slider;

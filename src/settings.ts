@@ -4,7 +4,9 @@ import {
 	DropdownComponent,
 	Notice,
 	PluginSettingTab,
+	requireApiVersion,
 	Setting,
+	type SettingDefinitionItem,
 } from 'obsidian';
 import type AntiDianPlugin from './main';
 import {
@@ -59,43 +61,160 @@ export const DEFAULT_SETTINGS: AntiDianSettings = {
 	showRawToolData: false,
 };
 
+/** One settings row, rendered the same way by both settings APIs. */
+interface SettingRow {
+	name: string;
+	desc: string;
+	render: (setting: Setting) => void;
+}
+
+interface SettingGroupRows {
+	heading: string;
+	rows: SettingRow[];
+}
+
 export class AntiDianSettingTab extends PluginSettingTab {
 	plugin: AntiDianPlugin;
+	/** Rows currently on screen, updated by the live status check. */
+	private authSetting: Setting | null = null;
+	private authButton: ButtonComponent | null = null;
+	private modelSetting: Setting | null = null;
+	private modelDropdown: DropdownComponent | null = null;
+	private signedIn = false;
 
 	constructor(app: App, plugin: AntiDianPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
+	/** Obsidian 1.13+ renders the tab from these and lists them in settings search. */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return this.getGroups().map(({ heading, rows }) => ({ type: 'group', heading, items: rows }));
+	}
+
+	/** Obsidian before 1.13 calls this instead of getSettingDefinitions(). */
 	display(): void {
+		this.renderLegacy();
+	}
+
+	private renderLegacy(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		for (const { heading, rows } of this.getGroups()) {
+			new Setting(containerEl).setName(heading).setHeading();
+			for (const row of rows) {
+				row.render(new Setting(containerEl).setName(row.name).setDesc(row.desc));
+			}
+		}
+	}
 
-		const cliFound = isAgyBinaryAvailable(this.plugin.settings.cliPath);
+	private refresh(): void {
+		if (requireApiVersion('1.13.0')) {
+			this.update();
+		} else {
+			this.renderLegacy();
+		}
+	}
+
+	private get cliFound(): boolean {
+		return isAgyBinaryAvailable(this.plugin.settings.cliPath);
+	}
+
+	private get hasCustomPath(): boolean {
+		return Boolean(this.plugin.settings.cliPath?.trim());
+	}
+
+	/** Must stay free of side effects: Obsidian also calls it to index the settings. */
+	private getGroups(): SettingGroupRows[] {
+		const { cliFound, hasCustomPath } = this;
 		const resolvedBin = resolveAgyBinary(this.plugin.settings.cliPath);
-		const hasCustomPath = Boolean(this.plugin.settings.cliPath?.trim());
 
-		/* ── Account ──────────────────────────────────────────────────────── */
-		new Setting(containerEl).setName('Account').setHeading();
+		return [
+			{
+				heading: 'Account',
+				rows: [
+					{
+						name: 'Google account',
+						desc: cliFound
+							? 'Checking sign-in status...'
+							: hasCustomPath
+								? `Configured binary not found: ${resolvedBin}`
+								: 'Backend not installed yet. Click Sign in with Google to download and connect.',
+						render: (setting) => this.renderAccount(setting),
+					},
+				],
+			},
+			{
+				heading: 'Agent',
+				rows: [
+					{
+						name: 'Default model',
+						desc: 'Select the default model for reasoning and tool use.',
+						render: (setting) => this.renderModel(setting),
+					},
+					{
+						name: 'Permission mode',
+						desc: 'Ask: free reads, writes require approval. Plan: read-only proposals. Auto: apply valid writes automatically.',
+						render: (setting) => this.renderPermissionMode(setting),
+					},
+					{
+						name: 'Inline editor diff',
+						desc: 'Show pending write approvals directly inside open notes with accept and reject actions.',
+						render: (setting) => this.renderInlineDiff(setting),
+					},
+					{
+						name: 'Vault skills',
+						desc: 'Add a folder with a SKILL.md file to .agents/skills/ to teach your own workflows. Type / in the prompt to run one.',
+						render: (setting) => this.renderVaultSkills(setting),
+					},
+				],
+			},
+			{
+				heading: 'Backend',
+				rows: [
+					{
+						name: 'Antigravity backend',
+						desc: cliFound
+							? `Installed at ${resolvedBin}`
+							: hasCustomPath
+								? `Custom path not found: ${resolvedBin}`
+								: `Not installed yet — will auto-download to ${getManagedAgyBinaryPath()}`,
+						render: (setting) => this.renderBackend(setting),
+					},
+				],
+			},
+			{
+				heading: 'Advanced',
+				rows: [
+					{
+						name: 'Custom binary path',
+						desc: `Optional override for the agy binary. Leave blank to auto-manage at ${getManagedAgyBinaryPath()}.`,
+						render: (setting) => this.renderBinaryPath(setting),
+					},
+					{
+						name: 'Custom root certificates',
+						desc: 'Optional path to a certificate bundle trusted when downloading or running the backend behind a corporate proxy.',
+						render: (setting) => this.renderCertificates(setting),
+					},
+					{
+						name: 'Show raw tool data',
+						desc: 'Include raw tool arguments and outputs in the thinking trace for debugging.',
+						render: (setting) => this.renderRawToolData(setting),
+					},
+				],
+			},
+		];
+	}
 
-		let authButton: ButtonComponent | null = null;
-		let signedIn = false;
-		const authSetting = new Setting(containerEl)
-			.setName('Google account')
-			.setDesc(
-				cliFound
-					? 'Checking sign-in status...'
-					: hasCustomPath
-						? `Configured binary not found: ${resolvedBin}`
-						: 'Backend not installed yet. Click Sign in with Google to download and connect.',
-			);
-
-		authSetting.addButton((button) => {
-			authButton = button;
+	private renderAccount(setting: Setting): void {
+		this.authSetting = setting;
+		this.signedIn = false;
+		setting.addButton((button) => {
+			this.authButton = button;
 			button
 				.setButtonText('Sign in with Google')
 				.setCta()
-				.setDisabled(hasCustomPath && !cliFound)
+				.setDisabled(this.hasCustomPath && !this.cliFound)
 				.onClick(async () => {
 					button.setDisabled(true);
 					button.setButtonText('Preparing...');
@@ -106,15 +225,15 @@ export class AntiDianSettingTab extends PluginSettingTab {
 									? `Downloading (${progress.percent}%)...`
 									: progress.message,
 							);
-							authSetting.setDesc(progress.message);
-						}, signedIn);
+							setting.setDesc(progress.message);
+						}, this.signedIn);
 						new Notice('Sign-in successful.');
-						this.display();
+						this.refresh();
 					} catch (err) {
 						const message = err instanceof Error ? err.message : String(err);
 						new Notice(`Login failed: ${message}`);
-						authSetting.setDesc(`Not signed in (${message})`);
-						signedIn = false;
+						setting.setDesc(`Not signed in (${message})`);
+						this.signedIn = false;
 						button.setDisabled(false);
 						button.setButtonText('Sign in with Google');
 						button.setTooltip('');
@@ -122,282 +241,235 @@ export class AntiDianSettingTab extends PluginSettingTab {
 					}
 				});
 		});
+		if (this.cliFound) void this.refreshLiveStatus(setting);
+	}
 
-		/* ── Agent ────────────────────────────────────────────────────────── */
-		new Setting(containerEl).setName('Agent').setHeading();
-
-		const modelSetting = new Setting(containerEl)
-			.setName('Default model')
-			.setDesc('Select the default model for reasoning and tool use.');
-
-		let modelDropdown: DropdownComponent | null = null;
-		const populateModelDropdown = (config: ModelConfig): void => {
-			if (!modelDropdown) {
-				modelSetting.addDropdown((dropdown) => {
-					modelDropdown = dropdown;
-					dropdown.onChange(async (val) => {
-						this.plugin.settings.model = val;
-						await this.plugin.saveSettings();
-					});
-				});
-			}
-			const dd = modelDropdown;
-			if (!dd) return;
-			dd.selectEl.empty();
-			for (const option of config.model.options) {
-				dd.addOption(option.value, option.name);
-			}
-			dd.setValue(config.model.current);
-		};
-
+	private renderModel(setting: Setting): void {
+		this.modelSetting = setting;
+		this.modelDropdown = null;
 		// Hydrate immediately from persisted/in-memory cache (0 ms)
 		const cachedConfig = this.plugin.antigravityProvider.getModelConfig();
 		if (cachedConfig) {
-			populateModelDropdown(cachedConfig);
-		} else if (cliFound) {
-			modelSetting.setDesc('Loading available models...');
-		} else if (hasCustomPath) {
-			modelSetting.setDesc('Configure a valid binary path to load models.');
+			this.populateModelDropdown(cachedConfig);
+		} else if (this.cliFound) {
+			setting.setDesc('Loading available models...');
+		} else if (this.hasCustomPath) {
+			setting.setDesc('Configure a valid binary path to load models.');
 		} else {
-			modelSetting.setDesc('Sign in with Google to install the backend and load models.');
+			setting.setDesc('Sign in with Google to install the backend and load models.');
 		}
+	}
 
-		new Setting(containerEl)
-			.setName('Permission mode')
-			.setDesc(
-				'Ask: free reads, writes require approval. Plan: read-only proposals. Auto: apply valid writes automatically.',
-			)
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption('ask', 'Ask (approval required)')
-					.addOption('plan', 'Plan (read-only proposals)')
-					.addOption('auto', 'Auto (auto-apply valid writes)')
-					.setValue(this.plugin.settings.permissionMode ?? 'ask')
-					.onChange(async (val) => {
-						this.plugin.settings.permissionMode = val as PermissionMode;
-						await this.plugin.saveSettings();
-					});
+	private populateModelDropdown(config: ModelConfig): void {
+		if (!this.modelDropdown) {
+			this.modelSetting?.addDropdown((dropdown) => {
+				this.modelDropdown = dropdown;
+				dropdown.onChange(async (val) => {
+					this.plugin.settings.model = val;
+					await this.plugin.saveSettings();
+				});
 			});
+		}
+		const dd = this.modelDropdown;
+		if (!dd) return;
+		dd.selectEl.empty();
+		for (const option of config.model.options) {
+			dd.addOption(option.value, option.name);
+		}
+		dd.setValue(config.model.current);
+	}
 
-		new Setting(containerEl)
-			.setName('Inline editor diff')
-			.setDesc(
-				'Show pending write approvals directly inside open notes with accept and reject actions.',
-			)
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.enableInlineDiff ?? true)
-					.onChange(async (value) => {
-						this.plugin.settings.enableInlineDiff = value;
-						if (!value) {
-							this.plugin.inlineDiffController.clearAll();
-						}
-						await this.plugin.saveSettings();
-					});
-			});
+	private renderPermissionMode(setting: Setting): void {
+		setting.addDropdown((dropdown) => {
+			dropdown
+				.addOption('ask', 'Ask (approval required)')
+				.addOption('plan', 'Plan (read-only proposals)')
+				.addOption('auto', 'Auto (auto-apply valid writes)')
+				.setValue(this.plugin.settings.permissionMode ?? 'ask')
+				.onChange(async (val) => {
+					this.plugin.settings.permissionMode = val as PermissionMode;
+					await this.plugin.saveSettings();
+				});
+		});
+	}
 
-		const skillsSetting = new Setting(containerEl)
-			.setName('Vault skills')
-			.setDesc(
-				'Add a folder with a SKILL.md file to .agents/skills/ to teach your own workflows. Type / in the prompt to run one.',
-			);
+	private renderInlineDiff(setting: Setting): void {
+		setting.addToggle((toggle) => {
+			toggle
+				.setValue(this.plugin.settings.enableInlineDiff ?? true)
+				.onChange(async (value) => {
+					this.plugin.settings.enableInlineDiff = value;
+					if (!value) {
+						this.plugin.inlineDiffController.clearAll();
+					}
+					await this.plugin.saveSettings();
+				});
+		});
+	}
+
+	private renderVaultSkills(setting: Setting): void {
 		void this.app.vault.adapter.exists('.anti-dian/skills').then((legacy) => {
 			if (!legacy) return;
-			skillsSetting.setDesc(
+			setting.setDesc(
 				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
 			);
 		});
+	}
 
-		/* ── Backend ──────────────────────────────────────────────────────── */
-		new Setting(containerEl).setName('Backend').setHeading();
-
-		const backendSetting = new Setting(containerEl)
-			.setName('Antigravity backend')
-			.setDesc(
-				cliFound
-					? `Installed at ${resolvedBin}`
-					: hasCustomPath
-						? `Custom path not found: ${resolvedBin}`
-						: `Not installed yet — will auto-download to ${getManagedAgyBinaryPath()}`,
-			);
-
-		if (cliFound && !hasCustomPath) {
+	private renderBackend(setting: Setting): void {
+		const { cliFound, hasCustomPath } = this;
+		if (hasCustomPath) return;
+		if (cliFound) {
+			const resolvedBin = resolveAgyBinary(this.plugin.settings.cliPath);
 			void readValidBinarySidecar(resolvedBin).then((sidecar) => {
 				const ver = sidecar?.version ? `v${sidecar.version}` : 'installed';
 				const stagedNote = sidecar?.stagedNext
 					? ` · v${sidecar.stagedNext.version} staged for next restart`
 					: '';
-				backendSetting.setDesc(`${ver} (${resolvedBin})${stagedNote}`);
+				setting.setDesc(`${ver} (${resolvedBin})${stagedNote}`);
 			});
 		}
 
-		if (!hasCustomPath) {
-			backendSetting.addButton((button) => {
-				button
-					.setButtonText(cliFound ? 'Check for updates' : 'Install backend')
-					.onClick(async () => {
-						button.setDisabled(true);
-						button.setButtonText('Checking...');
-						try {
-							if (!isAgyBinaryAvailable()) {
-								const res =
-									await this.plugin.antigravityProvider.ensureBinary(
-										(progress) => {
-											backendSetting.setDesc(progress.message);
-										},
-									);
-								new Notice(
-									`Installed backend${res.version ? ` v${res.version}` : ''}.`,
-								);
-								this.display();
-								return;
-							}
-							const res = await checkAndStageAgyUpdate({
-								caCertificates: this.plugin.settings.caCertificates,
-								force: true,
-								onProgress: (progress) => {
-									backendSetting.setDesc(progress.message);
+		setting.addButton((button) => {
+			button
+				.setButtonText(cliFound ? 'Check for updates' : 'Install backend')
+				.onClick(async () => {
+					button.setDisabled(true);
+					button.setButtonText('Checking...');
+					try {
+						if (!isAgyBinaryAvailable()) {
+							const res = await this.plugin.antigravityProvider.ensureBinary(
+								(progress) => {
+									setting.setDesc(progress.message);
 								},
-							});
-							if (res.status === 'installed') {
-								new Notice(
-									`Updated backend to v${res.version ?? 'latest'}.`,
-								);
-								this.display();
-							} else if (res.status === 'staged') {
-								new Notice(
-									`Downloaded v${res.version ?? 'latest'}; it will apply on next restart.`,
-								);
-								this.display();
-							} else if (res.status === 'up_to_date') {
-								new Notice('Backend is already up to date.');
-							} else if (res.status === 'error') {
-								new Notice(`Update check failed: ${res.error ?? 'unknown error'}`);
-							}
-						} catch (err) {
+							);
+							new Notice(`Installed backend${res.version ? ` v${res.version}` : ''}.`);
+							this.refresh();
+							return;
+						}
+						const res = await checkAndStageAgyUpdate({
+							caCertificates: this.plugin.settings.caCertificates,
+							force: true,
+							onProgress: (progress) => {
+								setting.setDesc(progress.message);
+							},
+						});
+						if (res.status === 'installed') {
+							new Notice(`Updated backend to v${res.version ?? 'latest'}.`);
+							this.refresh();
+						} else if (res.status === 'staged') {
 							new Notice(
-								`Update failed: ${err instanceof Error ? err.message : String(err)}`,
+								`Downloaded v${res.version ?? 'latest'}; it will apply on next restart.`,
 							);
-						} finally {
-							button.setDisabled(false);
-							button.setButtonText(
-								isAgyBinaryAvailable() ? 'Check for updates' : 'Install backend',
-							);
+							this.refresh();
+						} else if (res.status === 'up_to_date') {
+							new Notice('Backend is already up to date.');
+						} else if (res.status === 'error') {
+							new Notice(`Update check failed: ${res.error ?? 'unknown error'}`);
 						}
-					});
+					} catch (err) {
+						new Notice(
+							`Update failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					} finally {
+						button.setDisabled(false);
+						button.setButtonText(
+							isAgyBinaryAvailable() ? 'Check for updates' : 'Install backend',
+						);
+					}
+				});
+		});
+	}
+
+	private renderBinaryPath(setting: Setting): void {
+		setting.addText((text) => {
+			text.setPlaceholder(getManagedAgyBinaryPath()).setValue(
+				this.plugin.settings.cliPath ?? '',
+			);
+			text.inputEl.addEventListener('blur', () => {
+				const next = text.getValue().trim();
+				if (next !== (this.plugin.settings.cliPath ?? '')) {
+					this.plugin.settings.cliPath = next;
+					void this.plugin.saveSettings().then(() => this.refresh());
+				}
 			});
-		}
+		});
+	}
 
-		/* ── Advanced ─────────────────────────────────────────────────────── */
-		new Setting(containerEl).setName('Advanced').setHeading();
+	private renderCertificates(setting: Setting): void {
+		setting.addText((text) => {
+			text.setPlaceholder('/path/to/corporate-ca.pem').setValue(
+				this.plugin.settings.caCertificates ?? '',
+			);
+			text.inputEl.addEventListener('blur', () => {
+				const next = text.getValue().trim();
+				if (next !== (this.plugin.settings.caCertificates ?? '')) {
+					this.plugin.settings.caCertificates = next;
+					void this.plugin.saveSettings();
+				}
+			});
+		});
+	}
 
-		new Setting(containerEl)
-			.setName('Custom binary path')
-			.setDesc(
-				`Optional override for the agy binary. Leave blank to auto-manage at ${getManagedAgyBinaryPath()}.`,
-			)
-			.addText((text) => {
-				text.setPlaceholder(getManagedAgyBinaryPath()).setValue(
-					this.plugin.settings.cliPath ?? '',
+	private renderRawToolData(setting: Setting): void {
+		setting.addToggle((toggle) => {
+			toggle
+				.setValue(this.plugin.settings.showRawToolData ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.showRawToolData = value;
+					await this.plugin.saveSettings();
+				});
+		});
+	}
+
+	/** Live sign-in status & model refresh, shown on the account and model rows. */
+	private async refreshLiveStatus(authSetting: Setting): Promise<void> {
+		const button = this.authButton;
+		try {
+			const status = await this.plugin.antigravityProvider.checkStatus((progress) => {
+				authSetting.setDesc(progress.message);
+			});
+			// The tab was rendered again meanwhile; that render runs its own check.
+			if (this.authSetting !== authSetting || this.authButton !== button) return;
+
+			if (!status.cliFound) {
+				authSetting.setDesc(`Could not prepare backend: ${status.error ?? 'unknown error'}`);
+				if (!this.modelDropdown) {
+					this.modelSetting?.setDesc('Backend is required to load available models.');
+				}
+				return;
+			}
+
+			if (!status.authenticated) {
+				authSetting.setDesc(
+					`Not signed in (${status.error ?? 'click Sign in with Google'})`,
 				);
-				text.inputEl.addEventListener('blur', () => {
-					const next = text.getValue().trim();
-					if (next !== (this.plugin.settings.cliPath ?? '')) {
-						this.plugin.settings.cliPath = next;
-						void this.plugin.saveSettings().then(() => this.display());
-					}
-				});
-			});
+				if (!this.modelDropdown) {
+					this.modelSetting?.setDesc('Sign in with Google to load available models.');
+				}
+				return;
+			}
 
-		new Setting(containerEl)
-			.setName('Custom root certificates')
-			.setDesc(
-				'Optional path to a certificate bundle trusted when downloading or running the backend behind a corporate proxy.',
-			)
-			.addText((text) => {
-				text.setPlaceholder('/path/to/corporate-ca.pem').setValue(
-					this.plugin.settings.caCertificates ?? '',
+			const tierLabel = status.tier?.tierName ? ` · ${status.tier.tierName}` : '';
+			authSetting.setDesc(`Connected${tierLabel}`);
+			this.signedIn = true;
+			button
+				?.setButtonText('Re-authenticate')
+				.setTooltip(
+					'Signs out of this account, which the agy CLI may share, then signs in again',
+				)
+				.removeCta();
+
+			const config = await this.plugin.antigravityProvider.fetchModelConfig();
+			if (this.authButton !== button) return;
+			this.modelSetting?.setDesc('Select the default model for reasoning and tool use.');
+			if (config) this.populateModelDropdown(config);
+		} catch (err) {
+			if (this.authButton === button && !this.modelDropdown) {
+				this.modelSetting?.setDesc(
+					`Could not load models: ${err instanceof Error ? err.message : String(err)}`,
 				);
-				text.inputEl.addEventListener('blur', () => {
-					const next = text.getValue().trim();
-					if (next !== (this.plugin.settings.caCertificates ?? '')) {
-						this.plugin.settings.caCertificates = next;
-						void this.plugin.saveSettings();
-					}
-				});
-			});
-
-		new Setting(containerEl)
-			.setName('Show raw tool data')
-			.setDesc(
-				'Include raw tool arguments and outputs in the thinking trace for debugging.',
-			)
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.showRawToolData ?? false)
-					.onChange(async (value) => {
-						this.plugin.settings.showRawToolData = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		/* ── Live status & model refresh ──────────────────────────────────── */
-		if (cliFound) {
-			void this.plugin.antigravityProvider
-				.checkStatus((progress) => {
-					authSetting.setDesc(progress.message);
-				})
-				.then(async (status) => {
-					if (!status.cliFound) {
-						authSetting.setDesc(
-							`Could not prepare backend: ${status.error ?? 'unknown error'}`,
-						);
-						if (!modelDropdown) {
-							modelSetting.setDesc(
-								'Backend is required to load available models.',
-							);
-						}
-						return;
-					}
-
-					if (status.authenticated) {
-						const tierLabel = status.tier?.tierName
-							? ` · ${status.tier.tierName}`
-							: '';
-						authSetting.setDesc(`Connected${tierLabel}`);
-						signedIn = true;
-						if (authButton) {
-							authButton.setButtonText('Re-authenticate');
-							authButton.setTooltip(
-								'Signs out of this account, which the agy CLI may share, then signs in again',
-							);
-							authButton.removeCta();
-						}
-
-						const config =
-							await this.plugin.antigravityProvider.fetchModelConfig();
-						modelSetting.setDesc(
-							'Select the default model for reasoning and tool use.',
-						);
-						if (config) populateModelDropdown(config);
-					} else {
-						authSetting.setDesc(
-							`Not signed in (${status.error ?? 'click Sign in with Google'})`,
-						);
-						if (!modelDropdown) {
-							modelSetting.setDesc(
-								'Sign in with Google to load available models.',
-							);
-						}
-					}
-				})
-				.catch((err) => {
-					if (!modelDropdown) {
-						modelSetting.setDesc(
-							`Could not load models: ${err instanceof Error ? err.message : String(err)}`,
-						);
-					}
-				});
+			}
 		}
 	}
 }

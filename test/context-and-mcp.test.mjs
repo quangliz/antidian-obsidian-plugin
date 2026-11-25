@@ -73,7 +73,7 @@ test('ContextCompiler sends no context with /compact, then re-sends the active n
 	assert.match(next.context, /Current Active Note: \[\[A\]\]/);
 });
 
-test('parseAvailableCommands validates entries and hides commands Anti-dian cannot run', () => {
+test('parseAvailableCommands validates entries and hides commands Antidian cannot run', () => {
 	assert.deepEqual(
 		parseAvailableCommands([
 			{ name: 'compact', description: 'Compact\n  now' },

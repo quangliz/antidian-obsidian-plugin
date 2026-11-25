@@ -98,6 +98,11 @@ function readClipboardFilePaths(): string[] {
 }
 
 
+/** Images and videos with data show as a preview tile instead of a chip. */
+function isPreviewable(item: MediaInput): boolean {
+	return Boolean(item.data) && (item.type === 'image' || item.type === 'video');
+}
+
 const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string; icon: string }[] = [
 	{ value: 'ask', label: 'Ask', desc: 'Approve changes before they are applied', icon: 'lock' },
 	{ value: 'plan', label: 'Plan', desc: 'Read-only proposals', icon: 'shield' },
@@ -1146,6 +1151,7 @@ export class PromptBarView {
 		const tray = this.mediaTrayEl;
 		const finish = () => {
 			tray.empty();
+			tray.removeClass('has-tiles');
 			tray.addClass('anti-dian-hidden');
 			tray.removeClass('is-collapsing');
 			this.adjustTextareaHeight();
@@ -1225,6 +1231,7 @@ export class PromptBarView {
 
 		tray.empty();
 		tray.removeClass('anti-dian-hidden');
+		tray.toggleClass('has-tiles', this.stagedMedia.some(isPreviewable));
 		this.renderMediaTrayItems();
 		this.animateTrayOpen(from);
 	}
@@ -1340,8 +1347,7 @@ export class PromptBarView {
 			};
 
 			// Images and videos get a preview tile; anything else a compact chip.
-			const previewable = Boolean(item.data) && (item.type === 'image' || item.type === 'video');
-			if (previewable && item.data) {
+			if (isPreviewable(item) && item.data) {
 				const tile = this.mediaTrayEl.createDiv({
 					cls: 'anti-dian-promptbar-media-tile',
 					attr: {

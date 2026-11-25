@@ -48,7 +48,7 @@ import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
 import { SignInView } from './sign-in-view';
 import { ElicitationCardView } from './elicitation-card-view';
 import { ThinkingStateView } from './thinking-state-view';
-import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
+import { linkifyCodeWikilinks, markTableWrappers, registerInternalLinkHandlers } from './note-link';
 import { ANTI_DIAN_ICON } from '../icon';
 
 export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
@@ -145,7 +145,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	getDisplayText(): string {
-		return 'Anti-dian';
+		return 'Antidian';
 	}
 
 	getIcon(): string {
@@ -239,7 +239,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		if (!this.rootEl) return;
 		this.topNavEl = this.rootEl.createDiv({ cls: 'anti-dian-top-nav' });
 
-		const vaultName = this.app.vault.getName() || 'anti-dian';
+		const vaultName = this.app.vault.getName() || 'Antidian';
 		this.sessionMenu = new SessionMenuController(this.rootEl, {
 			getVaultName: () => vaultName,
 			listSessions: async () => {
@@ -544,6 +544,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
 				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
 				linkifyCodeWikilinks(this.app, answerEl, '');
+				markTableWrappers(answerEl);
 				this.renderAgentFooterRow(agentMsg, {
 					copyText: message.text,
 					timestamp: message.timestamp,
@@ -857,6 +858,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			show: (rendered) => {
 				if (streamingFinished) return;
 				linkifyCodeWikilinks(this.app, rendered, renderSourcePath);
+				markTableWrappers(rendered);
 				answerEl.replaceChildren(...Array.from(rendered.childNodes));
 				appendStreamCaret();
 				this.scrollToBottom();
@@ -1010,6 +1012,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 						this,
 					);
 					linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
+					markTableWrappers(answerEl);
 				}
 				answerEl.createEl('p', {
 					text: 'Stopped',
@@ -1032,6 +1035,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 					this,
 				);
 				linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
+				markTableWrappers(answerEl);
 			}
 
 			if (result.contextUsed && result.contextUsed.length > 0) {

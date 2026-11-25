@@ -143,11 +143,11 @@ export default class AntiDianPlugin extends Plugin {
 			(leaf: WorkspaceLeaf) => new AntiDianView(leaf, this),
 		);
 		this.registerHoverLinkSource(ANTI_DIAN_HOVER_SOURCE, {
-			display: 'Anti-dian',
+			display: 'Antidian',
 			defaultMod: true,
 		});
 
-		this.addRibbonIcon(ANTI_DIAN_ICON, 'Open anti-dian', () => {
+		this.addRibbonIcon(ANTI_DIAN_ICON, `Open ${this.manifest.name}`, () => {
 			void this.activateView();
 		});
 

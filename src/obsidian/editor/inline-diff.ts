@@ -128,7 +128,7 @@ class InlineDiffAddedWidget extends WidgetType {
 			const bar = container.createDiv({ cls: 'anti-dian-cm-diff-bar' });
 			bar.createSpan({
 				cls: 'anti-dian-cm-diff-badge',
-				text: `Anti-dian proposed edit (+${this.additions} / -${this.deletions})`,
+				text: `Antidian proposed edit (+${this.additions} / -${this.deletions})`,
 			});
 			const actions = bar.createDiv({ cls: 'anti-dian-cm-diff-actions' });
 

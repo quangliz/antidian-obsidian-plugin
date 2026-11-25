@@ -69,7 +69,7 @@ export interface AgentRunResult {
 	};
 }
 
-export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent note-taking and knowledge harness running inside Obsidian.
+export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Antidian, an intelligent note-taking and knowledge harness running inside Obsidian.
 
 Tool rules (strict):
 - ALWAYS use the \`anti-dian-vault\` MCP tools for every vault operation.
@@ -157,7 +157,7 @@ export class Agent {
 	}
 
 	/**
-	 * Continues a stored session. Returns its history with Anti-dian's injected
+	 * Continues a stored session. Returns its history with Antidian's injected
 	 * context blocks removed from user messages, ready for display.
 	 */
 	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {

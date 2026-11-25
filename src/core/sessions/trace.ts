@@ -157,7 +157,7 @@ function mediaOnlyRun(stored: StoredTurnTrace[], from: number): StoredTurnTrace[
 }
 
 /**
- * Overlays Anti-dian's saved traces on the CLI's replay. Turns are aligned in
+ * Overlays Antidian's saved traces on the CLI's replay. Turns are aligned in
  * order by the typed user text; turns without a saved trace keep the replay.
  *
  * The CLI does not replay the user message of an image-only turn, so its answer

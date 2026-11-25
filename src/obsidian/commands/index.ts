@@ -40,7 +40,7 @@ export function registerCommands(plugin: AntiDianPlugin): void {
 			const filePath = info.file?.path;
 			menu.addItem((item) => {
 				item
-					.setTitle('Add to anti-dian')
+					.setTitle(`Add to ${plugin.manifest.name}`)
 					.setIcon(ANTI_DIAN_ICON)
 					.onClick(() => {
 						void plugin.addSelectionToChat({

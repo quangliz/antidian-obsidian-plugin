@@ -1,12 +1,12 @@
-# Anti-dian Architecture & Technical Reference
+# Antidian Architecture & Technical Reference
 
-This document covers the internal architecture, MCP tool surface, mutation pipeline, session storage, backend management, and development workflow for **Anti-dian**.
+This document covers the internal architecture, MCP tool surface, mutation pipeline, session storage, backend management, and development workflow for **Antidian**.
 
 For a user-facing overview, see [README.md](./README.md). For contributor and coding rules, see [AGENTS.md](./AGENTS.md).
 
 ## Runtime & Transport Architecture
 
-Anti-dian delegates reasoning to the official **Antigravity CLI (`agy`)** over ACP (Agent Client Protocol) while enforcing Obsidian vault boundaries through a local loopback HTTP MCP server (`anti-dian-vault` with bearer token authentication):
+Antidian delegates reasoning to the official **Antigravity CLI (`agy`)** over ACP (Agent Client Protocol) while enforcing Obsidian vault boundaries through a local loopback HTTP MCP server (`anti-dian-vault` with bearer token authentication):
 
 ```text
 AntiDianView (Obsidian Sidebar UI)
@@ -20,7 +20,7 @@ AntiDianView (Obsidian Sidebar UI)
 
 ## Module Layout & Boundaries
 
-Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/obsidian/` → `src/core/`):
+Antidian enforces a strict one-way dependency boundary (`src/main.ts` → `src/obsidian/` → `src/core/`):
 
 - `src/core/` — Pure harness runtime with **no Obsidian SDK imports**:
   - `agent/` — Agent orchestration loop and default system prompt.
@@ -49,15 +49,15 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 | **Structural Mutations** | `replace_block`, `patch_note`, `append_note`, `update_frontmatter`, `create_note`, `edit_note` |
 | **Progress Tracking** | `update_focus` (intercepted into live focus UI; hidden from trace rows) |
 
-`read_note` reads any vault file. Non-text files (`src/core/files.ts`) return a `FileToolResult`, which `McpToolServer` sends as an MCP image/resource block; the bytes never reach the UI or traces. `agy` passes small files straight to the model and offloads larger ones to its own session folder, where the model opens them with the built-in `read_file` (no permission request, no vault access). `agy` has no Office reader (its CLI falls back to shell scripts, which Anti-dian rejects), so `read_note` returns the text of Office documents itself (`src/core/office.ts`). `ChangeSetValidator` rejects text edits to these files.
+`read_note` reads any vault file. Non-text files (`src/core/files.ts`) return a `FileToolResult`, which `McpToolServer` sends as an MCP image/resource block; the bytes never reach the UI or traces. `agy` passes small files straight to the model and offloads larger ones to its own session folder, where the model opens them with the built-in `read_file` (no permission request, no vault access). `agy` has no Office reader (its CLI falls back to shell scripts, which Antidian rejects), so `read_note` returns the text of Office documents itself (`src/core/office.ts`). `ChangeSetValidator` rejects text edits to these files.
 
 `McpToolServer` binds a per-turn `ToolContext` (active context, `permissionMode`, read `mtime` tracking, and `reviewMutation` callback) and blocks mutating tools (`tool.mutates === true`) at the MCP boundary when in `plan` mode.
 
 ## Slash Commands & Skills
 
-`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file` (no permission request). Anti-dian only surfaces them:
+`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file` (no permission request). Antidian only surfaces them:
 
-- `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Anti-dian's own.
+- `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Antidian's own.
 - The CLI runs a command or skill that starts the prompt; attached context (below) does not get in its way.
 - `/compact` is sent without context, and the active note is re-sent on the next turn. The CLI completes it without a reply, so replay inserts one to keep it apart from the next prompt.
 
@@ -65,7 +65,7 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 
 `ContextCompiler` builds the active note, selection, Plan Mode notice, and forked history as one text. `AntigravityAcpClient` sends it beside the user's text as an embedded `resource` block named by `CONTEXT_RESOURCE_URI`:
 
-- The URI is a `file:` one that names no real file. `agy` inlines resources with other schemes into the user's text, but keeps a `file:` resource apart: replay shows it as a `resource_link`, which Anti-dian ignores.
+- The URI is a `file:` one that names no real file. `agy` inlines resources with other schemes into the user's text, but keeps a `file:` resource apart: replay shows it as a `resource_link`, which Antidian ignores.
 - `agy` transcripts mark it as `@[...]` mentions in the request text (removed by `transcript.ts`) and store its body in the metadata that follows, where forked history is read from.
 - `stripCompiledContext` is only for sessions from before this, when the blocks were prepended to the prompt.
 
@@ -125,7 +125,7 @@ Applied operations retain before-state snapshots in memory so they can be revert
 ## Backend Management & Enterprise Settings
 
 - **Auto-managed binary**: `agy-binary-manager.ts` downloads, SHA-verifies, and installs the `agy` binary on demand, with sidecar version tracking (`agy.version.json`) and background/manual update staging (`.next` swap on restart when locked).
-- **Advanced settings** (**Settings → Anti-dian → Advanced**):
+- **Advanced settings** (**Settings → Antidian → Advanced**):
   - **Custom binary path**: Override the managed `agy` binary path.
   - **Custom root certificates**: Path to a PEM CA bundle trusted when downloading or running the backend behind a corporate TLS/VPN proxy.
   - **Show raw tool data**: Display raw tool arguments and outputs in the thinking trace for debugging.

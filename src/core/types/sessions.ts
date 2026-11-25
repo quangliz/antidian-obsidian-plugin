@@ -1,6 +1,6 @@
 /**
  * Session history contracts: what a stored conversation replays as, and the
- * per-turn trace Anti-dian overlays on it (the CLI's replay carries no MCP tool
+ * per-turn trace Antidian overlays on it (the CLI's replay carries no MCP tool
  * results, durations, per-turn token usage, or attached images).
  */
 
@@ -41,12 +41,12 @@ export interface ReplayedMessage {
 	media?: MediaInput[];
 	/** Agent turns only: reasoning and tool calls that preceded the answer. */
 	events?: ReplayedAgentEvent[];
-	/** Agent turns only, from Anti-dian's own trace when one was saved. */
+	/** Agent turns only, from Antidian's own trace when one was saved. */
 	durationMs?: number;
 	usage?: TurnUsage;
 }
 
-/** Anti-dian's record of one finished turn, saved alongside the CLI session. */
+/** Antidian's record of one finished turn, saved alongside the CLI session. */
 export interface StoredTurnTrace {
 	/** The text the user typed (without injected context); used to align with the replay. */
 	userText: string;
