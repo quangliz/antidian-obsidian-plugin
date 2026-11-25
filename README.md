@@ -32,12 +32,12 @@ Antidian runs `agy` in the background and talks to it over the **Agent Client Pr
 - **Backend binary**: If `agy` is not already installed, Antidian downloads and verifies the official Antigravity CLI binary from Google's release endpoint (or you can provide a local binary path in **Settings → Antidian → Advanced**).
 - **No telemetry**: Antidian has no analytics of its own. The only server it runs is the MCP server, which listens on `127.0.0.1` and requires a bearer token.
 
-### Coming from Antidian
+### Coming from Anti-dian
 
-Up to 1.0.1 the plugin was listed as Antidian (id `antidian`). Obsidian treats the new id as a separate plugin:
+Up to 1.0.1 the plugin was listed as Anti-dian (id `anti-dian`). Obsidian treats the new id as a separate plugin:
 
-1. Install and enable Antidian. It imports your Antidian settings on first start and keeps showing your conversations.
-2. Disable and uninstall Antidian, then reopen the sidebar. Custom hotkeys have to be assigned again.
+1. Install and enable Antidian. It imports your Anti-dian settings on first start and keeps showing your conversations.
+2. Disable and uninstall Anti-dian, then reopen the sidebar. Custom hotkeys have to be assigned again.
 
 ### Why it needs these permissions
 

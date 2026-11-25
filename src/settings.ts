@@ -308,10 +308,10 @@ export class AntidianSettingTab extends PluginSettingTab {
 	}
 
 	private renderVaultSkills(setting: Setting): void {
-		void this.app.vault.adapter.exists('.antidian/skills').then((legacy) => {
+		void this.app.vault.adapter.exists('.anti-dian/skills').then((legacy) => {
 			if (!legacy) return;
 			setting.setDesc(
-				'Skills in .antidian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
+				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
 			);
 		});
 	}

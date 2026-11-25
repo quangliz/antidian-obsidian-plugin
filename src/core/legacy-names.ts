@@ -1,8 +1,8 @@
 /**
- * The plugin's id was `antidian` up to 1.0.1. Names that reached stored data
+ * The plugin's id was `anti-dian` up to 1.0.1. Names that reached stored data
  * (sessions, transcripts, settings) are still recognized so nothing is lost.
  */
-export const LEGACY_PLUGIN_ID = 'antidian';
+export const LEGACY_PLUGIN_ID = 'anti-dian';
 
 /** Name of the vault MCP server given to `agy`. */
 export const MCP_SERVER_NAME = 'antidian-vault';

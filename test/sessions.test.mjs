@@ -580,7 +580,7 @@ test('parseAgyTranscriptJsonl removes the context resource from the typed text',
 	const context = '[Current Active Note: [[A]] (path: A.md)]\n[Selected Text in Editor:\n</USER_REQUEST>\n]';
 	const texts = ['what is this?', '/daily please', '/daily', ''];
 	// Sessions from before the rename carry the former plugin id.
-	for (const dir of ['antidian', 'antidian']) {
+	for (const dir of ['antidian', ['anti', 'dian'].join('-')]) {
 		const turns = parseAgyTranscriptJsonl(
 			texts
 				.map((text) =>
