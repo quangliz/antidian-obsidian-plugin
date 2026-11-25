@@ -204,30 +204,15 @@ export class AntiDianSettingTab extends PluginSettingTab {
 
 		const skillsSetting = new Setting(containerEl)
 			.setName('Vault skills')
-			.setDesc('Checking .anti-dian/skills/...');
-
-		void this.plugin.skillAdapter
-			.listSkills()
-			.then((skills) => {
-				if (skills.length === 0) {
-					skillsSetting.setDesc(
-						'No skills configured. Add Markdown skill files to .anti-dian/skills/ to extend workflows.',
-					);
-				} else {
-					const names = skills
-						.slice(0, 5)
-						.map((s) => s.name)
-						.join(', ');
-					const more =
-						skills.length > 5 ? ` (+${skills.length - 5} more)` : '';
-					skillsSetting.setDesc(
-						`${skills.length} skill${skills.length === 1 ? '' : 's'} loaded from .anti-dian/skills/: ${names}${more}`,
-					);
-				}
-			})
-			.catch(() => {
-				skillsSetting.setDesc('Could not read .anti-dian/skills/.');
-			});
+			.setDesc(
+				'Add a folder with a SKILL.md file to .agents/skills/ to teach your own workflows. Type / in the prompt to run one.',
+			);
+		void this.app.vault.adapter.exists('.anti-dian/skills').then((legacy) => {
+			if (!legacy) return;
+			skillsSetting.setDesc(
+				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
+			);
+		});
 
 		/* ── Backend ──────────────────────────────────────────────────────── */
 		new Setting(containerEl).setName('Backend').setHeading();

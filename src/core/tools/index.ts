@@ -11,7 +11,6 @@ import type {
 	NoteOutline,
 } from '../types/vault';
 import type { ActiveContext, ContextReference } from '../types/context';
-import type { SkillDocument, SkillService, SkillSummary } from '../types/skills';
 import type { ChangeStagingManager, StagedVaultOverlay } from '../transactions';
 
 export type HarnessPermissionMode = 'ask' | 'plan' | 'auto';
@@ -770,64 +769,6 @@ export function createEditNoteTool(
 				},
 				message: `Staged edit of "${path}". Operation is queued for user review and approval.`,
 			};
-		},
-	};
-}
-
-export function createListSkillsTool(
-	skillService: SkillService,
-): Tool<Record<string, never>, SkillSummary[]> {
-	return {
-		name: 'list_skills',
-		description:
-			'List available vault workflow skills (from .anti-dian/skills/) with their names and descriptions.',
-		schema: {
-			type: 'object',
-			properties: {},
-		},
-		execute: async (): Promise<SkillSummary[]> => {
-			return await skillService.listSkills();
-		},
-	};
-}
-
-export function createLoadSkillTool(
-	skillService: SkillService,
-): Tool<{ name: string }, SkillDocument | { error: string }> {
-	return {
-		name: 'load_skill',
-		description:
-			'Load the full markdown instructions for a specific vault skill by name when it matches the user request.',
-		schema: {
-			type: 'object',
-			properties: {
-				name: {
-					type: 'string',
-					description: 'Name of the vault skill to load',
-				},
-			},
-			required: ['name'],
-		},
-		execute: async (
-			input: { name: string },
-			ctx?: ToolContext,
-		): Promise<SkillDocument | { error: string }> => {
-			const name = typeof input?.name === 'string' ? input.name.trim() : '';
-			if (!name) {
-				return { error: 'Skill name is required.' };
-			}
-			const doc = await skillService.loadSkill(name);
-			if (!doc) {
-				return { error: `Skill "${name}" not found in .anti-dian/skills/.` };
-			}
-			if (ctx?.recordContext) {
-				ctx.recordContext({
-					path: doc.path,
-					reason: `Loaded skill (${doc.name})`,
-					chars: doc.body.length,
-				});
-			}
-			return doc;
 		},
 	};
 }

@@ -14,6 +14,7 @@ import type {
 	ElicitationResponse,
 } from '../types/elicitation';
 import type { PlanStep } from '../types/plan';
+import { COMPACTED_REPLY, isCompactCommand } from '../context/compiler';
 import { parseElicitationRequest } from './elicitation';
 import { parseFocusText, parsePlanSteps } from './plan';
 import {
@@ -107,6 +108,13 @@ export interface CachedQuotaSnapshot {
 	isStale: boolean;
 }
 
+/** A slash command or skill the agent advertises for the current session. */
+export interface AvailableCommand {
+	/** Without the leading "/". */
+	name: string;
+	description: string;
+}
+
 export interface AcpStreamCallbacks {
 	onThoughtDelta?: (text: string) => void;
 	onAnswerDelta?: (text: string) => void;
@@ -177,6 +185,22 @@ const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
 
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
+
+/**
+ * Built-in agy commands left out of the slash menu: they spawn subagents, run
+ * on timers outside a reviewed turn, or write files directly (`plan` also
+ * clashes with Anti-dian's own Plan permission mode).
+ */
+const HIDDEN_COMMANDS = new Set([
+	'boost',
+	'browser',
+	'learn',
+	'plan',
+	'run-workflow',
+	'schedule',
+	'swarm',
+	'teamwork',
+]);
 
 const MCP_SERVER_NAME = 'anti-dian-vault';
 const MCP_TOOL_PREFIX = `mcp_${MCP_SERVER_NAME}_`;
@@ -392,6 +416,7 @@ export class AntigravityAcpClient {
 	private onCacheUpdate?: (cache: CachedProviderMetadata) => void;
 	private quotaFetcher?: () => Promise<UserQuotaResponse | null>;
 	private contextUsage: ContextWindowUsage | null = null;
+	private availableCommands: AvailableCommand[] = [];
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
@@ -502,6 +527,11 @@ export class AntigravityAcpClient {
 
 	getContextUsage(): ContextWindowUsage | null {
 		return this.contextUsage;
+	}
+
+	/** Slash commands and skills usable in the current session. */
+	getAvailableCommands(): AvailableCommand[] {
+		return this.availableCommands;
 	}
 
 	getCachedAvailableModels(): AvailableModelsResponse | null {
@@ -989,7 +1019,10 @@ export class AntigravityAcpClient {
 			return {
 				answer: cancelled
 					? partial
-					: partial || '(No response text generated)',
+					: partial ||
+						(isCompactCommand(text)
+							? COMPACTED_REPLY
+							: '(No response text generated)'),
 				stopReason: cancelled ? 'cancelled' : result?.stopReason,
 				usage,
 			};
@@ -1572,6 +1605,7 @@ export class AntigravityAcpClient {
 					size?: number;
 					title?: unknown;
 					entries?: unknown;
+					availableCommands?: unknown;
 			  }
 			| undefined;
 
@@ -1582,6 +1616,11 @@ export class AntigravityAcpClient {
 				this.sessionTitle = update.title.trim();
 				this.emitSessionInfo();
 			}
+			return;
+		}
+
+		if (update.sessionUpdate === 'available_commands_update') {
+			this.availableCommands = parseAvailableCommands(update.availableCommands);
 			return;
 		}
 
@@ -1703,6 +1742,25 @@ export function appendReplayChunk(
 	} else {
 		buffer.push(role === 'agent' ? { role, text, events: [] } : { role, text });
 	}
+}
+
+/** Validates an untrusted `available_commands_update` list. */
+export function parseAvailableCommands(raw: unknown): AvailableCommand[] {
+	if (!Array.isArray(raw)) return [];
+	const out: AvailableCommand[] = [];
+	for (const entry of raw) {
+		const e = asRecord(entry);
+		if (typeof e?.name !== 'string' || !/^\w[\w:-]*$/.test(e.name)) continue;
+		if (HIDDEN_COMMANDS.has(e.name)) continue;
+		out.push({
+			name: e.name,
+			description:
+				typeof e.description === 'string'
+					? e.description.replace(/\s+/g, ' ').trim()
+					: '',
+		});
+	}
+	return out;
 }
 
 /** Validates untrusted `session/list` entries and keeps only this vault's sessions. */
@@ -1832,6 +1890,12 @@ export function applyReplayUpdate(
 	const kind = update.sessionUpdate;
 	const text = update.content?.text;
 	if (kind === 'user_message_chunk' && typeof text === 'string') {
+		// `/compact` has no reply to separate it from the next prompt. Text typed
+		// after the command arrives as a chunk that starts with a space.
+		const last = buffer[buffer.length - 1];
+		if (last?.role === 'user' && isCompactCommand(last.text) && !/^\s/.test(text)) {
+			buffer.push({ role: 'agent', text: COMPACTED_REPLY, events: [] });
+		}
 		appendReplayChunk(buffer, 'user', text);
 		return;
 	}

@@ -11,11 +11,11 @@ Anti-dian delegates reasoning to the official **Antigravity CLI (`agy`)** over A
 ```text
 AntiDianView (Obsidian Sidebar UI)
   → Agent (src/core/agent/)
-      → ContextCompiler (active note outline/selection, session skills, mode notice)
+      → ContextCompiler (active note outline/selection, mode notice)
       → AntigravityProvider / AntigravityAcpClient (spawns `agy acp`)
       → McpToolServer (127.0.0.1 HTTP MCP server `anti-dian-vault`)
-          → ToolRegistry (12 vault & skill tools)
-              → ObsidianVaultAdapter / StagedVaultOverlay / ChangeStagingManager / ObsidianSkillAdapter
+          → ToolRegistry (10 vault tools + `update_focus`)
+              → ObsidianVaultAdapter / StagedVaultOverlay / ChangeStagingManager
 ```
 
 ## Module Layout & Boundaries
@@ -24,15 +24,15 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
 
 - `src/core/` — Pure harness runtime with **no Obsidian SDK imports**:
   - `agent/` — Agent orchestration loop and default system prompt.
-  - `context/` — `ContextCompiler` (deduplicated active note outline/selection, skill summaries, Plan Mode notice, forked context handling).
+  - `context/` — `ContextCompiler` (deduplicated active note outline/selection, Plan Mode notice, forked context handling).
   - `models/` — ACP client (`antigravity-acp.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), plan/focus progress parser (`plan.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
   - `sessions/` — Trace recording and replay merging (`trace.ts`, including rebuilding image-only turns the CLI does not replay) and `agy` transcript loading (`transcript.ts`).
-  - `skills/` — Pure Markdown skill parser and constants.
-  - `tools/` — `ToolRegistry` and 12 tool definitions.
+  - `skills/` — Recognizes skill reads in tool traces (`agy` itself discovers and loads skills).
+  - `tools/` — `ToolRegistry` and the tool definitions.
   - `transactions/` — `ChangeStagingManager`, `StagedVaultOverlay`, `ChangeSetValidator`, `ChangeSetDiffGenerator`, `MutationGate`, `ChangeSetApplicator`, and Markdown structural helpers.
-  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `skills`, `elicitation`, `plan`).
+  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `elicitation`, `plan`).
 - `src/obsidian/` — Obsidian SDK integration:
-  - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, `Editor`, and `Skills` adapters.
+  - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, and `Editor` adapters.
   - `commands/` — Command palette registrations and editor context menu hooks.
   - `editor/` — CodeMirror 6 `InlineDiffController` for inline write approvals in open Markdown views.
   - `views/` — Sidebar view, prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
@@ -41,18 +41,25 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
 
 ## MCP Tools (`anti-dian-vault`)
 
-All vault access goes through `ToolRegistry` exposed over `McpToolServer` so the model never bypasses Obsidian's vault boundaries:
+Note access goes through `ToolRegistry` exposed over `McpToolServer` so the model never bypasses Obsidian's vault boundaries:
 
 | Category | Tools |
 | --- | --- |
 | **Read & Explore** | `list_notes`, `get_note_outline`, `search_notes`, `read_note` |
 | **Structural Mutations** | `replace_block`, `patch_note`, `append_note`, `update_frontmatter`, `create_note`, `edit_note` |
-| **Vault Skills** | `list_skills`, `load_skill` |
 | **Progress Tracking** | `update_focus` (intercepted into live focus UI; hidden from trace rows) |
 
 `read_note` reads any vault file. Non-text files (`src/core/files.ts`) return a `FileToolResult`, which `McpToolServer` sends as an MCP image/resource block; the bytes never reach the UI or traces. `agy` passes small files straight to the model and offloads larger ones to its own session folder, where the model opens them with the built-in `read_file` (no permission request, no vault access). `agy` has no Office reader (its CLI falls back to shell scripts, which Anti-dian rejects), so `read_note` returns the text of Office documents itself (`src/core/office.ts`). `ChangeSetValidator` rejects text edits to these files.
 
 `McpToolServer` binds a per-turn `ToolContext` (active context, `permissionMode`, read `mtime` tracking, and `reviewMutation` callback) and blocks mutating tools (`tool.mutates === true`) at the MCP boundary when in `plan` mode.
+
+## Slash Commands & Skills
+
+`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file` (no permission request). Anti-dian only surfaces them:
+
+- `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Anti-dian's own.
+- The CLI only runs a command that starts the prompt, so for those prompts `ContextCompiler` puts its blocks after the text in a `[Command Context: ...]` block; `stripCompiledContext` removes it on replay.
+- `/compact` is sent alone, and the active note is re-sent on the next turn. The CLI completes it without a reply, so replay inserts one to keep it apart from the next prompt.
 
 ## Interactive Questions (ACP Elicitation)
 

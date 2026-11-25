@@ -21,11 +21,6 @@ import {
 
 test('stripCompiledContext recovers the typed text from every compiled prompt shape', async () => {
 	const compiler = new ContextCompiler({
-		skillService: {
-			async listSkills() {
-				return [{ name: 'daily', description: 'Daily note helper' }];
-			},
-		},
 		vaultService: {
 			async getNoteOutline(path) {
 				return { path, headings: [{ level: 1, heading: 'Intro' }], tags: ['#a'], backlinks: [] };
@@ -43,7 +38,12 @@ test('stripCompiledContext recovers the typed text from every compiled prompt sh
 	const second = await compiler.compile('next', { activeFile: 'Notes/B.md' });
 	assert.equal(stripCompiledContext(second.prompt), 'next');
 
+	// Sessions from before agy discovered skills start with a skill block.
 	assert.equal(stripCompiledContext('[Vault Skills: none configured]\n\nhi'), 'hi');
+	assert.equal(
+		stripCompiledContext('[Available Vault Skills (call load_skill(name) when relevant):\n- daily: x\n]\n\nhi'),
+		'hi',
+	);
 	assert.equal(stripCompiledContext('[not ours] keep'), '[not ours] keep');
 	assert.equal(stripCompiledContext('plain'), 'plain');
 
@@ -53,15 +53,19 @@ test('stripCompiledContext recovers the typed text from every compiled prompt sh
 	assert.equal(stripCompiledContext('[Vault Skills: none configured]'), '');
 });
 
-test('ContextCompiler.resumeSession skips skill disclosure but re-sends the active note', async () => {
-	let listed = 0;
-	const compiler = new ContextCompiler({
-		skillService: { async listSkills() { listed++; return []; } },
-	});
-	compiler.resumeSession();
-	const out = await compiler.compile('hi', { activeFile: 'A.md' });
-	assert.equal(listed, 0);
-	assert.match(out.prompt, /Current Active Note/);
+test('replay separates /compact from the next prompt but keeps text typed after it', () => {
+	const chunk = (text) => ({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text } });
+	const buffer = [];
+	for (const text of ['/compact', 'next']) applyReplayUpdate(buffer, chunk(text));
+	assert.deepEqual(buffer.map((m) => [m.role, m.text]), [
+		['user', '/compact'],
+		['agent', 'Conversation compacted.'],
+		['user', 'next'],
+	]);
+
+	const withArgs = [];
+	for (const text of ['/compact', ' keep titles']) applyReplayUpdate(withArgs, chunk(text));
+	assert.deepEqual(withArgs.map((m) => m.text), ['/compact keep titles']);
 });
 
 test('parseSessionList validates entries and keeps only the vault cwd', () => {

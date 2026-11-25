@@ -7,7 +7,7 @@ Anti-dian works with your existing vault without forcing a folder structure or m
 ## Highlights
 
 - **Chat with your vault**: Open the sidebar to ask questions, summarize, compare, or draft notes with live active-note context and clickable `[[wikilink]]` previews.
-- **Rich input**: Mention notes with `@`, run quick actions with `/` (`/compare`, `/plan`, `/search`, `/summarize`, `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
+- **Rich input**: Mention notes with `@`, run commands and your skills with `/` (such as `/compact` or `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
 - **Reads more than notes**: Ask about images, PDFs, audio, video, and Office documents (`.docx`, `.xlsx`, `.pptx`) in your vault (up to 100 MB each), as well as canvases and other text files.
 - **Interactive questions**: When clarifying requirements or options, the assistant can present structured single-select or multi-select question cards above the input bar with numbered shortcuts, a write-in **Other** field, and multi-question step navigation.
 - **Live planning & progress tracking**: Multi-step turns show an updating step checklist card (`pending`, `in_progress`, `done`, `skipped`, `failed`) below the collapsible thinking trace together with the current focus status and a live elapsed timer.
@@ -17,7 +17,7 @@ Anti-dian works with your existing vault without forcing a folder structure or m
   - **Auto**: Applies valid edits immediately.
   - Every applied edit can be rolled back with **Undo**.
 - **Organized conversations**: Search, pin, rename, delete, and **fork** conversations in a resizable per-vault drawer.
-- **Custom Vault Skills**: Drop reusable Markdown instructions into `.anti-dian/skills/` to teach Anti-dian your own workflows.
+- **Custom Vault Skills**: Drop reusable Markdown instructions into `.agents/skills/` to teach Anti-dian your own workflows.
 
 ## Getting Started
 
@@ -40,7 +40,7 @@ Anti-dian works with your existing vault without forcing a folder structure or m
 
 ## Vault Skills
 
-Create `.anti-dian/skills/<name>.md` (or `.anti-dian/skills/<name>/SKILL.md`) with optional frontmatter:
+Create `.agents/skills/<name>/SKILL.md` with a `name` and `description`:
 
 ```markdown
 ---
@@ -52,7 +52,9 @@ description: Summarize today's notes and extract open action items.
 ...
 ```
 
-Anti-dian discovers your skills automatically and loads them on demand.
+The backend discovers skills when a conversation starts and loads them on demand, or you can run one with `/<name>`. Your global Antigravity skills are available too. Skills cannot run scripts or shell commands.
+
+Skills in the older `.anti-dian/skills/` folder are no longer loaded: move each one to `.agents/skills/<name>/SKILL.md`.
 
 ## Privacy & Network Use
 

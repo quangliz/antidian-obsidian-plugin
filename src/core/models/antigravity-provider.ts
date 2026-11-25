@@ -10,6 +10,7 @@ import {
 	type AcpStreamCallbacks,
 	AntigravityAcpClient,
 	type AntigravityAcpOptions,
+	type AvailableCommand,
 	type AvailableModelsResponse,
 	type CachedQuotaSnapshot,
 	type ContextWindowUsage,
@@ -55,6 +56,10 @@ export class AntigravityProvider {
 
 	getContextUsage(): ContextWindowUsage | null {
 		return this.client.getContextUsage();
+	}
+
+	getAvailableCommands(): AvailableCommand[] {
+		return this.client.getAvailableCommands();
 	}
 
 	getCachedAvailableModels(): AvailableModelsResponse | null {

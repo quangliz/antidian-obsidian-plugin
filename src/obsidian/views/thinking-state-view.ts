@@ -17,6 +17,7 @@ import type { ApprovalDecision, ApprovalRequest } from '../../core/transactions'
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail } from './tool-detail';
 import { originalTextSize } from '../../core/sessions/trace';
+import { loadedSkillName } from '../../core/skills';
 import { parseAskQuestionOutcome } from '../../core/models/elicitation';
 import {
 	formatElapsedSeconds,
@@ -612,8 +613,8 @@ export class ThinkingStateView {
 		);
 		const rejected = this.steps.filter((s) => s.approval?.state === 'rejected').length;
 		const skills = this.steps
-			.filter((s) => s.toolName === 'load_skill' && typeof s.args?.name === 'string')
-			.map((s) => String(s.args?.name));
+			.map((s) => loadedSkillName(s.toolName, s.args))
+			.filter((name): name is string => name !== undefined);
 		if (skills.length === 1) clauses.push([{ text: 'loaded skill ' }, { text: skills[0] ?? '', file: true }]);
 		else if (skills.length > 1) clauses.push([{ text: `loaded ${skills.length} skills` }]);
 
@@ -631,7 +632,9 @@ export class ThinkingStateView {
 			'create_note', 'edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter',
 			'load_skill', 'list_skills', 'ask_question', 'update_steps', 'update_focus',
 		]);
-		const other = this.steps.filter((s) => !known.has(s.toolName)).length;
+		const other = this.steps.filter(
+			(s) => !known.has(s.toolName) && !loadedSkillName(s.toolName, s.args),
+		).length;
 		if (other) clauses.push([{ text: `ran ${other} ${other === 1 ? 'tool' : 'tools'}` }]);
 
 		if (clauses.length === 0 && this.planSteps.length > 0) {
@@ -676,6 +679,8 @@ export class ThinkingStateView {
 			secondary: basename(args.path),
 			isFile: true,
 		});
+		const skill = loadedSkillName(toolName, args);
+		if (skill) return { primary: 'Load skill', secondary: skill };
 		switch (toolName) {
 			case 'search_notes':
 				return { primary: 'Search notes', secondary: quoted(args.query) };
@@ -707,11 +712,6 @@ export class ThinkingStateView {
 				return file('Update properties');
 			case 'list_skills':
 				return { primary: 'List skills' };
-			case 'load_skill':
-				return {
-					primary: 'Load skill',
-					secondary: typeof args.name === 'string' ? args.name : undefined,
-				};
 			case 'ask_question': {
 				const qs: unknown[] = Array.isArray(args.questions) ? args.questions : [];
 				const firstQ = qs[0];

@@ -1415,10 +1415,13 @@ body .menu.anti-dian-glide-menu .menu-item.is-label {
 	flex-direction: column;
 	position: relative;
 	z-index: 2;
+	max-height: 264px;
+	overflow-y: auto;
 }
 
 .anti-dian-promptbar-menu-row,
 button.anti-dian-promptbar-menu-row {
+	flex-shrink: 0;
 	position: relative;
 	z-index: 2;
 	display: flex;

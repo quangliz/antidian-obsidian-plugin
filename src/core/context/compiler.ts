@@ -1,11 +1,9 @@
 import type { ActiveContext, ContextReference } from '../types/context';
-import type { SkillService } from '../types/skills';
 import type { NoteOutline, VaultService } from '../types/vault';
 import type { HarnessPermissionMode } from '../tools';
 
 export interface ContextCompilerOptions {
 	vaultService?: Pick<VaultService, 'getNoteOutline'>;
-	skillService?: SkillService;
 }
 
 export interface CompiledTurnPrompt {
@@ -21,24 +19,30 @@ export interface ForkedTurn {
 const FORK_BLOCK_START = '[Forked Conversation Context:\n';
 const FORK_BLOCK_END = '\n</forked-context>]';
 const MAX_FORK_CONTEXT_CHARS = 24_000;
+const COMMAND_CONTEXT_START = '[Command Context:\n';
+const COMMAND_CONTEXT_END = '\n]';
+
+/** Shown for `/compact`, which the CLI completes without a reply. */
+export const COMPACTED_REPLY = 'Conversation compacted.';
+
+/** Whether the prompt is the CLI's `/compact` command (with arguments it is an ordinary prompt). */
+export function isCompactCommand(prompt: string): boolean {
+	return prompt.trim() === '/compact';
+}
 
 export class ContextCompiler {
 	private vaultService?: Pick<VaultService, 'getNoteOutline'>;
-	private skillService?: SkillService;
 	private lastActiveFile: string | undefined;
 	private lastSelection: string | undefined;
-	private skillsInjectedInSession = false;
 	private pendingForkTurns: ForkedTurn[] | null = null;
 
 	constructor(options: ContextCompilerOptions = {}) {
 		this.vaultService = options.vaultService;
-		this.skillService = options.skillService;
 	}
 
 	reset(): void {
 		this.lastActiveFile = undefined;
 		this.lastSelection = undefined;
-		this.skillsInjectedInSession = false;
 		this.pendingForkTurns = null;
 	}
 
@@ -55,44 +59,22 @@ export class ContextCompiler {
 		this.pendingForkTurns = nonEmpty.length > 0 ? nonEmpty : null;
 	}
 
-	/**
-	 * Prepares for continuing a stored session: skills were already disclosed
-	 * in it, but the active note is unknown, so it is re-sent on the next turn.
-	 */
-	resumeSession(): void {
-		this.reset();
-		this.skillsInjectedInSession = true;
-	}
-
 	async compile(
 		userMessage: string,
 		context?: ActiveContext,
 		permissionMode: HarnessPermissionMode = 'ask',
 	): Promise<CompiledTurnPrompt> {
+		if (isCompactCommand(userMessage)) {
+			// Summarizing needs no context, and may drop what was sent: re-send it next turn.
+			this.lastActiveFile = undefined;
+			this.lastSelection = undefined;
+			return { prompt: userMessage, contextRefs: [] };
+		}
+
 		const blocks: string[] = [];
 		const contextRefs: ContextReference[] = [];
 
-		// 1. Inject available vault skills once per session (progressive disclosure)
-		if (!this.skillsInjectedInSession && this.skillService) {
-			this.skillsInjectedInSession = true;
-			try {
-				const skills = await this.skillService.listSkills();
-				if (skills.length > 0) {
-					const lines = skills.map(
-						(s) => `- ${s.name}: ${s.description}`,
-					);
-					blocks.push(
-						`[Available Vault Skills (call load_skill(name) when relevant):\n${lines.join('\n')}\n]`,
-					);
-				} else {
-					blocks.push('[Vault Skills: none configured]');
-				}
-			} catch {
-				// Ignore skill discovery errors
-			}
-		}
-
-		// 1b. If this session was forked from a previous conversation, inject its prefix once.
+		// 1. If this session was forked from a previous conversation, inject its prefix once.
 		if (this.pendingForkTurns && this.pendingForkTurns.length > 0) {
 			const turns = this.pendingForkTurns;
 			this.pendingForkTurns = null;
@@ -155,11 +137,19 @@ export class ContextCompiler {
 		this.lastActiveFile = activeFile;
 		this.lastSelection = selection;
 
-		const prefix = blocks.length > 0 ? `${blocks.join('\n\n')}\n\n` : '';
 		return {
-			prompt: `${prefix}${userMessage}`,
+			prompt: this.assemble(blocks, userMessage),
 			contextRefs,
 		};
+	}
+
+	private assemble(blocks: string[], userMessage: string): string {
+		if (blocks.length === 0) return userMessage;
+		const context = blocks.join('\n\n');
+		// The CLI only runs a slash command or skill that starts the prompt.
+		return userMessage.startsWith('/')
+			? `${userMessage}\n\n${COMMAND_CONTEXT_START}${context}${COMMAND_CONTEXT_END}`
+			: `${context}\n\n${userMessage}`;
 	}
 
 	private formatForkedTurns(turns: ForkedTurn[]): string {
@@ -203,11 +193,16 @@ export class ContextCompiler {
 }
 
 /**
- * Removes the context blocks `ContextCompiler.compile` prepends, recovering the
+ * Removes the context blocks `ContextCompiler.compile` adds, recovering the
  * text the user typed. Used to show replayed history from a stored session.
- * Blocks are only stripped from the start, so user text is never altered.
+ * Blocks are stripped from the start, or after a leading slash command.
  */
 export function stripCompiledContext(prompt: string): string {
+	if (prompt.startsWith('/')) {
+		const start = prompt.indexOf(COMMAND_CONTEXT_START);
+		// The CLI may collapse the blank line before the block to a space.
+		return start === -1 ? prompt : prompt.slice(0, start).trimEnd();
+	}
 	let rest = prompt;
 	for (;;) {
 		const end = compiledBlockEnd(rest);
@@ -218,6 +213,7 @@ export function stripCompiledContext(prompt: string): string {
 
 /** Length of the leading context block plus its `\n\n` separator, or null. */
 function compiledBlockEnd(text: string): number | null {
+	// The two skill blocks are only in sessions from before agy discovered skills.
 	const singleLine = [
 		'[Vault Skills: none configured]',
 		'[Mode: Plan (read-only).',

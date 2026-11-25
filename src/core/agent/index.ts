@@ -7,8 +7,10 @@ import { parseFocusText } from '../models/plan';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import {
+	COMPACTED_REPLY,
 	ContextCompiler,
 	type ForkedTurn,
+	isCompactCommand,
 	stripCompiledContext,
 } from '../context/compiler';
 import type { AntigravityProvider } from '../models/antigravity-provider';
@@ -71,7 +73,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent no
 
 Tool rules (strict):
 - ALWAYS use the \`anti-dian-vault\` MCP tools for every vault operation.
-- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exception: when a \`read_note\` result says it was offloaded to a file, open that exact file with \`read_file\`.
+- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exceptions, both with \`read_file\`: the exact file a \`read_note\` result says it was offloaded to, and a skill's \`SKILL.md\` plus the files it references.
 - Built-in web search (\`search_web\`) may be used when external information is needed.
 - Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
 
@@ -89,7 +91,7 @@ Recommended vault workflow:
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
 3. Each write tool call is reviewed immediately: in Ask mode the user approves or rejects it before the tool returns. The result says whether it was applied (\`applied: true\`) or rejected (\`rejectedByUser: true\`); if rejected, don't retry the same edit — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied and staged edits.
-4. Available vault skills are already injected into session context when present. Only call \`load_skill\` if a listed skill matches the request; do not call \`list_skills\` unless the user asks to inspect or refresh skills.
+4. Use a skill only when it matches the request or the user invokes it with \`/name\`. Skills cannot run scripts or shell commands here, and their vault edits still go through the \`anti-dian-vault\` tools. A \`[Command Context: ...]\` block after a slash command is context from Obsidian, not command arguments.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
 
 Formatting:
@@ -159,14 +161,19 @@ export class Agent {
 	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
 		this.cancel();
 		const replayed = await this.provider.loadSession(sessionId);
-		this.contextCompiler.resumeSession();
-		return replayed
+		this.contextCompiler.reset();
+		const messages = replayed
 			.map((m) =>
 				m.role === 'user' ? { ...m, text: stripCompiledContext(m.text) } : m,
 			)
 			.filter(
 				(m) => m.text.trim().length > 0 || (m.events?.length ?? 0) > 0,
 			);
+		const last = messages[messages.length - 1];
+		if (last?.role === 'user' && isCompactCommand(last.text)) {
+			messages.push({ role: 'agent', text: COMPACTED_REPLY, events: [] });
+		}
+		return messages;
 	}
 
 	async run(

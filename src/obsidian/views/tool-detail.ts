@@ -194,7 +194,7 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 			const skills = Array.isArray(output) ? output.filter(isRecord) : [];
 			return (el) => {
 				if (!skills.length) {
-					meta(el, 'No skills in .anti-dian/skills/');
+					meta(el, 'No skills');
 					return;
 				}
 				for (const skill of skills.slice(0, MAX_LIST_ITEMS)) {

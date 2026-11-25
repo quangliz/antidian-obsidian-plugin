@@ -2,17 +2,18 @@ import './ts-resolve.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
-import { ContextCompiler } from '../src/core/context/compiler.ts';
+import { ContextCompiler, stripCompiledContext } from '../src/core/context/compiler.ts';
+import { parseAvailableCommands } from '../src/core/models/antigravity-acp.ts';
+import { loadedSkillName } from '../src/core/skills/index.ts';
 import {
 	ToolRegistry,
 	createCreateNoteTool,
-	createListSkillsTool,
 } from '../src/core/tools/index.ts';
 import { ChangeStagingManager } from '../src/core/transactions/index.ts';
 import { McpToolServer } from '../src/core/models/mcp-tool-server.ts';
 import { Agent } from '../src/core/agent/index.ts';
 
-test('ContextCompiler deduplicates active note across turns and injects skills once', async () => {
+test('ContextCompiler deduplicates active note across turns', async () => {
 	const compiler = new ContextCompiler({
 		vaultService: {
 			async getNoteOutline(path) {
@@ -26,20 +27,6 @@ test('ContextCompiler deduplicates active note across turns and injects skills o
 				};
 			},
 		},
-		skillService: {
-			async listSkills() {
-				return [
-					{
-						name: 'daily-review',
-						description: 'Summarize daily notes',
-						path: '.anti-dian/skills/daily-review.md',
-					},
-				];
-			},
-			async loadSkill() {
-				return null;
-			},
-		},
 	});
 
 	const turn1 = await compiler.compile(
@@ -47,19 +34,16 @@ test('ContextCompiler deduplicates active note across turns and injects skills o
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.match(turn1.prompt, /Available Vault Skills/);
-	assert.match(turn1.prompt, /daily-review: Summarize daily notes/);
 	assert.match(turn1.prompt, /Current Active Note: \[\[LLM\]\]/);
 	assert.match(turn1.prompt, /## Overview/);
 	assert.equal(turn1.contextRefs.length, 1);
 
-	// Second turn with identical active note should not duplicate active note or skills
+	// Second turn with identical active note should not duplicate active note
 	const turn2 = await compiler.compile(
 		'Now list action items',
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.doesNotMatch(turn2.prompt, /Available Vault Skills/);
 	assert.doesNotMatch(turn2.prompt, /Current Active Note/);
 	assert.equal(turn2.prompt, 'Now list action items');
 
@@ -78,27 +62,57 @@ test('ContextCompiler deduplicates active note across turns and injects skills o
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.match(turn4.prompt, /Available Vault Skills/);
 	assert.match(turn4.prompt, /Current Active Note/);
 });
 
-test('ContextCompiler explicitly reports when no vault skills are configured', async () => {
-	const compiler = new ContextCompiler({
-		skillService: {
-			async listSkills() {
-				return [];
-			},
-			async loadSkill() {
-				return null;
-			},
-		},
-	});
+test('ContextCompiler keeps a slash command first and puts context after it', async () => {
+	const compiler = new ContextCompiler();
+	const turn = await compiler.compile('/daily-review today', { activeFile: 'A.md', selection: 'x\n\ny' }, 'plan');
+	assert.ok(turn.prompt.startsWith('/daily-review today\n\n[Command Context:\n'));
+	assert.match(turn.prompt, /Mode: Plan/);
+	assert.match(turn.prompt, /Current Active Note: \[\[A\]\]/);
+	assert.equal(stripCompiledContext(turn.prompt), '/daily-review today');
+	// The CLI replays a bare command with the blank line collapsed to a space.
+	assert.equal(
+		stripCompiledContext('/daily-review [Command Context:\n[Current Active Note: [[A]] (path: A.md)]\n]'),
+		'/daily-review',
+	);
+	assert.equal(stripCompiledContext('/daily-review today'), '/daily-review today');
+});
 
-	const turn1 = await compiler.compile('Update metadata', undefined, 'ask');
-	assert.match(turn1.prompt, /\[Vault Skills: none configured\]/);
+test('ContextCompiler sends /compact alone, then re-sends the active note', async () => {
+	const compiler = new ContextCompiler();
+	await compiler.compile('hi', { activeFile: 'A.md' });
+	const compact = await compiler.compile('/compact', { activeFile: 'A.md' }, 'plan');
+	assert.deepEqual(compact, { prompt: '/compact', contextRefs: [] });
+	const next = await compiler.compile('next', { activeFile: 'A.md' });
+	assert.match(next.prompt, /Current Active Note: \[\[A\]\]/);
+});
 
-	const turn2 = await compiler.compile('Follow-up', undefined, 'ask');
-	assert.equal(turn2.prompt, 'Follow-up');
+test('parseAvailableCommands validates entries and hides commands Anti-dian cannot run', () => {
+	assert.deepEqual(
+		parseAvailableCommands([
+			{ name: 'compact', description: 'Compact\n  now' },
+			{ name: 'my-skill' },
+			{ name: 'swarm', description: 'Run a swarm' },
+			{ name: 'bad name' },
+			{ name: 42 },
+			null,
+		]),
+		[
+			{ name: 'compact', description: 'Compact now' },
+			{ name: 'my-skill', description: '' },
+		],
+	);
+	assert.deepEqual(parseAvailableCommands({ nope: true }), []);
+});
+
+test('loadedSkillName recognizes native skill reads and older load_skill calls', () => {
+	assert.equal(loadedSkillName('read_file', { Path: '/v/.agents/skills/daily/SKILL.md' }), 'daily');
+	assert.equal(loadedSkillName('read_file', { Path: 'C:\\v\\.agents\\skills\\daily\\SKILL.md' }), 'daily');
+	assert.equal(loadedSkillName('read_file', { Path: '/v/note.md' }), undefined);
+	assert.equal(loadedSkillName('load_skill', { name: 'daily' }), 'daily');
+	assert.equal(loadedSkillName('read_note', undefined), undefined);
 });
 
 test('McpToolServer blocks mutating tools in plan mode and allows read tools', async () => {
@@ -106,22 +120,12 @@ test('McpToolServer blocks mutating tools in plan mode and allows read tools', a
 	staging.startTurn();
 	const registry = new ToolRegistry();
 	registry.register(createCreateNoteTool(staging));
-	registry.register(
-		createListSkillsTool({
-			async listSkills() {
-				return [
-					{
-						name: 'test-skill',
-						description: 'Test',
-						path: '.anti-dian/skills/test-skill.md',
-					},
-				];
-			},
-			async loadSkill() {
-				return null;
-			},
-		}),
-	);
+	registry.register({
+		name: 'read_stub',
+		description: 'Reads',
+		schema: { type: 'object', properties: {} },
+		execute: async () => ({ ok: true }),
+	});
 
 	const server = new McpToolServer(registry);
 	const info = await server.start();
@@ -175,9 +179,7 @@ test('McpToolServer blocks mutating tools in plan mode and allows read tools', a
 		assert.equal(blocked.blockedByPlanMode, true);
 		assert.equal(staging.getActive()?.operations.length, 0);
 
-		const skills = await callTool('list_skills', {});
-		assert.equal(skills.length, 1);
-		assert.equal(skills[0].name, 'test-skill');
+		assert.deepEqual(await callTool('read_stub', {}), { ok: true });
 
 		// Aborted turn signal short-circuits tool execution
 		const abortController = new AbortController();
