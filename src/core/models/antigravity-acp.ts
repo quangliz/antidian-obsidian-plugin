@@ -14,7 +14,11 @@ import type {
 	ElicitationResponse,
 } from '../types/elicitation';
 import type { PlanStep } from '../types/plan';
-import { COMPACTED_REPLY, isCompactCommand } from '../context/compiler';
+import {
+	COMPACTED_REPLY,
+	CONTEXT_RESOURCE_URI,
+	isCompactCommand,
+} from '../context/compiler';
 import { parseElicitationRequest } from './elicitation';
 import { parseFocusText, parsePlanSteps } from './plan';
 import {
@@ -34,31 +38,21 @@ import {
 } from './agy-diagnostics';
 import type { McpToolServer } from './mcp-tool-server';
 
-export interface AvailableModel {
-	id: string;
-	displayName: string;
-	maxTokens?: number;
-	maxOutputTokens?: number;
-	supportsThinking?: boolean;
+export interface ModelOption {
+	value: string;
+	name: string;
 }
 
-export interface ModelVariant {
-	id: string;
-	thinkingEffort: string;
-	displayName: string;
+export interface ModelSelect {
+	current: string;
+	options: ModelOption[];
 }
 
-export interface ModelGroup {
-	baseName: string;
-	maxTokens?: number;
-	supportsThinking?: boolean;
-	variants: ModelVariant[];
-}
-
-export interface AvailableModelsResponse {
-	models: AvailableModel[];
-	groups: ModelGroup[];
-	defaultModelId?: string;
+/** Model choices as `agy` reports them; thinking levels are the current model's. */
+export interface ModelConfig {
+	model: ModelSelect;
+	/** Unset for models without a choice of thinking level. */
+	thoughtLevel?: ModelSelect;
 }
 
 export interface AccountTierInfo {
@@ -93,8 +87,7 @@ export interface ContextWindowUsage {
 }
 
 export interface CachedProviderMetadata {
-	models?: AvailableModel[];
-	defaultModelId?: string;
+	modelConfig?: ModelConfig;
 	accountTier?: AccountTierInfo | null;
 	quota?: {
 		groups: QuotaGroupInfo[];
@@ -142,7 +135,10 @@ export interface AntigravityAcpOptions {
 	cliPath?: string;
 	caCertificates?: string;
 	cwd?: string;
+	/** Wanted model: a `model` option, or a model ID that includes its thinking level. */
 	model?: string;
+	/** Wanted thinking level, used when the model offers it. */
+	thoughtLevel?: string;
 	systemPrompt?: string;
 	mcpToolServer?: McpToolServer;
 	/**
@@ -228,68 +224,6 @@ export function formatTokens(tokens?: number): string {
 	return `${tokens}`;
 }
 
-export function groupModels(models: AvailableModel[]): ModelGroup[] {
-	const groups = new Map<string, ModelGroup>();
-
-	for (const m of models) {
-		let baseName = m.displayName;
-		let effort = 'Default';
-
-		const match = m.displayName.match(
-			/^(.*?)\s*\((High|Low|Off|Medium|XHigh|Max|Thinking)\)$/i,
-		);
-		if (match && match[1] && match[2]) {
-			baseName = match[1].trim();
-			const rawEffort = match[2].toLowerCase();
-			effort =
-				rawEffort === 'xhigh'
-					? 'XHigh'
-					: rawEffort.charAt(0).toUpperCase() + rawEffort.slice(1);
-		} else if (m.id.endsWith('-xhigh')) {
-			baseName = m.displayName.replace(/\s*\(XHigh\)/i, '').trim();
-			effort = 'XHigh';
-		} else if (m.id.endsWith('-high')) {
-			baseName = m.displayName.replace(/\s*\(High\)/i, '').trim();
-			effort = 'High';
-		} else if (m.id.endsWith('-medium')) {
-			baseName = m.displayName.replace(/\s*\(Medium\)/i, '').trim();
-			effort = 'Medium';
-		} else if (m.id.endsWith('-low')) {
-			baseName = m.displayName.replace(/\s*\(Low\)/i, '').trim();
-			effort = 'Low';
-		} else if (m.id.endsWith('-off')) {
-			baseName = m.displayName.replace(/\s*\(Off\)/i, '').trim();
-			effort = 'Off';
-		} else if (m.supportsThinking) {
-			effort = 'Thinking';
-		}
-
-		let group = groups.get(baseName);
-		if (!group) {
-			group = {
-				baseName,
-				maxTokens: m.maxTokens,
-				supportsThinking: m.supportsThinking,
-				variants: [],
-			};
-			groups.set(baseName, group);
-		}
-		if (m.maxTokens && !group.maxTokens) {
-			group.maxTokens = m.maxTokens;
-		}
-		if (m.supportsThinking) {
-			group.supportsThinking = true;
-		}
-		group.variants.push({
-			id: m.id,
-			thinkingEffort: effort,
-			displayName: m.displayName,
-		});
-	}
-
-	return Array.from(groups.values());
-}
-
 export function resolveAgyBinary(customPath?: string): string {
 	if (customPath && customPath.trim()) {
 		return customPath.trim();
@@ -354,10 +288,7 @@ interface PendingRpc {
 
 interface AcpSessionNewResult {
 	sessionId: string;
-	models?: {
-		availableModels?: { modelId: string; name?: string }[];
-		currentModelId?: string;
-	};
+	configOptions?: unknown;
 	_meta?: {
 		antigravity?: {
 			tier?: {
@@ -390,6 +321,7 @@ export class AntigravityAcpClient {
 	private caCertificates?: string;
 	private cwd: string;
 	private model?: string;
+	private thoughtLevel?: string;
 	private systemPrompt?: string;
 	private mcpToolServer?: McpToolServer;
 	private appDataDir: string;
@@ -406,9 +338,11 @@ export class AntigravityAcpClient {
 	private pending = new Map<number, PendingRpc>();
 	private initialized = false;
 	private sessionId: string | null = null;
-	private activeModelId: string | null = null;
+	/** The `model` value last sent to, or reported by, the current session. */
+	private appliedModel: string | null = null;
+	private modelConfigTask: Promise<void> = Promise.resolve();
 
-	private cachedModels: AvailableModelsResponse | null = null;
+	private modelConfig: ModelConfig | null = null;
 	private cachedTier: AccountTierInfo | null = null;
 	private cachedQuota: { data: UserQuotaResponse; fetchedAt: number } | null =
 		null;
@@ -437,6 +371,7 @@ export class AntigravityAcpClient {
 		this.caCertificates = options.caCertificates;
 		this.cwd = options.cwd ?? process.cwd();
 		this.model = options.model;
+		this.thoughtLevel = options.thoughtLevel;
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
 		this.appDataDir = options.appDataDir ?? ANTI_DIAN_APP_DATA_DIR;
@@ -456,12 +391,8 @@ export class AntigravityAcpClient {
 	}
 
 	private hydrateCache(cache: CachedProviderMetadata): void {
-		if (Array.isArray(cache.models) && cache.models.length > 0) {
-			this.cachedModels = {
-				models: cache.models,
-				groups: groupModels(cache.models),
-				defaultModelId: cache.defaultModelId,
-			};
+		if (Array.isArray(cache.modelConfig?.model?.options)) {
+			this.modelConfig = cache.modelConfig;
 		}
 		if (cache.accountTier) {
 			this.cachedTier = cache.accountTier;
@@ -484,8 +415,7 @@ export class AntigravityAcpClient {
 	private emitCacheUpdate(): void {
 		if (!this.onCacheUpdate) return;
 		const snapshot: CachedProviderMetadata = {
-			models: this.cachedModels?.models,
-			defaultModelId: this.cachedModels?.defaultModelId,
+			modelConfig: this.modelConfig ?? undefined,
 			accountTier: this.cachedTier,
 			quota: this.cachedQuota
 				? {
@@ -509,16 +439,20 @@ export class AntigravityAcpClient {
 	}
 
 	setModel(model: string): void {
+		if (this.model === model) return;
 		this.model = model;
-		if (this.sessionId && this.activeModelId !== model) {
-			void this.applyModel(model).catch(() => {
-				// Will retry on next prompt
-			});
+		if (!this.sessionId && this.modelConfig) {
+			// Shown until a session reports the model's thinking levels.
+			const { options } = this.modelConfig.model;
+			this.modelConfig = { model: { current: model, options } };
 		}
+		this.applyModelConfigInBackground();
 	}
 
-	getModel(): string {
-		return this.model ?? this.activeModelId ?? 'gemini-3.8-flash-high';
+	setThoughtLevel(level: string): void {
+		if (this.thoughtLevel === level) return;
+		this.thoughtLevel = level;
+		this.applyModelConfigInBackground();
 	}
 
 	getAccountTier(): AccountTierInfo | null {
@@ -534,8 +468,8 @@ export class AntigravityAcpClient {
 		return this.availableCommands;
 	}
 
-	getCachedAvailableModels(): AvailableModelsResponse | null {
-		return this.cachedModels;
+	getModelConfig(): ModelConfig | null {
+		return this.modelConfig;
 	}
 
 	getCachedUserQuota(): CachedQuotaSnapshot | null {
@@ -787,12 +721,9 @@ export class AntigravityAcpClient {
 		});
 	}
 
-	async fetchAvailableModels(): Promise<AvailableModelsResponse> {
+	async fetchModelConfig(): Promise<ModelConfig | null> {
 		await this.ensureSession();
-		if (this.cachedModels) {
-			return this.cachedModels;
-		}
-		return { models: [], groups: [] };
+		return this.modelConfig;
 	}
 
 	getSessionId(): string | null {
@@ -880,7 +811,7 @@ export class AntigravityAcpClient {
 		if (this.sessionId && this.proc && !this.proc.killed) {
 			const oldId = this.sessionId;
 			this.sessionId = null;
-			this.activeModelId = null;
+			this.appliedModel = null;
 			this.contextUsage = null;
 			try {
 				await this.sendRequest('session/close', { sessionId: oldId });
@@ -889,7 +820,7 @@ export class AntigravityAcpClient {
 			}
 		} else {
 			this.sessionId = null;
-			this.activeModelId = null;
+			this.appliedModel = null;
 			this.contextUsage = null;
 		}
 	}
@@ -929,6 +860,7 @@ export class AntigravityAcpClient {
 		media?: MediaInput[],
 		callbacks?: AcpStreamCallbacks,
 		signal?: AbortSignal,
+		context?: string,
 	): Promise<AcpPromptResult> {
 		if (signal?.aborted) {
 			return { answer: '', stopReason: 'cancelled' };
@@ -952,15 +884,23 @@ export class AntigravityAcpClient {
 				return { answer: '', stopReason: 'cancelled' };
 			}
 
-			if (this.model && this.activeModelId !== this.model) {
-				await this.applyModel(this.model);
-			}
+			await this.applyModelConfig();
 
 			if (this.turnCancelled || signal?.aborted) {
 				return { answer: '', stopReason: 'cancelled' };
 			}
 
 			const promptBlocks: Record<string, unknown>[] = [];
+			if (context) {
+				promptBlocks.push({
+					type: 'resource',
+					resource: {
+						uri: CONTEXT_RESOURCE_URI,
+						mimeType: 'text/markdown',
+						text: context,
+					},
+				});
+			}
 			if (text) {
 				promptBlocks.push({ type: 'text', text });
 			}
@@ -1151,21 +1091,9 @@ export class AntigravityAcpClient {
 		sess: Partial<AcpSessionNewResult>,
 	): Promise<void> {
 		this.sessionId = sessionId;
-		this.activeModelId = sess.models?.currentModelId ?? null;
-
-		const rawModels = sess.models?.availableModels ?? [];
-		if (rawModels.length > 0 || !this.cachedModels) {
-			const models: AvailableModel[] = rawModels.map((m) => ({
-				id: m.modelId,
-				displayName: m.name || m.modelId,
-			}));
-
-			this.cachedModels = {
-				models,
-				groups: groupModels(models),
-				defaultModelId: sess.models?.currentModelId,
-			};
-		}
+		const config = parseModelConfig(sess.configOptions);
+		if (config) this.modelConfig = config;
+		this.appliedModel = config?.model.current ?? null;
 
 		const tier = sess._meta?.antigravity?.tier;
 		if (tier) {
@@ -1176,13 +1104,11 @@ export class AntigravityAcpClient {
 			};
 		}
 
-		if (this.model && this.activeModelId !== this.model) {
-			try {
-				await this.applyModel(this.model);
-			} catch {
-				// If saved model is no longer available, keep session default
-				this.model = this.activeModelId ?? undefined;
-			}
+		try {
+			await this.applyModelConfig();
+		} catch {
+			// If saved model is no longer available, keep session default
+			this.model = undefined;
 		}
 		this.emitCacheUpdate();
 		this.prefetchQuota();
@@ -1199,13 +1125,54 @@ export class AntigravityAcpClient {
 		}
 	}
 
-	private async applyModel(modelId: string): Promise<void> {
-		if (!this.sessionId) return;
-		await this.sendRequest('session/set_model', {
-			sessionId: this.sessionId,
-			modelId,
+	/** Brings the session to the wanted model and thinking level, one call at a time. */
+	private applyModelConfig(): Promise<void> {
+		const task = this.modelConfigTask.then(async () => {
+			if (!this.sessionId) return;
+			const { model } = this;
+			if (model && this.appliedModel !== model) {
+				await this.setConfigOption('model', model);
+				this.appliedModel = model;
+			}
+			const level = this.thoughtLevel;
+			const offered = this.modelConfig?.thoughtLevel;
+			if (
+				level &&
+				offered &&
+				offered.current !== level &&
+				offered.options.some((o) => o.value === level)
+			) {
+				await this.setConfigOption('thought_level', level);
+			}
 		});
-		this.activeModelId = modelId;
+		this.modelConfigTask = task.catch(() => undefined);
+		return task;
+	}
+
+	/** Starts a session if there is none: only a session reports the model's levels. */
+	private applyModelConfigInBackground(): void {
+		void this.ensureSession()
+			.then(() => this.applyModelConfig())
+			.catch(() => {
+				// Will retry on next prompt
+			});
+	}
+
+	private async setConfigOption(configId: string, value: string): Promise<void> {
+		const res = (await this.sendRequest('session/set_config_option', {
+			sessionId: this.sessionId,
+			configId,
+			value,
+		})) as { configOptions?: unknown } | null;
+		this.updateModelConfig(res?.configOptions);
+	}
+
+	private updateModelConfig(raw: unknown): void {
+		const config = parseModelConfig(raw);
+		if (!config) return;
+		this.modelConfig = config;
+		this.emitCacheUpdate();
+		this.emitSessionInfo();
 	}
 
 	private appDataDirArgs(): string[] {
@@ -1318,7 +1285,7 @@ export class AntigravityAcpClient {
 				this.rl = null;
 				this.initialized = false;
 				this.sessionId = null;
-				this.activeModelId = null;
+				this.appliedModel = null;
 			}
 
 			if (!wasIntentional && !isNonRetriableFailure(category)) {
@@ -1351,7 +1318,7 @@ export class AntigravityAcpClient {
 		this.proc = null;
 		this.initialized = false;
 		this.sessionId = null;
-		this.activeModelId = null;
+		this.appliedModel = null;
 		this.rejectAllPending(new Error('Antigravity ACP client closed'));
 	}
 
@@ -1606,6 +1573,7 @@ export class AntigravityAcpClient {
 					title?: unknown;
 					entries?: unknown;
 					availableCommands?: unknown;
+					configOptions?: unknown;
 			  }
 			| undefined;
 
@@ -1621,6 +1589,11 @@ export class AntigravityAcpClient {
 
 		if (update.sessionUpdate === 'available_commands_update') {
 			this.availableCommands = parseAvailableCommands(update.availableCommands);
+			return;
+		}
+
+		if (update.sessionUpdate === 'config_option_update') {
+			this.updateModelConfig(update.configOptions);
 			return;
 		}
 
@@ -1742,6 +1715,31 @@ export function appendReplayChunk(
 	} else {
 		buffer.push(role === 'agent' ? { role, text, events: [] } : { role, text });
 	}
+}
+
+/** Reads the model choices from an untrusted ACP `configOptions` list. */
+export function parseModelConfig(raw: unknown): ModelConfig | null {
+	const select = (id: string): ModelSelect | undefined => {
+		const entry = Array.isArray(raw)
+			? raw.map(asRecord).find((o) => o?.id === id)
+			: undefined;
+		if (typeof entry?.currentValue !== 'string' || !Array.isArray(entry.options)) {
+			return undefined;
+		}
+		const options: ModelOption[] = [];
+		for (const option of entry.options.map(asRecord)) {
+			if (typeof option?.value !== 'string') continue;
+			options.push({
+				value: option.value,
+				name: typeof option.name === 'string' ? option.name : option.value,
+			});
+		}
+		return options.length > 0
+			? { current: entry.currentValue, options }
+			: undefined;
+	};
+	const model = select('model');
+	return model ? { model, thoughtLevel: select('thought_level') } : null;
 }
 
 /** Validates an untrusted `available_commands_update` list. */

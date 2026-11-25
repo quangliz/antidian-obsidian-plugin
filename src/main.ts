@@ -108,6 +108,7 @@ export default class AntiDianPlugin extends Plugin {
 			caCertificates: this.settings.caCertificates,
 			cwd: vaultBasePath,
 			model: this.settings.model || undefined,
+			thoughtLevel: this.settings.thoughtLevel,
 			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
 			mcpToolServer: this.mcpToolServer,
 			initialCache: this.settings.cachedMetadata,
@@ -204,6 +205,9 @@ export default class AntiDianPlugin extends Plugin {
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
 			}
+			if (this.settings.thoughtLevel) {
+				this.antigravityProvider.setThoughtLevel(this.settings.thoughtLevel);
+			}
 		}
 	}
 
@@ -216,6 +220,9 @@ export default class AntiDianPlugin extends Plugin {
 			);
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
+			}
+			if (this.settings.thoughtLevel) {
+				this.antigravityProvider.setThoughtLevel(this.settings.thoughtLevel);
 			}
 		}
 	}

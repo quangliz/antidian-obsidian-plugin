@@ -2,7 +2,7 @@ import './ts-resolve.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
-import { ContextCompiler, stripCompiledContext } from '../src/core/context/compiler.ts';
+import { ContextCompiler } from '../src/core/context/compiler.ts';
 import { parseAvailableCommands } from '../src/core/models/antigravity-acp.ts';
 import { loadedSkillName } from '../src/core/skills/index.ts';
 import {
@@ -34,8 +34,8 @@ test('ContextCompiler deduplicates active note across turns', async () => {
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.match(turn1.prompt, /Current Active Note: \[\[LLM\]\]/);
-	assert.match(turn1.prompt, /## Overview/);
+	assert.match(turn1.context, /Current Active Note: \[\[LLM\]\]/);
+	assert.match(turn1.context, /## Overview/);
 	assert.equal(turn1.contextRefs.length, 1);
 
 	// Second turn with identical active note should not duplicate active note
@@ -44,8 +44,7 @@ test('ContextCompiler deduplicates active note across turns', async () => {
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.doesNotMatch(turn2.prompt, /Current Active Note/);
-	assert.equal(turn2.prompt, 'Now list action items');
+	assert.equal(turn2.context, undefined);
 
 	// Plan mode adds read-only notice
 	const turn3 = await compiler.compile(
@@ -53,7 +52,7 @@ test('ContextCompiler deduplicates active note across turns', async () => {
 		{ activeFile: 'Research/LLM.md' },
 		'plan',
 	);
-	assert.match(turn3.prompt, /Mode: Plan \(read-only\)/);
+	assert.match(turn3.context, /Mode: Plan \(read-only\)/);
 
 	// Reset restores first-turn injection
 	compiler.reset();
@@ -62,31 +61,16 @@ test('ContextCompiler deduplicates active note across turns', async () => {
 		{ activeFile: 'Research/LLM.md' },
 		'ask',
 	);
-	assert.match(turn4.prompt, /Current Active Note/);
+	assert.match(turn4.context, /Current Active Note/);
 });
 
-test('ContextCompiler keeps a slash command first and puts context after it', async () => {
-	const compiler = new ContextCompiler();
-	const turn = await compiler.compile('/daily-review today', { activeFile: 'A.md', selection: 'x\n\ny' }, 'plan');
-	assert.ok(turn.prompt.startsWith('/daily-review today\n\n[Command Context:\n'));
-	assert.match(turn.prompt, /Mode: Plan/);
-	assert.match(turn.prompt, /Current Active Note: \[\[A\]\]/);
-	assert.equal(stripCompiledContext(turn.prompt), '/daily-review today');
-	// The CLI replays a bare command with the blank line collapsed to a space.
-	assert.equal(
-		stripCompiledContext('/daily-review [Command Context:\n[Current Active Note: [[A]] (path: A.md)]\n]'),
-		'/daily-review',
-	);
-	assert.equal(stripCompiledContext('/daily-review today'), '/daily-review today');
-});
-
-test('ContextCompiler sends /compact alone, then re-sends the active note', async () => {
+test('ContextCompiler sends no context with /compact, then re-sends the active note', async () => {
 	const compiler = new ContextCompiler();
 	await compiler.compile('hi', { activeFile: 'A.md' });
 	const compact = await compiler.compile('/compact', { activeFile: 'A.md' }, 'plan');
-	assert.deepEqual(compact, { prompt: '/compact', contextRefs: [] });
+	assert.deepEqual(compact, { contextRefs: [] });
 	const next = await compiler.compile('next', { activeFile: 'A.md' });
-	assert.match(next.prompt, /Current Active Note: \[\[A\]\]/);
+	assert.match(next.context, /Current Active Note: \[\[A\]\]/);
 });
 
 test('parseAvailableCommands validates entries and hides commands Anti-dian cannot run', () => {

@@ -1,15 +1,14 @@
 import { Menu, MenuItem, setIcon } from 'obsidian';
 import {
 	AccountTierInfo,
-	AvailableModel,
 	CachedQuotaSnapshot,
 	ContextWindowUsage,
-	ModelGroup,
-	ModelVariant,
+	ModelConfig,
+	ModelSelect,
 	UserQuotaResponse,
 	formatTokens,
-	groupModels,
 } from '../../core/models/antigravity-acp';
+import { createEffortSlider, EffortSlider } from './effort-slider';
 import { attachNativeMenuGlider } from './menu-glider';
 
 interface UsageRow {
@@ -21,10 +20,9 @@ interface UsageRow {
 }
 
 export interface ModelMenuContext {
-	getCurrentModelId: () => string;
-	onSelectModel: (modelId: string) => void;
-	getAvailableModels: () => AvailableModel[];
-	getModelGroups: () => ModelGroup[];
+	getModelConfig: () => ModelConfig | null;
+	onSelectModel: (model: string) => void;
+	onSelectThoughtLevel: (level: string) => void;
 	getAccountTier: () => AccountTierInfo | null;
 	getCachedUserQuota: () => CachedQuotaSnapshot | null;
 	fetchUserQuota: () => Promise<UserQuotaResponse | null>;
@@ -38,17 +36,16 @@ export interface ModelMenuContext {
 	};
 }
 
-/** `MenuItem.setSubmenu` exists at runtime but is not in the public typings. */
-type MenuItemWithSubmenu = MenuItem & { setSubmenu?: () => Menu };
-
 /** `Menu.dom` / `MenuItem.dom` exist at runtime but are not in the public typings. */
 type MenuWithDom = Menu & { dom?: HTMLElement };
 type MenuItemWithDom = MenuItem & { dom?: HTMLElement };
 
-const SUPPORTS_SUBMENU =
-	typeof (MenuItem.prototype as MenuItemWithSubmenu).setSubmenu === 'function';
-
-const DEFAULT_MODEL_ID = 'gemini-3.7-flash-high';
+/** Name of the selected option; the raw value when it is not listed. */
+function selectedName(select: ModelSelect): string {
+	return (
+		select.options.find((o) => o.value === select.current)?.name ?? select.current
+	);
+}
 
 export class ModelMenuController {
 	private ctx: ModelMenuContext;
@@ -68,57 +65,13 @@ export class ModelMenuController {
 		return this.usagePanelEl !== null;
 	}
 
-	formatModelLabel(modelId?: string): string {
-		const currentId = modelId || this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
-		const groups = this.ctx.getModelGroups();
-
-		const group = groups.find((g) =>
-			g.variants.some((v) => v.id === currentId),
-		);
-
-		if (group) {
-			const variant = group.variants.find((v) => v.id === currentId);
-			const effort = variant?.thinkingEffort;
-			if (effort && effort !== 'Default') {
-				return `${group.baseName} ${effort}`;
-			}
-			return group.baseName;
-		}
-
-		if (currentId.startsWith('gemini-3.7-flash')) {
-			const effort = currentId.includes('high')
-				? 'High'
-				: currentId.includes('low')
-					? 'Low'
-					: 'Medium';
-			return `Gemini 3.7 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.6-flash')) {
-			const effort = currentId.includes('high')
-				? 'High'
-				: currentId.includes('low')
-					? 'Low'
-					: 'Medium';
-			return `Gemini 3.6 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.5-flash')) {
-			const effort = currentId.includes('low') ? 'Low' : 'Medium';
-			return `Gemini 3.5 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.1-pro')) {
-			return 'Gemini 3.1 Pro Low';
-		}
-		if (currentId.includes('claude-sonnet')) {
-			return 'Claude Sonnet 4.6';
-		}
-		if (currentId.includes('claude-opus')) {
-			return 'Claude Opus 4.6';
-		}
-		if (currentId.includes('gpt-oss')) {
-			return 'GPT-OSS 120B';
-		}
-
-		return currentId;
+	formatModelLabel(): { name: string; effort?: string } {
+		const config = this.ctx.getModelConfig();
+		if (!config) return { name: 'Model' };
+		return {
+			name: selectedName(config.model),
+			effort: config.thoughtLevel && selectedName(config.thoughtLevel),
+		};
 	}
 
 	toggleMenu(anchorEl: HTMLElement): void {
@@ -137,60 +90,27 @@ export class ModelMenuController {
 	openMenu(anchorEl: HTMLElement): void {
 		this.closeMenu();
 
-		const currentModelId = this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
-		const groups =
-			this.ctx.getModelGroups().length > 0
-				? this.ctx.getModelGroups()
-				: groupModels(this.ctx.getAvailableModels());
-
-		const menu = new Menu();
+		const config = this.ctx.getModelConfig();
+		// The effort bar needs a DOM menu (macOS uses native menus by default).
+		const menu = new Menu().setUseNativeMenu(false);
 		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
 		attachNativeMenuGlider(menu);
-		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
-
-		for (const group of groups) {
-			const activeVariant = group.variants.find((v) => v.id === currentModelId);
-			const title = this.groupTitle(group, activeVariant);
-
-			if (group.variants.length > 1 && SUPPORTS_SUBMENU) {
-				menu.addItem((item) => {
-					item.setTitle(title).setChecked(activeVariant !== undefined);
-					const submenu = (item as MenuItemWithSubmenu).setSubmenu?.();
-					if (!submenu) return;
-					(submenu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
-					attachNativeMenuGlider(submenu);
-					submenu.addItem((sub) => sub.setTitle('Thinking effort').setIsLabel(true));
-					for (const variant of group.variants) {
-						submenu.addItem((sub) =>
-							sub
-								.setTitle(variant.thinkingEffort)
-								.setChecked(variant.id === currentModelId)
-								.onClick(() => this.ctx.onSelectModel(variant.id)),
-						);
-					}
-				});
-			} else if (group.variants.length > 1) {
-				// No submenu support: list each effort as its own item.
-				for (const variant of group.variants) {
-					menu.addItem((item) =>
-						item
-							.setTitle(`${group.baseName} · ${variant.thinkingEffort}`)
-							.setChecked(variant.id === currentModelId)
-							.onClick(() => this.ctx.onSelectModel(variant.id)),
-					);
-				}
-			} else {
-				const variant = group.variants[0];
-				menu.addItem((item) =>
-					item
-						.setTitle(title)
-						.setChecked(activeVariant !== undefined)
-						.setDisabled(!variant)
-						.onClick(() => {
-							if (variant) this.ctx.onSelectModel(variant.id);
-						}),
+		let releaseKeys: (() => void) | undefined;
+		if (config) {
+			this.addModels(menu, config.model);
+			if (config.thoughtLevel) {
+				menu.addSeparator();
+				const slider = createEffortSlider(
+					config.thoughtLevel,
+					this.ctx.onSelectThoughtLevel,
 				);
+				const title = createFragment();
+				title.append(slider.el);
+				menu.addItem((item) => item.setTitle(title));
+				releaseKeys = this.bindSliderKeys(slider, anchorEl.win);
 			}
+		} else {
+			menu.addItem((item) => item.setTitle('Loading models...').setIsLabel(true));
 		}
 
 		menu.addSeparator();
@@ -220,6 +140,7 @@ export class ModelMenuController {
 		});
 
 		menu.onHide(() => {
+			releaseKeys?.();
 			if (this.menu === menu) this.menu = null;
 			this.menuHiddenAt = Date.now();
 			// Keep a hover panel only while the pointer is on it (e.g. clicking inside it).
@@ -237,31 +158,30 @@ export class ModelMenuController {
 		);
 	}
 
-	private groupTitle(group: ModelGroup, activeVariant?: ModelVariant): DocumentFragment {
-		const frag = createFragment();
-		frag.appendText(group.baseName);
-		const effort =
-			activeVariant && activeVariant.thinkingEffort !== 'Default'
-				? activeVariant.thinkingEffort
-				: group.variants.length <= 1 && group.supportsThinking
-					? 'Thinking'
-					: null;
-		if (effort) {
-			frag.createSpan({ cls: 'anti-dian-menu-item-effort', text: effort });
+	private addModels(menu: Menu, models: ModelSelect): void {
+		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
+		for (const option of models.options) {
+			menu.addItem((item) =>
+				item
+					.setTitle(option.name)
+					.setChecked(option.value === models.current)
+					.onClick(() => this.ctx.onSelectModel(option.value)),
+			);
 		}
-		if (group.baseName.includes('3.6') || group.baseName.includes('3.5')) {
-			this.appendBadge(frag, 'Fast', 'Faster, lighter model');
-		}
-		return frag;
 	}
 
-	/** Pill badge after a model name; a tooltip adds a trailing info icon. */
-	private appendBadge(frag: DocumentFragment, text: string, tooltip?: string): void {
-		const badge = frag.createSpan({ cls: 'anti-dian-menu-item-badge', text });
-		if (!tooltip) return;
-		badge.setAttribute('aria-label', tooltip);
-		const info = badge.createSpan({ cls: 'anti-dian-menu-item-badge-info' });
-		setIcon(info, 'info');
+	/**
+	 * ←/→ move the effort bar while its row is selected. The menu's key scope swallows
+	 * the keys before they reach the range input, so listen next to it on the window.
+	 */
+	private bindSliderKeys(slider: EffortSlider, win: Window): () => void {
+		const onKeydown = (evt: KeyboardEvent): void => {
+			if (evt.key !== 'ArrowLeft' && evt.key !== 'ArrowRight') return;
+			if (!slider.el.closest('.menu-item.selected')) return;
+			slider.step(evt.key === 'ArrowRight' ? 1 : -1);
+		};
+		win.addEventListener('keydown', onKeydown, true);
+		return () => win.removeEventListener('keydown', onKeydown, true);
 	}
 
 	private viewUsageTitle(): DocumentFragment {

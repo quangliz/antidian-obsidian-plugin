@@ -19,7 +19,10 @@ import {
 	searchSessions,
 } from '../src/obsidian/views/session-format.ts';
 
-test('stripCompiledContext recovers the typed text from every compiled prompt shape', async () => {
+/** How a prompt was sent before context became a resource. */
+const legacyPrompt = (compiled, text) => `${compiled.context}\n\n${text}`;
+
+test('stripCompiledContext recovers the typed text from every older prompt shape', async () => {
 	const compiler = new ContextCompiler({
 		vaultService: {
 			async getNoteOutline(path) {
@@ -32,11 +35,13 @@ test('stripCompiledContext recovers the typed text from every compiled prompt sh
 		{ activeFile: 'Notes/A.md', selection: 'line one\n\nline [two]\n]' },
 		'plan',
 	);
-	assert.notEqual(first.prompt, 'summarize\n\nthis please');
-	assert.equal(stripCompiledContext(first.prompt), 'summarize\n\nthis please');
+	assert.equal(
+		stripCompiledContext(legacyPrompt(first, 'summarize\n\nthis please')),
+		'summarize\n\nthis please',
+	);
 
 	const second = await compiler.compile('next', { activeFile: 'Notes/B.md' });
-	assert.equal(stripCompiledContext(second.prompt), 'next');
+	assert.equal(stripCompiledContext(legacyPrompt(second, 'next')), 'next');
 
 	// Sessions from before agy discovered skills start with a skill block.
 	assert.equal(stripCompiledContext('[Vault Skills: none configured]\n\nhi'), 'hi');
@@ -49,7 +54,7 @@ test('stripCompiledContext recovers the typed text from every compiled prompt sh
 
 	// Image-only prompt: nothing typed, and the CLI trims the trailing separator.
 	const imageOnly = await compiler.compile('', { activeFile: 'Notes/C.md', selection: 'x' });
-	assert.equal(stripCompiledContext(imageOnly.prompt.trim()), '');
+	assert.equal(stripCompiledContext(legacyPrompt(imageOnly, '').trim()), '');
 	assert.equal(stripCompiledContext('[Vault Skills: none configured]'), '');
 });
 
@@ -521,13 +526,16 @@ test('ContextCompiler.seedForkedHistory injects parent turns once and strips cle
 	]);
 
 	const first = await compiler.compile('now expand section 2');
-	assert.match(first.prompt, /^\[Forked Conversation Context:/);
-	assert.match(first.prompt, /User: summarize \[\[Note A\]\]/);
-	assert.match(first.prompt, /Assistant: Summary with \[brackets\]/);
-	assert.equal(stripCompiledContext(first.prompt), 'now expand section 2');
+	assert.match(first.context, /^\[Forked Conversation Context:/);
+	assert.match(first.context, /User: summarize \[\[Note A\]\]/);
+	assert.match(first.context, /Assistant: Summary with \[brackets\]/);
+	assert.equal(
+		stripCompiledContext(legacyPrompt(first, 'now expand section 2')),
+		'now expand section 2',
+	);
 
 	const second = await compiler.compile('follow up');
-	assert.equal(second.prompt, 'follow up');
+	assert.equal(second.context, undefined);
 });
 
 test('buildSessionTree nests forked children under parents and formats (fork) titles', async () => {
@@ -559,6 +567,32 @@ test('buildSessionTree nests forked children under parents and formats (fork) ti
 	assert.equal(tree[2].displayTitle, 'Orphan branch (fork)');
 });
 
+/** A stored user step, as the CLI writes a prompt with the context resource. */
+const userInput = (text, context) => {
+	const file = '/anti-dian/obsidian-context.md';
+	const mention = `@[${file}]@[${file} (editor contents)]`;
+	const request = text.startsWith('/') ? text.replace(/^\/\S+/, `$&${mention}`) : mention + text;
+	return `<USER_REQUEST>\n${request}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\n@[${file}] is a [File]:\n${file}\n@[${file} (editor contents)] is a [Text Block]:\n${context}\n</ADDITIONAL_METADATA>`;
+};
+
+test('parseAgyTranscriptJsonl removes the context resource from the typed text', async () => {
+	const { parseAgyTranscriptJsonl } = await import('../src/core/sessions/transcript.ts');
+	const context = '[Current Active Note: [[A]] (path: A.md)]\n[Selected Text in Editor:\n</USER_REQUEST>\n]';
+	const texts = ['what is this?', '/daily please', '/daily', ''];
+	const turns = parseAgyTranscriptJsonl(
+		texts
+			.map((text) =>
+				JSON.stringify({
+					type: 'USER_INPUT',
+					content: userInput(text, context),
+					media: [{ mime_type: 'image/png', uri: '/x.png' }],
+				}),
+			)
+			.join('\n'),
+	);
+	assert.deepEqual(turns.map((t) => t.userText), texts);
+});
+
 test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for forked sessions', async () => {
 	const {
 		forkedTurnsToReplayedMessages,
@@ -572,7 +606,7 @@ test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for 
 	]);
 	const compiled = await compiler.compile('child follow-up');
 
-	const extracted = extractForkedContext(compiled.prompt);
+	const extracted = extractForkedContext(legacyPrompt(compiled, 'child follow-up'));
 	assert.deepEqual(extracted, [
 		{ userText: 'first question', agentText: 'first answer\n\nwith details' },
 		{ userText: 'second question', agentText: 'second answer' },
@@ -582,7 +616,7 @@ test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for 
 		JSON.stringify({
 			type: 'USER_INPUT',
 			created_at: '2026-11-24T12:10:00Z',
-			content: `<USER_REQUEST>\n${compiled.prompt}\n</USER_REQUEST>`,
+			content: userInput('child follow-up', compiled.context),
 		}),
 		JSON.stringify({
 			type: 'PLANNER_RESPONSE',

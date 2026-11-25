@@ -49,7 +49,7 @@ export interface PromptBarCallbacks {
 	onCancel?: () => void;
 	onOpenModelMenu: (anchorEl: HTMLElement) => void;
 	onPermissionChange: (mode: PermissionMode) => void;
-	getCurrentModelLabel: () => string;
+	getCurrentModelLabel: () => { name: string; effort?: string };
 	getActiveContext: () => ActiveContext;
 	onStartNewSession?: () => void;
 }
@@ -103,8 +103,6 @@ const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string; ic
 	{ value: 'plan', label: 'Plan', desc: 'Read-only proposals', icon: 'shield' },
 	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically', icon: 'unlock' },
 ];
-
-const MODEL_EFFORT_PATTERN = /^(.+?)\s+(Low|Medium|High|Minimal|Max|Thinking)$/;
 
 interface ContextMenuItem {
 	key: string;
@@ -301,24 +299,18 @@ export class PromptBarView {
 		}
 	}
 
-	public updateModelLabel(label?: string): void {
+	public updateModelLabel(): void {
 		if (!this.modelPillLabelEl) return;
-		const fullLabel = label ?? this.callbacks.getCurrentModelLabel();
+		const { name, effort } = this.callbacks.getCurrentModelLabel();
 		this.modelPillLabelEl.empty();
-		const match = MODEL_EFFORT_PATTERN.exec(fullLabel);
-		if (match && match[1] && match[2]) {
-			this.modelPillLabelEl.createSpan({
-				cls: 'anti-dian-promptbar-model-base',
-				text: match[1],
-			});
+		this.modelPillLabelEl.createSpan({
+			cls: 'anti-dian-promptbar-model-base',
+			text: name,
+		});
+		if (effort) {
 			this.modelPillLabelEl.createSpan({
 				cls: 'anti-dian-promptbar-model-effort',
-				text: match[2],
-			});
-		} else {
-			this.modelPillLabelEl.createSpan({
-				cls: 'anti-dian-promptbar-model-base',
-				text: fullLabel,
+				text: effort,
 			});
 		}
 	}

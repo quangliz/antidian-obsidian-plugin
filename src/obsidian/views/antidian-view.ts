@@ -19,8 +19,6 @@ import { ChangeSetValidator } from '../../core/transactions';
 import {
 	formatTokens,
 	AcpSessionSummary,
-	AvailableModel,
-	ModelGroup,
 	ReplayedAgentEvent,
 	ReplayedMessage,
 } from '../../core/models/antigravity-acp';
@@ -97,8 +95,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private centerContainerEl: HTMLElement | null = null;
 	private messagesEl: HTMLElement | null = null;
 
-	private availableModels: AvailableModel[] = [];
-	private modelGroups: ModelGroup[] = [];
 	private history: Message[] = [];
 	private isRunning = false;
 	private turnToken = 0;
@@ -119,12 +115,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.validator = plugin.validator;
 
 		this.modelMenuController = new ModelMenuController({
-			getCurrentModelId: () =>
-				this.plugin.settings.model ||
-				this.plugin.antigravityProvider.getModel(),
-			onSelectModel: (modelId) => this.selectModel(modelId),
-			getAvailableModels: () => this.availableModels,
-			getModelGroups: () => this.modelGroups,
+			getModelConfig: () =>
+				this.plugin.antigravityProvider.getModelConfig(),
+			onSelectModel: (model) => this.selectModel(model),
+			onSelectThoughtLevel: (level) => this.selectThoughtLevel(level),
 			getAccountTier: () =>
 				this.plugin.antigravityProvider.getAccountTier(),
 			getCachedUserQuota: () =>
@@ -173,6 +167,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.plugin.antigravityProvider.onSessionInfoChange(() => {
 				this.recordPendingForkIfReady();
 				this.updateSessionTitle();
+				this.promptBar?.updateModelLabel();
 			});
 
 		this.unsubscribeContext = this.contextService.onContextChange(
@@ -679,14 +674,23 @@ export class AntiDianView extends ItemView implements HoverParent {
 		);
 	}
 
-	private selectModel(modelId: string): void {
-		this.plugin.settings.model = modelId;
-		this.plugin.antigravityProvider.setModel(modelId);
-		void this.plugin.saveSettings();
+	private selectModel(model: string): void {
+		const provider = this.plugin.antigravityProvider;
+		this.plugin.settings.model = model;
+		// A saved model ID may have carried the level until now: keep it.
+		this.plugin.settings.thoughtLevel ??=
+			provider.getModelConfig()?.thoughtLevel?.current;
+		this.saveModelChoice();
+	}
 
-		this.promptBar?.updateModelLabel(
-			this.modelMenuController.formatModelLabel(modelId),
-		);
+	private selectThoughtLevel(level: string): void {
+		this.plugin.settings.thoughtLevel = level;
+		this.saveModelChoice();
+	}
+
+	/** Saving also passes the choice on to the backend. */
+	private saveModelChoice(): void {
+		void this.plugin.saveSettings().then(() => this.promptBar?.updateModelLabel());
 		this.promptBar?.playRainbowSweep();
 	}
 
@@ -720,29 +724,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private async loadModels(): Promise<void> {
-		const cached = this.plugin.antigravityProvider.getCachedAvailableModels();
-		if (cached && cached.models.length > 0) {
-			this.availableModels = cached.models;
-			this.modelGroups = cached.groups;
-			if (!this.plugin.settings.model && cached.defaultModelId) {
-				this.plugin.settings.model = cached.defaultModelId;
-				this.plugin.antigravityProvider.setModel(cached.defaultModelId);
-			}
-			this.promptBar?.updateModelLabel();
-		}
-
 		try {
-			const { models, defaultModelId, groups } =
-				await this.plugin.antigravityProvider.fetchAvailableModels();
-			this.availableModels = models;
-			this.modelGroups = groups;
-			if (!this.plugin.settings.model && defaultModelId) {
-				this.plugin.settings.model = defaultModelId;
-				this.plugin.antigravityProvider.setModel(defaultModelId);
-			}
+			await this.plugin.antigravityProvider.fetchModelConfig();
 			this.promptBar?.updateModelLabel();
 		} catch {
-			// Keep cached or fallback defaults
+			// Keep the cached models
 		}
 	}
 

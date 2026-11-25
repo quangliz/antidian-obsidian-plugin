@@ -6,8 +6,9 @@ export interface ContextCompilerOptions {
 	vaultService?: Pick<VaultService, 'getNoteOutline'>;
 }
 
-export interface CompiledTurnPrompt {
-	prompt: string;
+export interface CompiledTurnContext {
+	/** Sent beside the user's text as an embedded resource; unset when nothing is new. */
+	context?: string;
 	contextRefs: ContextReference[];
 }
 
@@ -19,8 +20,13 @@ export interface ForkedTurn {
 const FORK_BLOCK_START = '[Forked Conversation Context:\n';
 const FORK_BLOCK_END = '\n</forked-context>]';
 const MAX_FORK_CONTEXT_CHARS = 24_000;
-const COMMAND_CONTEXT_START = '[Command Context:\n';
-const COMMAND_CONTEXT_END = '\n]';
+
+/**
+ * Names the context sent with a prompt. No such file exists: the CLI inlines
+ * embedded resources with other URI schemes into the user's text, while a
+ * `file:` one stays apart from it, in slash commands and in replayed history.
+ */
+export const CONTEXT_RESOURCE_URI = 'file:///anti-dian/obsidian-context.md';
 
 /** Shown for `/compact`, which the CLI completes without a reply. */
 export const COMPACTED_REPLY = 'Conversation compacted.';
@@ -63,12 +69,12 @@ export class ContextCompiler {
 		userMessage: string,
 		context?: ActiveContext,
 		permissionMode: HarnessPermissionMode = 'ask',
-	): Promise<CompiledTurnPrompt> {
+	): Promise<CompiledTurnContext> {
 		if (isCompactCommand(userMessage)) {
 			// Summarizing needs no context, and may drop what was sent: re-send it next turn.
 			this.lastActiveFile = undefined;
 			this.lastSelection = undefined;
-			return { prompt: userMessage, contextRefs: [] };
+			return { contextRefs: [] };
 		}
 
 		const blocks: string[] = [];
@@ -138,18 +144,9 @@ export class ContextCompiler {
 		this.lastSelection = selection;
 
 		return {
-			prompt: this.assemble(blocks, userMessage),
+			context: blocks.length > 0 ? blocks.join('\n\n') : undefined,
 			contextRefs,
 		};
-	}
-
-	private assemble(blocks: string[], userMessage: string): string {
-		if (blocks.length === 0) return userMessage;
-		const context = blocks.join('\n\n');
-		// The CLI only runs a slash command or skill that starts the prompt.
-		return userMessage.startsWith('/')
-			? `${userMessage}\n\n${COMMAND_CONTEXT_START}${context}${COMMAND_CONTEXT_END}`
-			: `${context}\n\n${userMessage}`;
 	}
 
 	private formatForkedTurns(turns: ForkedTurn[]): string {
@@ -193,16 +190,11 @@ export class ContextCompiler {
 }
 
 /**
- * Removes the context blocks `ContextCompiler.compile` adds, recovering the
- * text the user typed. Used to show replayed history from a stored session.
- * Blocks are stripped from the start, or after a leading slash command.
+ * Recovers the text the user typed in sessions from before context was sent as
+ * a resource, when its blocks were prepended to the prompt. Blocks are only
+ * stripped from the start, so user text is never altered.
  */
 export function stripCompiledContext(prompt: string): string {
-	if (prompt.startsWith('/')) {
-		const start = prompt.indexOf(COMMAND_CONTEXT_START);
-		// The CLI may collapse the blank line before the block to a space.
-		return start === -1 ? prompt : prompt.slice(0, start).trimEnd();
-	}
 	let rest = prompt;
 	for (;;) {
 		const end = compiledBlockEnd(rest);

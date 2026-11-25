@@ -58,8 +58,25 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 `agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file` (no permission request). Anti-dian only surfaces them:
 
 - `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Anti-dian's own.
-- The CLI only runs a command that starts the prompt, so for those prompts `ContextCompiler` puts its blocks after the text in a `[Command Context: ...]` block; `stripCompiledContext` removes it on replay.
-- `/compact` is sent alone, and the active note is re-sent on the next turn. The CLI completes it without a reply, so replay inserts one to keep it apart from the next prompt.
+- The CLI runs a command or skill that starts the prompt; attached context (below) does not get in its way.
+- `/compact` is sent without context, and the active note is re-sent on the next turn. The CLI completes it without a reply, so replay inserts one to keep it apart from the next prompt.
+
+## Turn Context
+
+`ContextCompiler` builds the active note, selection, Plan Mode notice, and forked history as one text. `AntigravityAcpClient` sends it beside the user's text as an embedded `resource` block named by `CONTEXT_RESOURCE_URI`:
+
+- The URI is a `file:` one that names no real file. `agy` inlines resources with other schemes into the user's text, but keeps a `file:` resource apart: replay shows it as a `resource_link`, which Anti-dian ignores.
+- `agy` transcripts mark it as `@[...]` mentions in the request text (removed by `transcript.ts`) and store its body in the metadata that follows, where forked history is read from.
+- `stripCompiledContext` is only for sessions from before this, when the blocks were prepended to the prompt.
+
+## Model & Thinking Level
+
+Model choices come from ACP `configOptions` (`model` and `thought_level`), kept as `ModelConfig` and cached in settings for startup. `session/set_config_option` changes them, and `config_option_update` keeps them current:
+
+- `agy` only reports the thinking levels of the current model, and resets both options when a session is loaded, so the client re-applies the wanted values to every session, and starts one when a choice is made without it (such as right after **New session**).
+- A wanted level the model does not offer is skipped, and used again with a model that does.
+- The model menu shows the levels as a draggable bar (`effort-slider.ts`): a transparent range input inside a native `Menu` item, sent on release. The menu turns off native (macOS) menus for it.
+- A model ID saved by an older version (such as `gemini-3.8-flash-low`) is a valid `model` value that also sets the level.
 
 ## Interactive Questions (ACP Elicitation)
 
@@ -99,7 +116,7 @@ Applied operations retain before-state snapshots in memory so they can be revert
 ## Sessions, Traces & Forking
 
 - **Isolated ACP data dir**: `agy acp` is spawned with `--app-data-dir antigravity-anti-dian` (`~/.gemini/antigravity-anti-dian/`). Vault conversations stay separate from terminal `agy` CLI `/resume` history while sharing Google authentication.
-- **Session discovery & replay**: The session drawer lists vault-scoped sessions via ACP `session/list` and resumes them via `session/load`. `stripCompiledContext` removes injected context blocks during replay.
+- **Session discovery & replay**: The session drawer lists vault-scoped sessions via ACP `session/list` and resumes them via `session/load`. Both a chosen model and thinking level are re-applied after a load.
 - **Local trace enrichment**: Because the CLI does not persist reasoning text, MCP tool outputs, durations, or per-turn usage, `TurnTraceRecorder` saves compacted per-turn traces locally and merges them on replay.
 - **Forking & organization**: Forked sessions preserve prior conversation context and store parent–child metadata, custom titles, pinned order, deleted IDs, and drawer width in plugin settings.
 

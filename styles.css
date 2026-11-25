@@ -1499,36 +1499,7 @@ button.anti-dian-promptbar-menu-row {
 /* Model Menu Popup & Usage Submenu                             */
 /* ------------------------------------------------------------- */
 
-/* Extra text inside native Menu item titles (model + permission menus). */
-.anti-dian-menu-item-effort {
-	margin-left: 6px;
-	color: var(--text-muted);
-}
-
-.anti-dian-menu-item-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 3px;
-	margin-left: 8px;
-	padding: 0 6px;
-	line-height: 18px;
-	font-size: var(--font-ui-smaller);
-	border-radius: var(--radius-s);
-	background: var(--background-modifier-hover);
-	color: var(--text-muted);
-	vertical-align: 1px;
-}
-
-.anti-dian-menu-item-badge-info {
-	display: inline-flex;
-	opacity: 0.8;
-}
-
-.anti-dian-menu-item-badge-info svg {
-	width: 11px;
-	height: 11px;
-}
-
+/* Extra text inside native Menu item titles. */
 .anti-dian-menu-item-chevron {
 	display: inline-flex;
 	margin-left: auto;
@@ -1578,6 +1549,110 @@ button.anti-dian-promptbar-menu-row {
 
 .menu.anti-dian-model-menu .menu-separator {
 	margin: 6px -6px;
+}
+
+/* Effort bar: one column per thinking level, stops at the column centers. */
+.menu.anti-dian-model-menu .menu-item:has(.anti-dian-effort) {
+	padding: 0;
+}
+
+.anti-dian-effort {
+	flex: 1;
+	min-width: 0;
+	cursor: default;
+}
+
+.anti-dian-effort-heading {
+	padding: 2px 10px 6px;
+	color: var(--text-faint);
+}
+
+.anti-dian-effort-bar {
+	position: relative;
+	display: grid;
+	grid-template-columns: repeat(var(--anti-dian-effort-count), 1fr);
+}
+
+.anti-dian-effort-track {
+	position: absolute;
+	top: 7px;
+	right: calc(50% / var(--anti-dian-effort-count));
+	left: calc(50% / var(--anti-dian-effort-count));
+	height: 2px;
+	background: var(--background-modifier-border-hover);
+}
+
+.anti-dian-effort-track::after {
+	content: '';
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: calc(100% * var(--anti-dian-effort-index) / (var(--anti-dian-effort-count) - 1));
+	background: var(--interactive-accent);
+	transition: width 150ms ease-out;
+}
+
+.anti-dian-effort-stop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0 6px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+	color: var(--text-muted);
+}
+
+.anti-dian-effort-stop::before {
+	content: '';
+	position: relative;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--background-modifier-border-hover);
+}
+
+.anti-dian-effort-stop.is-filled::before {
+	background: var(--interactive-accent);
+}
+
+.anti-dian-effort-stop.is-current {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-effort-thumb {
+	position: absolute;
+	top: 0;
+	left: calc(100% * (var(--anti-dian-effort-index) + 0.5) / var(--anti-dian-effort-count));
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--interactive-accent);
+	border-radius: 50%;
+	background: var(--background-secondary);
+	transform: translateX(-50%);
+	transition:
+		left 150ms ease-out,
+		box-shadow 150ms ease-out;
+}
+
+.menu-item.selected .anti-dian-effort-thumb {
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+/* Invisible: a thumb as wide as a column makes the whole column pick its stop. */
+input[type='range'].anti-dian-effort-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
+	width: calc(100% / var(--anti-dian-effort-count));
+	height: 100%;
 }
 
 .anti-dian-menu-item-desc {

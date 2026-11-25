@@ -91,8 +91,10 @@ Recommended vault workflow:
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
 3. Each write tool call is reviewed immediately: in Ask mode the user approves or rejects it before the tool returns. The result says whether it was applied (\`applied: true\`) or rejected (\`rejectedByUser: true\`); if rejected, don't retry the same edit — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied and staged edits.
-4. Use a skill only when it matches the request or the user invokes it with \`/name\`. Skills cannot run scripts or shell commands here, and their vault edits still go through the \`anti-dian-vault\` tools. A \`[Command Context: ...]\` block after a slash command is context from Obsidian, not command arguments.
+4. Use a skill only when it matches the request or the user invokes it with \`/name\`. Skills cannot run scripts or shell commands here, and their vault edits still go through the \`anti-dian-vault\` tools.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
+
+Context from Obsidian (active note, selection, mode) is attached as \`obsidian-context.md\`. It is not a vault file: never open, cite, or edit it.
 
 Formatting:
 - Cite vault notes as plain wikilinks, e.g. [[Note Name]] or [[Note Name#Heading]]. Never put wikilinks inside backticks or code formatting, or they won't be clickable.
@@ -209,13 +211,12 @@ export class Agent {
 			permissionMode,
 		);
 		rawContextUsed.push(...compiled.contextRefs);
-		const fullUserPrompt = compiled.prompt;
 
 		const currentMessages: Message[] = [
 			...history,
 			{
 				role: 'user',
-				text: fullUserPrompt,
+				text: userMessage,
 				media,
 			},
 		];
@@ -279,7 +280,7 @@ export class Agent {
 
 		try {
 			const result = await this.provider.runTurn(
-				fullUserPrompt,
+				userMessage,
 				media,
 				{
 					onThoughtDelta: (text) =>
@@ -310,6 +311,7 @@ export class Agent {
 						onStep?.({ type: 'focus_update', focus }),
 				},
 				turnController.signal,
+				compiled.context,
 			);
 
 			const contextUsed = this.deduplicateContext(rawContextUsed);

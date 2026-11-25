@@ -304,15 +304,16 @@ test('ensureAgyBinary respects explicit customPath without downloading', async (
 	}
 });
 
-test('AntigravityAcpClient hydrates models, tier, and quota immediately from initialCache', () => {
+test('AntigravityAcpClient hydrates model choices, tier, and quota immediately from initialCache', () => {
 	const now = Date.now();
 	const client = new AntigravityAcpClient({
 		initialCache: {
-			models: [
-				{ id: 'gemini-4-neon-high', displayName: 'Gemini 4 Neon (High)' },
-				{ id: 'gemini-4-neon-medium', displayName: 'Gemini 4 Neon (Medium)' },
-			],
-			defaultModelId: 'gemini-4-neon-high',
+			modelConfig: {
+				model: {
+					current: 'gemini-4-neon',
+					options: [{ value: 'gemini-4-neon', name: 'Gemini 4 Neon' }],
+				},
+			},
 			accountTier: { tierId: 'pro', tierName: 'Google AI Pro' },
 			quota: {
 				fetchedAt: now,
@@ -332,12 +333,10 @@ test('AntigravityAcpClient hydrates models, tier, and quota immediately from ini
 		},
 	});
 
-	const models = client.getCachedAvailableModels();
-	assert.ok(models);
-	assert.equal(models.models.length, 2);
-	assert.equal(models.groups.length, 1);
-	assert.equal(models.groups[0].baseName, 'Gemini 4 Neon');
-	assert.equal(models.defaultModelId, 'gemini-4-neon-high');
+	assert.equal(client.getModelConfig()?.model.current, 'gemini-4-neon');
+	// A snapshot saved by an older version has no model choices.
+	const older = new AntigravityAcpClient({ initialCache: { models: [{ id: 'x' }] } });
+	assert.equal(older.getModelConfig(), null);
 
 	assert.equal(client.getAccountTier()?.tierName, 'Google AI Pro');
 

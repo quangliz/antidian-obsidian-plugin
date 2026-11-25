@@ -11,9 +11,9 @@ import {
 	AntigravityAcpClient,
 	type AntigravityAcpOptions,
 	type AvailableCommand,
-	type AvailableModelsResponse,
 	type CachedQuotaSnapshot,
 	type ContextWindowUsage,
+	type ModelConfig,
 	type ReplayedMessage,
 	type UserQuotaResponse,
 } from './antigravity-acp';
@@ -46,8 +46,8 @@ export class AntigravityProvider {
 		this.client.setModel(model);
 	}
 
-	getModel(): string {
-		return this.client.getModel();
+	setThoughtLevel(level: string): void {
+		this.client.setThoughtLevel(level);
 	}
 
 	getAccountTier(): AccountTierInfo | null {
@@ -62,8 +62,8 @@ export class AntigravityProvider {
 		return this.client.getAvailableCommands();
 	}
 
-	getCachedAvailableModels(): AvailableModelsResponse | null {
-		return this.client.getCachedAvailableModels();
+	getModelConfig(): ModelConfig | null {
+		return this.client.getModelConfig();
 	}
 
 	getCachedUserQuota(): CachedQuotaSnapshot | null {
@@ -106,8 +106,8 @@ export class AntigravityProvider {
 		return this.client.login(onProgress);
 	}
 
-	async fetchAvailableModels(): Promise<AvailableModelsResponse> {
-		return this.client.fetchAvailableModels();
+	async fetchModelConfig(): Promise<ModelConfig | null> {
+		return this.client.fetchModelConfig();
 	}
 
 	async resetSession(): Promise<void> {
@@ -143,8 +143,9 @@ export class AntigravityProvider {
 		media?: MediaInput[],
 		callbacks?: AcpStreamCallbacks,
 		signal?: AbortSignal,
+		context?: string,
 	): Promise<AcpPromptResult> {
-		return this.client.prompt(prompt, media, callbacks, signal);
+		return this.client.prompt(prompt, media, callbacks, signal, context);
 	}
 
 	async destroy(): Promise<void> {

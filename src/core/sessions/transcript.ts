@@ -59,9 +59,13 @@ function parseTimestampMs(raw: unknown): number | undefined {
 	return Number.isFinite(ms) ? ms : undefined;
 }
 
+/** How the CLI marks the context resource inside the text of a user request. */
+const CONTEXT_MENTION_PATTERN =
+	/@\[[^\]\n]*anti-dian[\\/]obsidian-context\.md(?: \(editor contents\))?\]/g;
+
 function extractRawUserPrompt(rawContent: string): string {
 	const tagMatch = rawContent.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
-	return tagMatch?.[1] ?? rawContent;
+	return (tagMatch?.[1] ?? rawContent).replace(CONTEXT_MENTION_PATTERN, '');
 }
 
 /** Attached images of a USER_INPUT step, as `uri` references (not yet read). */
@@ -349,7 +353,8 @@ export function parseAgyTranscriptJsonl(
 			const userText = stripCompiledContext(rawPrompt).trim();
 			const media = parseTranscriptMedia(step.media);
 			if (!userText && media.length === 0) continue;
-			const forkedContext = extractForkedContext(rawPrompt);
+			// The context resource is in the metadata after the request text.
+			const forkedContext = extractForkedContext(rawContent);
 			current = {
 				userText,
 				media,
