@@ -787,14 +787,17 @@ export class AntigravityAcpClient {
 		const loading = (async () => {
 			await this.ensureInitialized();
 			this.replayBuffer = [];
+			this.conversationId = sessionId;
 			try {
 				const res = (await this.sendRequest('session/load', {
 					...(await this.buildSessionParams()),
 					sessionId,
 				})) as Partial<AcpSessionNewResult> | null;
 				replayed = this.replayBuffer;
-				this.conversationId = sessionId;
 				await this.applySessionResult(sessionId, res ?? {});
+			} catch (err) {
+				this.conversationId = null;
+				throw err;
 			} finally {
 				this.replayBuffer = null;
 			}
@@ -1629,17 +1632,20 @@ export class AntigravityAcpClient {
 			return;
 		}
 
-		if (this.replayBuffer) {
-			applyReplayUpdate(this.replayBuffer, update);
-			return;
-		}
-
 		if (
 			update.sessionUpdate === 'usage_update' &&
 			typeof update.used === 'number' &&
 			typeof update.size === 'number'
 		) {
-			this.contextUsage = { used: update.used, size: update.size };
+			// One of a session just left may still arrive.
+			if (params.sessionId === this.getSessionId()) {
+				this.contextUsage = { used: update.used, size: update.size };
+			}
+			return;
+		}
+
+		if (this.replayBuffer) {
+			applyReplayUpdate(this.replayBuffer, update);
 			return;
 		}
 

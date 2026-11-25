@@ -23,6 +23,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 	const { id, method, params } = JSON.parse(line);
 	fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method, sessionId: params?.sessionId }) + '\\n');
 	if (method === 'session/new') return send({ id, result: { sessionId: 'new-' + process.pid + '-' + id } });
+	if (method === 'session/load') {
+		if (params.sessionId === 'missing') return send({ id, error: { code: -32603, message: 'Session not found' } });
+		const usage = (sessionId, used) =>
+			send({ method: 'session/update', params: { sessionId, update: { sessionUpdate: 'usage_update', used, size: 1000 } } });
+		usage(params.sessionId, 420);
+		usage('another', 0);
+		return send({ id, result: {} });
+	}
 	if (method === 'session/resume' && fs.existsSync(${JSON.stringify(gone)})) {
 		return send({ id, error: { code: -32603, message: 'Failed to read session' } });
 	}
@@ -104,6 +112,20 @@ test('AntigravityAcpClient starts anew when there is no conversation to resume',
 		await client.resetSession();
 		await starting;
 		assert.notEqual(client.getSessionId(), dropped);
+	});
+});
+
+test('AntigravityAcpClient keeps the context usage reported while a session loads', async () => {
+	await withClient(async (client, agy) => {
+		await client.loadSession('stored');
+		assert.deepEqual(client.getContextUsage(), { used: 420, size: 1000 });
+
+		// A failed load leaves no conversation to reconnect to.
+		await assert.rejects(client.loadSession('missing'), /Session not found/);
+		assert.equal(client.getSessionId(), null);
+		agy.requests();
+		await client.prompt('hi');
+		assert.deepEqual(agy.requests(), ['new', `prompt ${client.getSessionId()}`]);
 	});
 });
 
