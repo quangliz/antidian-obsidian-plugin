@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { AntigravityAcpClient } from '../src/core/models/antigravity-acp.ts';
 
 /** A fake `agy` that dies on the prompt "die" and can only resume while `gone` is absent. */
-async function withClient(run) {
+async function withClient(run, options) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-reconnect-'));
 	const bin = path.join(dir, 'fake-agy.mjs');
 	const log = path.join(dir, 'log.jsonl');
@@ -47,6 +47,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 		cliPath: bin,
 		cwd: dir,
 		quotaFetcher: async () => null,
+		...options,
 	});
 	let seen = 0;
 	/** Session requests since the last call, as `method sessionId`. */
@@ -113,6 +114,18 @@ test('AntigravityAcpClient starts anew when there is no conversation to resume',
 		await starting;
 		assert.notEqual(client.getSessionId(), dropped);
 	});
+});
+
+test('AntigravityAcpClient keeps running when unchanged settings are saved', async () => {
+	await withClient(
+		async (client, agy) => {
+			await client.fetchModelConfig();
+			client.setCaCertificates('');
+			await client.fetchModelConfig();
+			assert.deepEqual(agy.requests(), ['new']);
+		},
+		{ caCertificates: '' },
+	);
 });
 
 test('AntigravityAcpClient keeps the context usage reported while a session loads', async () => {

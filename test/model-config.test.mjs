@@ -177,6 +177,40 @@ test('AntigravityAcpClient reports the levels of a model chosen without a sessio
 	});
 });
 
+test('AntigravityAcpClient shows cached levels at once when there is no session', async () => {
+	let cache;
+	const levels = (client) => {
+		const { model, thoughtLevel } = client.getModelConfig();
+		return [model.current, thoughtLevel?.current, thoughtLevel?.options.length];
+	};
+	await withClient({ model: 'fast', onCacheUpdate: (c) => (cache = structuredClone(c)) }, async (client) => {
+		await client.fetchModelConfig();
+		for (const model of ['deep', 'plain', 'fast']) {
+			client.setModel(model);
+			await client.prompt('learn');
+		}
+		await client.resetSession();
+		client.setModel('deep');
+		assert.deepEqual(levels(client), ['deep', 'high', 3]);
+		client.setThoughtLevel('xhigh');
+		assert.deepEqual(levels(client), ['deep', 'xhigh', 3]);
+		client.setModel('fast');
+		assert.deepEqual(levels(client), ['fast', 'high', 2]);
+		client.setModel('plain');
+		assert.deepEqual(levels(client), ['plain', undefined, undefined]);
+	});
+	assert.deepEqual(Object.keys(cache.thoughtLevels).sort(), ['deep', 'fast']);
+
+	// After a restart, before `agy` has started.
+	await withClient({ model: 'deep', thoughtLevel: 'low', initialCache: cache }, async (client, agy) => {
+		assert.deepEqual(levels(client), ['deep', 'low', 3]);
+		// What was shown early must not stop the choice from being sent.
+		await client.prompt('hi');
+		assert.deepEqual(agy.configCalls(), ['model=deep', 'thought_level=low']);
+		assert.deepEqual(levels(client), ['deep', 'low', 3]);
+	});
+});
+
 test('AntigravityAcpClient accepts a saved model ID with its level and survives a removed model', async () => {
 	await withClient({ model: 'deep-low' }, async (client, agy) => {
 		const config = await client.fetchModelConfig();

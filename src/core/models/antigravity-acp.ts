@@ -88,6 +88,8 @@ export interface ContextWindowUsage {
 
 export interface CachedProviderMetadata {
 	modelConfig?: ModelConfig;
+	/** Last reported thinking levels, by model. */
+	thoughtLevels?: Record<string, ModelSelect>;
 	accountTier?: AccountTierInfo | null;
 	quota?: {
 		groups: QuotaGroupInfo[];
@@ -345,6 +347,7 @@ export class AntigravityAcpClient {
 	private modelConfigTask: Promise<void> = Promise.resolve();
 
 	private modelConfig: ModelConfig | null = null;
+	private thoughtLevels: Record<string, ModelSelect> = {};
 	private cachedTier: AccountTierInfo | null = null;
 	private cachedQuota: { data: UserQuotaResponse; fetchedAt: number } | null =
 		null;
@@ -370,7 +373,8 @@ export class AntigravityAcpClient {
 
 	constructor(options: AntigravityAcpOptions = {}) {
 		this.cliPath = options.cliPath;
-		this.caCertificates = options.caCertificates;
+		// As in setCaCertificates, or the first save of unchanged settings restarts the CLI.
+		this.caCertificates = options.caCertificates?.trim() || undefined;
 		this.cwd = options.cwd ?? process.cwd();
 		this.model = options.model;
 		this.thoughtLevel = options.thoughtLevel;
@@ -394,7 +398,9 @@ export class AntigravityAcpClient {
 
 	private hydrateCache(cache: CachedProviderMetadata): void {
 		if (Array.isArray(cache.modelConfig?.model?.options)) {
-			this.modelConfig = cache.modelConfig;
+			this.thoughtLevels = { ...cache.thoughtLevels };
+			this.storeModelConfig(cache.modelConfig);
+			this.previewModelConfig();
 		}
 		if (cache.accountTier) {
 			this.cachedTier = cache.accountTier;
@@ -418,6 +424,7 @@ export class AntigravityAcpClient {
 		if (!this.onCacheUpdate) return;
 		const snapshot: CachedProviderMetadata = {
 			modelConfig: this.modelConfig ?? undefined,
+			thoughtLevels: this.thoughtLevels,
 			accountTier: this.cachedTier,
 			quota: this.cachedQuota
 				? {
@@ -443,17 +450,14 @@ export class AntigravityAcpClient {
 	setModel(model: string): void {
 		if (this.model === model) return;
 		this.model = model;
-		if (!this.sessionId && this.modelConfig) {
-			// Shown until a session reports the model's thinking levels.
-			const { options } = this.modelConfig.model;
-			this.modelConfig = { model: { current: model, options } };
-		}
+		this.previewModelConfig();
 		this.applyModelConfigInBackground();
 	}
 
 	setThoughtLevel(level: string): void {
 		if (this.thoughtLevel === level) return;
 		this.thoughtLevel = level;
+		this.previewModelConfig();
 		this.applyModelConfigInBackground();
 	}
 
@@ -1126,7 +1130,7 @@ export class AntigravityAcpClient {
 	): Promise<void> {
 		this.sessionId = sessionId;
 		const config = parseModelConfig(sess.configOptions);
-		if (config) this.modelConfig = config;
+		if (config) this.storeModelConfig(config);
 		this.appliedModel = config?.model.current ?? null;
 
 		const tier = sess._meta?.antigravity?.tier;
@@ -1204,9 +1208,29 @@ export class AntigravityAcpClient {
 	private updateModelConfig(raw: unknown): void {
 		const config = parseModelConfig(raw);
 		if (!config) return;
-		this.modelConfig = config;
+		this.storeModelConfig(config);
 		this.emitCacheUpdate();
 		this.emitSessionInfo();
+	}
+
+	private storeModelConfig(config: ModelConfig): void {
+		this.modelConfig = config;
+		const model = config.model.current;
+		if (config.thoughtLevel) this.thoughtLevels[model] = config.thoughtLevel;
+		else delete this.thoughtLevels[model];
+	}
+
+	/** Without a session, shows the wanted choices with the levels known from before. */
+	private previewModelConfig(): void {
+		if (this.sessionId || !this.modelConfig) return;
+		const { current, options } = this.modelConfig.model;
+		const model = options.find((o) => o.value === this.model)?.value ?? current;
+		const known = this.thoughtLevels[model];
+		const level = known?.options.find((o) => o.value === this.thoughtLevel)?.value;
+		this.modelConfig = {
+			model: { current: model, options },
+			thoughtLevel: known && { ...known, current: level ?? known.current },
+		};
 	}
 
 	private appDataDirArgs(): string[] {

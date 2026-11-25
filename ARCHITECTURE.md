@@ -74,6 +74,7 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 Model choices come from ACP `configOptions` (`model` and `thought_level`), kept as `ModelConfig` and cached in settings for startup. `session/set_config_option` changes them, and `config_option_update` keeps them current:
 
 - `agy` only reports the thinking levels of the current model, and resets both options when a session is loaded, so the client re-applies the wanted values to every session, and starts one when a choice is made without it (such as right after **New session**).
+- The levels of each model are cached as they are reported, so the menu can show them before a session has started.
 - A wanted level the model does not offer is skipped, and used again with a model that does.
 - The model menu shows the levels as a draggable bar (`effort-slider.ts`): a transparent range input inside a native `Menu` item, sent on release. A click on a model keeps the menu open and `refresh()` shows its levels in place. The menu turns off native (macOS) menus for it.
 - A model ID saved by an older version (such as `gemini-3.8-flash-low`) is a valid `model` value that also sets the level.

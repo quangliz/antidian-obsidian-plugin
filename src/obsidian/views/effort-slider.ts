@@ -21,9 +21,23 @@ export class EffortSlider {
 		this.build(select);
 	}
 
-	/** Shows other levels, or a level changed elsewhere. */
+	/** Shows other levels, or a level changed elsewhere; leaves a bar being dragged alone. */
 	update(select: ModelSelect | undefined): void {
-		if (select !== this.select) this.build(select);
+		if (select === this.select) return;
+		const { input } = this;
+		if (!select || !input || !this.hasOptions(select)) {
+			this.build(select);
+			return;
+		}
+		this.select = select;
+		if (input.matches(':active')) return;
+		input.valueAsNumber = select.options.findIndex((o) => o.value === select.current);
+		this.render();
+	}
+
+	private hasOptions(select: ModelSelect): boolean {
+		const values = (s?: ModelSelect) => s?.options.map((o) => o.value).join('\n');
+		return values(select) === values(this.select);
 	}
 
 	/** Moves by `delta` stops and reports the new value. */
