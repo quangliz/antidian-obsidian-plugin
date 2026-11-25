@@ -37,6 +37,7 @@ import {
 	createUpdateFrontmatterTool,
 	createListSkillsTool,
 	createLoadSkillTool,
+	createUpdateFocusTool,
 } from './core/tools';
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
@@ -102,6 +103,7 @@ export default class AntiDianPlugin extends Plugin {
 		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
 		this.toolRegistry.register(createListSkillsTool(this.skillAdapter));
 		this.toolRegistry.register(createLoadSkillTool(this.skillAdapter));
+		this.toolRegistry.register(createUpdateFocusTool());
 
 		this.mcpToolServer = new McpToolServer(this.toolRegistry);
 

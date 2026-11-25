@@ -37,6 +37,13 @@ export class TurnTraceRecorder {
 				toolArgs: step.toolArgs,
 				status: 'in_progress',
 			});
+		} else if (step.type === 'plan_update') {
+			this.events.push({
+				type: 'tool',
+				toolName: 'update_steps',
+				toolArgs: { steps: step.steps },
+				status: 'completed',
+			});
 		} else if (step.type === 'tool_end') {
 			const tools = this.events.filter((e): e is ToolEvent => e.type === 'tool');
 			const match =

@@ -25,12 +25,12 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
 - `src/core/` — Pure harness runtime with **no Obsidian SDK imports**:
   - `agent/` — Agent orchestration loop and default system prompt.
   - `context/` — `ContextCompiler` (deduplicated active note outline/selection, skill summaries, Plan Mode notice, forked context handling).
-  - `models/` — ACP client (`antigravity-acp.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
+  - `models/` — ACP client (`antigravity-acp.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), plan/focus progress parser (`plan.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
   - `sessions/` — Trace recording and replay merging (`trace.ts`, including rebuilding image-only turns the CLI does not replay) and `agy` transcript loading (`transcript.ts`).
   - `skills/` — Pure Markdown skill parser and constants.
   - `tools/` — `ToolRegistry` and 12 tool definitions.
   - `transactions/` — `ChangeStagingManager`, `StagedVaultOverlay`, `ChangeSetValidator`, `ChangeSetDiffGenerator`, `MutationGate`, `ChangeSetApplicator`, and Markdown structural helpers.
-  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `skills`, `elicitation`).
+  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `skills`, `elicitation`, `plan`).
 - `src/obsidian/` — Obsidian SDK integration:
   - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, `Editor`, and `Skills` adapters.
   - `commands/` — Command palette registrations and editor context menu hooks.
@@ -48,6 +48,7 @@ All vault access goes through `ToolRegistry` exposed over `McpToolServer` so the
 | **Read & Explore** | `list_notes`, `get_note_outline`, `search_notes`, `read_note` |
 | **Structural Mutations** | `replace_block`, `patch_note`, `append_note`, `update_frontmatter`, `create_note`, `edit_note` |
 | **Vault Skills** | `list_skills`, `load_skill` |
+| **Progress Tracking** | `update_focus` (intercepted into live focus UI; hidden from trace rows) |
 
 `read_note` reads any vault file. Non-text files (`src/core/files.ts`) return a `FileToolResult`, which `McpToolServer` sends as an MCP image/resource block; the bytes never reach the UI or traces. `agy` passes small files straight to the model and offloads larger ones to its own session folder, where the model opens them with the built-in `read_file` (no permission request, no vault access). `agy` has no Office reader (its CLI falls back to shell scripts, which Anti-dian rejects), so `read_note` returns the text of Office documents itself (`src/core/office.ts`). `ChangeSetValidator` rejects text edits to these files.
 
@@ -60,6 +61,13 @@ During ACP `initialize`, `AntigravityAcpClient` advertises `clientCapabilities.e
 - `src/core/models/elicitation.ts` parses `requestedSchema` into typed fields, pairing `<key>` + `<key>_other` into single-select or multi-select questions with an integrated write-in `"Other"` option and `(Recommended)` badge extraction (while also supporting generic text, number, and boolean fields).
 - `ElicitationCardView` renders the interactive card docked above the prompt bar with numbered shortcuts (`1`–`9`), keyboard navigation (`←`/`→`, `↑`/`↓`, `Enter`), stepper tabs for multi-question polls, and **Skip** / **Submit** actions.
 - Responses are returned over ACP (`accept` with encoded `content`, `decline`, or `cancel` on turn abort/session switch), and the Q&A summary is recorded on the `ask_question` step in `ThinkingStateView` and reconstructed on session replay.
+
+## Live Step Checklist & Progress Tracking
+
+On multi-step turns, `AntigravityAcpClient` translates `agy`'s built-in `update_steps` / `update_focus` calls (as well as standard ACP `sessionUpdate: "plan"` entries) via `src/core/models/plan.ts` into `plan_update` and `focus_update` step events instead of cluttering the tool trace:
+
+- `ThinkingStateView` renders a live checklist card below the collapsible thinking trace showing `pending`, `in_progress` (animated 4-dot loader), `done`, `skipped`, and `failed` step states, plus a live elapsed timer next to the active focus summary.
+- Because `agy`'s transcript logs preserve `update_steps` calls, reopening a stored conversation automatically restores its final checklist state.
 
 ## Staged Mutation Pipeline
 

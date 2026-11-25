@@ -13,7 +13,9 @@ import type {
 	ElicitationHandler,
 	ElicitationResponse,
 } from '../types/elicitation';
+import type { PlanStep } from '../types/plan';
 import { parseElicitationRequest } from './elicitation';
+import { parseFocusText, parsePlanSteps } from './plan';
 import {
 	type BinaryDownloadProgress,
 	type EnsureAgyBinaryResult,
@@ -116,6 +118,10 @@ export interface AcpStreamCallbacks {
 	onToolEnd?: (toolName: string, toolOutput: unknown, callId?: string) => void;
 	/** Handles interactive ACP `elicitation/create` form prompts (e.g. `ask_question`). */
 	onElicitation?: ElicitationHandler;
+	/** Called when the agent publishes or updates its live step checklist. */
+	onPlanUpdate?: (steps: PlanStep[]) => void;
+	/** Called when the agent publishes a high-level focus status phrase. */
+	onFocusUpdate?: (focus: string) => void;
 }
 
 export interface AcpPromptResult {
@@ -180,7 +186,12 @@ const SAFE_BUILTIN_TOOLS = new Set([
 	'web_search',
 	'google_search',
 	'ask_question',
+	'update_steps',
+	'update_focus',
 ]);
+
+/** Built-in progress/tracking tools rendered as live plan/focus UI rather than trace rows. */
+const PROGRESS_BUILTIN_TOOLS = new Set(['update_steps', 'update_focus']);
 
 export function formatTokens(tokens?: number): string {
 	if (!tokens) return '';
@@ -1560,6 +1571,7 @@ export class AntigravityAcpClient {
 					used?: number;
 					size?: number;
 					title?: unknown;
+					entries?: unknown;
 			  }
 			| undefined;
 
@@ -1584,6 +1596,15 @@ export class AntigravityAcpClient {
 			typeof update.size === 'number'
 		) {
 			this.contextUsage = { used: update.used, size: update.size };
+			return;
+		}
+
+		if (update.sessionUpdate === 'plan') {
+			if (this.turnCancelled) return;
+			const steps = parsePlanSteps(update.entries);
+			if (steps.length > 0) {
+				this.activeCallbacks?.onPlanUpdate?.(steps);
+			}
 			return;
 		}
 
@@ -1615,12 +1636,27 @@ export class AntigravityAcpClient {
 			if (update.toolCallId) {
 				this.activeToolNames.set(update.toolCallId, displayName);
 			}
+			const toolArgs = update.args ?? update.rawInput ?? {};
+			if (displayName === 'update_steps') {
+				const steps = parsePlanSteps(toolArgs);
+				if (steps.length > 0) {
+					this.activeCallbacks?.onPlanUpdate?.(steps);
+				}
+				return;
+			}
+			if (displayName === 'update_focus') {
+				const focus = parseFocusText(toolArgs);
+				if (focus) {
+					this.activeCallbacks?.onFocusUpdate?.(focus);
+				}
+				return;
+			}
 			// MCP tools already emit precise start/end events from McpToolServer;
 			// emit for non-MCP built-in tools (like search_web) here.
 			if (!rawName.startsWith(MCP_TOOL_PREFIX)) {
 				this.activeCallbacks?.onToolStart?.(
 					displayName,
-					update.args ?? update.rawInput ?? {},
+					toolArgs,
 					update.toolCallId,
 				);
 			}
@@ -1635,6 +1671,9 @@ export class AntigravityAcpClient {
 			const displayName =
 				this.activeToolNames.get(toolCallId) ?? update.name ?? '';
 			const rawName = update.name ?? '';
+			if (PROGRESS_BUILTIN_TOOLS.has(displayName)) {
+				return;
+			}
 			if (!rawName.startsWith(MCP_TOOL_PREFIX) && displayName) {
 				const elicitationOutcome = toolCallId
 					? this.elicitationOutcomes.get(toolCallId)
@@ -1787,6 +1826,7 @@ export function applyReplayUpdate(
 		rawInput?: Record<string, unknown>;
 		rawOutput?: unknown;
 		status?: string;
+		entries?: unknown;
 	},
 ): void {
 	const kind = update.sessionUpdate;
@@ -1797,6 +1837,19 @@ export function applyReplayUpdate(
 	}
 	if (kind === 'agent_message_chunk' && typeof text === 'string') {
 		appendReplayChunk(buffer, 'agent', text);
+		return;
+	}
+	if (kind === 'plan') {
+		const steps = parsePlanSteps(update.entries);
+		if (steps.length > 0) {
+			const events = (currentAgentMessage(buffer).events ??= []);
+			events.push({
+				type: 'tool',
+				toolName: 'update_steps',
+				toolArgs: { steps },
+				status: 'completed',
+			});
+		}
 		return;
 	}
 	if (kind === 'agent_thought_chunk' && typeof text === 'string') {

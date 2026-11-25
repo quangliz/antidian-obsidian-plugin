@@ -1882,6 +1882,7 @@ button.anti-dian-thinking-header-btn,
 	font-size: var(--font-ui-small);
 	font-family: inherit;
 	width: fit-content;
+	max-width: 100%;
 	transition: background-color 0.15s ease, color 0.15s ease;
 	margin-left: -6px;
 }
@@ -1917,6 +1918,9 @@ button.anti-dian-thinking-header-btn:hover {
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
 }
 
 .anti-dian-thinking-status-text.is-shimmer {
@@ -3273,4 +3277,138 @@ button.anti-dian-question-btn:disabled {
 .anti-dian-question-summary-a {
 	color: var(--text-normal);
 	font-weight: var(--font-medium);
+}
+
+/* ── Live Step Checklist & Focus Timer (Planning & Tracking) ──────────────── */
+
+.anti-dian-plan-card {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	margin: 8px 0 4px 0;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
+	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-plan-item {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	min-width: 0;
+}
+
+.anti-dian-plan-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+	--icon-size: 14px;
+}
+
+.anti-dian-plan-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.anti-dian-plan-item.is-done .anti-dian-plan-icon {
+	color: var(--text-muted);
+}
+
+.anti-dian-plan-item.is-done .anti-dian-plan-title {
+	color: var(--text-muted);
+}
+
+.anti-dian-plan-item.is-in_progress .anti-dian-plan-title {
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-plan-item.is-pending .anti-dian-plan-icon {
+	color: var(--text-faint);
+}
+
+.anti-dian-plan-item.is-pending .anti-dian-plan-title {
+	color: var(--text-normal);
+}
+
+.anti-dian-plan-item.is-skipped .anti-dian-plan-icon,
+.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+	color: var(--text-faint);
+}
+
+.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+	text-decoration: line-through;
+}
+
+.anti-dian-plan-item.is-failed .anti-dian-plan-icon,
+.anti-dian-plan-item.is-failed .anti-dian-plan-title {
+	color: var(--text-error);
+}
+
+/* 2x2 pulsing dot loader matching Antigravity's in-progress step indicator */
+.anti-dian-plan-dots {
+	display: grid;
+	grid-template-columns: repeat(2, 4px);
+	grid-template-rows: repeat(2, 4px);
+	gap: 2.5px;
+	width: 15px;
+	height: 15px;
+	align-content: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.anti-dian-plan-dot {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	animation: anti-dian-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.anti-dian-plan-dot:nth-child(2) {
+	animation-delay: 0.2s;
+}
+
+.anti-dian-plan-dot:nth-child(4) {
+	animation-delay: 0.4s;
+}
+
+.anti-dian-plan-dot:nth-child(3) {
+	animation-delay: 0.6s;
+}
+
+@keyframes anti-dian-dot-pulse {
+	0%, 100% {
+		opacity: 0.35;
+		transform: scale(0.85);
+	}
+	50% {
+		opacity: 1;
+		background: var(--interactive-accent);
+		transform: scale(1.1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.anti-dian-plan-dot {
+		animation: none;
+		opacity: 0.85;
+	}
+}
+
+.anti-dian-thinking-elapsed {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+	margin-left: 2px;
+	white-space: nowrap;
 }

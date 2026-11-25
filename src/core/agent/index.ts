@@ -2,6 +2,8 @@ import type { ActiveContext, ContextReference } from '../types/context';
 import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
 import type { ElicitationHandler } from '../types/elicitation';
+import type { PlanStep } from '../types/plan';
+import { parseFocusText } from '../models/plan';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import {
@@ -38,6 +40,8 @@ export type AgentStepEvent =
 			callId?: string;
 	  }
 	| { type: 'tool_end'; toolName: string; toolOutput: unknown; callId?: string }
+	| { type: 'plan_update'; steps: PlanStep[] }
+	| { type: 'focus_update'; focus: string }
 	| {
 			type: 'answer';
 			text: string;
@@ -70,6 +74,11 @@ Tool rules (strict):
 - NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exception: when a \`read_note\` result says it was offloaded to a file, open that exact file with \`read_file\`.
 - Built-in web search (\`search_web\`) may be used when external information is needed.
 - Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
+
+Progress tracking (for multi-step work):
+- Whenever a request involves 3 or more distinct steps (for example: finding and reading multiple notes, comparing or synthesizing across notes, planning, or editing multiple sections/notes), call built-in \`update_steps\` IN PARALLEL with your first tool call to show a concise 3–6 step checklist (first step \`in_progress\`, remaining \`pending\`). Update it as you move between phases and mark every step \`done\` before your final answer.
+- Call \`update_focus\` in parallel with the first tool call of each phase to display a concise live status phrase (3–8 words, in the user's language) describing what you are currently doing.
+- Skip \`update_steps\` and \`update_focus\` for simple 1–2 step lookups or direct questions.
 
 Recommended vault workflow:
 1. Act directly when the target note and its relevant content are already in context or earlier turns; only call \`list_notes\` or \`search_notes\` when you need to discover unknown notes or find related notes. For long unread notes, prefer \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading in full with \`read_note\`. \`read_note\` also opens images, PDFs, audio, video, and Office documents (docx, xlsx, pptx).
@@ -246,10 +255,16 @@ export class Agent {
 			},
 			{
 				onToolStart: ({ callId, toolName, toolArgs }) => {
+					if (toolName === 'update_focus') {
+						const focus = parseFocusText(toolArgs);
+						if (focus) onStep?.({ type: 'focus_update', focus });
+						return;
+					}
 					void beforeTool?.();
 					onStep?.({ type: 'tool_start', toolName, toolArgs, callId });
 				},
 				onToolEnd: ({ callId, toolName, toolOutput }) => {
+					if (toolName === 'update_focus') return;
 					onStep?.({ type: 'tool_end', toolName, toolOutput, callId });
 				},
 			},
@@ -282,6 +297,10 @@ export class Agent {
 						});
 					},
 					onElicitation: requestElicitation,
+					onPlanUpdate: (steps) =>
+						onStep?.({ type: 'plan_update', steps }),
+					onFocusUpdate: (focus) =>
+						onStep?.({ type: 'focus_update', focus }),
 				},
 				turnController.signal,
 			);

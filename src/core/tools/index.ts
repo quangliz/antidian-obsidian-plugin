@@ -831,3 +831,23 @@ export function createLoadSkillTool(
 		},
 	};
 }
+
+export function createUpdateFocusTool(): Tool<{ focus: string }, string> {
+	return {
+		name: 'update_focus',
+		description:
+			'Update the live status summary shown to the user while tools are running (3-8 words describing your current phase). Call in parallel with the first tool call of a new phase so it adds no extra turn latency. Skip for simple 1-2 tool lookups.',
+		schema: {
+			type: 'object',
+			properties: {
+				focus: {
+					type: 'string',
+					description:
+						'Short phrase (3-8 words) describing the high-level activity you are doing right now, matching the user language.',
+				},
+			},
+			required: ['focus'],
+		},
+		execute: async (): Promise<string> => 'OK',
+	};
+}

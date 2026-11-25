@@ -18,6 +18,13 @@ import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail } from './tool-detail';
 import { originalTextSize } from '../../core/sessions/trace';
 import { parseAskQuestionOutcome } from '../../core/models/elicitation';
+import {
+	formatElapsedSeconds,
+	getActivePlanFocus,
+	parseFocusText,
+	parsePlanSteps,
+} from '../../core/models/plan';
+import type { PlanStep } from '../../core/types/plan';
 import { ANTI_DIAN_ICON } from '../icon';
 import { AgentStepEvent } from '../../core/agent';
 
@@ -107,11 +114,13 @@ export class ThinkingStateView {
 	private component: Component;
 	private hoverParent?: HoverParent;
 	private containerEl: HTMLElement;
+	private planCardEl!: HTMLElement;
 	private headerBtnEl!: HTMLButtonElement;
 	private sparkleIconEl!: HTMLElement;
 	/** Infinite logo spin while running; eased to a stop when the turn settles. */
 	private logoSpin: Animation | null = null;
 	private statusTextEl!: HTMLElement;
+	private elapsedEl!: HTMLElement;
 	private chevronIconEl!: HTMLElement;
 	private traceWrapperEl!: HTMLElement;
 	private traceContentEl!: HTMLElement;
@@ -119,6 +128,11 @@ export class ThinkingStateView {
 	private rowsContainerEl!: HTMLElement;
 
 	private steps: ThinkingStep[] = [];
+	private planSteps: PlanStep[] = [];
+	private explicitFocus: string | null = null;
+	private fallbackStatus = 'Thinking';
+	private elapsedTimerId: number | null = null;
+	private wasCancelled = false;
 	private isExpanded = false;
 	private isSettled = false;
 	private startTime = 0;
@@ -151,14 +165,31 @@ export class ThinkingStateView {
 			cls: 'anti-dian-thinking-state',
 		});
 		this.startTime = performance.now();
+		this.component.register(() => this.stopElapsedTimer());
 		this.render();
+		this.startElapsedTimer();
 	}
 
 	public handleStep(step: AgentStepEvent): void {
+		if (step.type === 'plan_update') {
+			if (step.steps.length > 0) {
+				this.planSteps = step.steps;
+				this.renderPlanCard();
+				this.refreshLiveStatus();
+			}
+			return;
+		}
+		if (step.type === 'focus_update') {
+			if (step.focus.trim()) {
+				this.explicitFocus = step.focus.trim();
+				this.refreshLiveStatus();
+			}
+			return;
+		}
 		if (step.type === 'thinking') {
-			this.activeStatus = 'Thinking';
+			this.fallbackStatus = 'Thinking';
 			this.isExpanded = true;
-			this.updateHeader();
+			this.refreshLiveStatus();
 		} else if (step.type === 'thought_delta') {
 			const isNewPhase = this.ensureOpenPhase();
 			const phase = this.thoughtPhases[this.thoughtPhases.length - 1];
@@ -170,6 +201,24 @@ export class ThinkingStateView {
 			}
 			this.startThoughtStream();
 		} else if (step.type === 'tool_start') {
+			// Replayed sessions emit `update_steps` / `update_focus` as tool events.
+			if (step.toolName === 'update_steps') {
+				const parsed = parsePlanSteps(step.toolArgs);
+				if (parsed.length > 0) {
+					this.planSteps = parsed;
+					this.renderPlanCard();
+					this.refreshLiveStatus();
+				}
+				return;
+			}
+			if (step.toolName === 'update_focus') {
+				const focus = parseFocusText(step.toolArgs);
+				if (focus) {
+					this.explicitFocus = focus;
+					this.refreshLiveStatus();
+				}
+				return;
+			}
 			// Reasoning that arrives after this tool belongs below it.
 			this.closeOpenPhase();
 			const isSearch = step.toolName === 'search_notes' || step.toolName === 'web_search';
@@ -189,7 +238,7 @@ export class ThinkingStateView {
 				questionState: step.toolName === 'ask_question' ? 'waiting' : undefined,
 			};
 			this.steps.push(newStep);
-			this.activeStatus =
+			this.fallbackStatus =
 				step.toolName === 'ask_question'
 					? 'Waiting for answer'
 					: isSearch
@@ -199,9 +248,12 @@ export class ThinkingStateView {
 						: `Running ${formatted.primary.toLowerCase()}`;
 
 			this.isExpanded = true;
-			this.updateHeader();
+			this.refreshLiveStatus();
 			this.renderSteps();
 		} else if (step.type === 'tool_end') {
+			if (step.toolName === 'update_steps' || step.toolName === 'update_focus') {
+				return;
+			}
 			// Pair by call id when available; otherwise the oldest running call
 			// of the same tool (calls of one tool finish roughly in order).
 			const current =
@@ -305,13 +357,15 @@ export class ThinkingStateView {
 					}
 				}
 			}
-			this.activeStatus = 'Thinking';
-			this.updateHeader();
+			this.fallbackStatus = 'Thinking';
+			this.refreshLiveStatus();
 			this.renderSteps();
 		} else if (step.type === 'cancelled') {
+			this.fallbackStatus = 'Stopped';
 			this.activeStatus = 'Stopped';
 			this.updateHeader();
 		} else if (step.type === 'error') {
+			this.fallbackStatus = `Error: ${step.message}`;
 			this.activeStatus = `Error: ${step.message}`;
 			this.updateHeader();
 		}
@@ -468,6 +522,8 @@ export class ThinkingStateView {
 		}
 
 		this.closeOpenPhase();
+		this.stopElapsedTimer();
+		this.wasCancelled = cancelled;
 		this.isSettled = true;
 		this.endTime = performance.now();
 		const elapsedMs = options?.durationMs ?? this.endTime - this.startTime;
@@ -489,6 +545,7 @@ export class ThinkingStateView {
 		this.activeStatus = parts.map((p) => p.text).join('');
 
 		this.isExpanded = false;
+		this.renderPlanCard();
 		this.updateHeader();
 		this.renderSteps();
 	}
@@ -572,10 +629,23 @@ export class ThinkingStateView {
 		const known = new Set([
 			'search_notes', 'web_search', 'search_web', 'list_notes', 'read_note', 'get_note_outline',
 			'create_note', 'edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter',
-			'load_skill', 'list_skills', 'ask_question',
+			'load_skill', 'list_skills', 'ask_question', 'update_steps', 'update_focus',
 		]);
 		const other = this.steps.filter((s) => !known.has(s.toolName)).length;
 		if (other) clauses.push([{ text: `ran ${other} ${other === 1 ? 'tool' : 'tools'}` }]);
+
+		if (clauses.length === 0 && this.planSteps.length > 0) {
+			const doneCount = this.planSteps.filter((s) => s.status === 'done').length;
+			const total = this.planSteps.length;
+			clauses.push([
+				{
+					text:
+						doneCount === total
+							? `completed ${total} ${total === 1 ? 'step' : 'steps'}`
+							: `completed ${doneCount} of ${total} steps`,
+				},
+			]);
+		}
 
 		const failed = this.steps.filter((s) => s.status === 'error').length;
 		const parts: { text: string; file?: boolean }[] = [];
@@ -685,6 +755,11 @@ export class ThinkingStateView {
 			text: 'Thinking',
 		});
 
+		this.elapsedEl = this.headerBtnEl.createSpan({
+			cls: 'anti-dian-thinking-elapsed',
+			text: '',
+		});
+
 		this.chevronIconEl = this.headerBtnEl.createSpan({
 			cls: 'anti-dian-thinking-chevron-icon collapse-icon is-collapsed',
 		});
@@ -713,6 +788,11 @@ export class ThinkingStateView {
 
 		this.rowsContainerEl = this.traceContentEl.createDiv({
 			cls: 'anti-dian-thinking-rows-container',
+		});
+
+		this.planCardEl = this.containerEl.createDiv({
+			cls: 'anti-dian-plan-card anti-dian-hidden',
+			attr: { role: 'list', 'aria-label': 'Task progress' },
 		});
 
 		this.updateHeader();
@@ -765,6 +845,105 @@ export class ThinkingStateView {
 		);
 	}
 
+	private startElapsedTimer(): void {
+		if (this.elapsedTimerId !== null || this.isSettled) return;
+		this.updateElapsedLabel();
+		this.elapsedTimerId = window.setInterval(() => {
+			if (this.isSettled) {
+				this.stopElapsedTimer();
+				return;
+			}
+			this.updateElapsedLabel();
+		}, 1000);
+	}
+
+	private stopElapsedTimer(): void {
+		if (this.elapsedTimerId !== null) {
+			window.clearInterval(this.elapsedTimerId);
+			this.elapsedTimerId = null;
+		}
+	}
+
+	private updateElapsedLabel(): void {
+		if (!this.elapsedEl) return;
+		if (this.isSettled) {
+			this.elapsedEl.addClass('anti-dian-hidden');
+			return;
+		}
+		const elapsedMs = performance.now() - this.startTime;
+		if (elapsedMs < 1000) {
+			this.elapsedEl.setText('');
+			this.elapsedEl.addClass('anti-dian-hidden');
+			return;
+		}
+		this.elapsedEl.removeClass('anti-dian-hidden');
+		this.elapsedEl.setText(formatElapsedSeconds(elapsedMs));
+	}
+
+	private refreshLiveStatus(): void {
+		if (this.isSettled) return;
+		if (this.steps.some((s) => s.approval?.state === 'pending')) {
+			this.activeStatus = 'Waiting for approval';
+		} else if (this.steps.some((s) => s.questionState === 'waiting')) {
+			this.activeStatus = 'Waiting for answer';
+		} else if (this.explicitFocus) {
+			this.activeStatus = this.explicitFocus;
+		} else {
+			const planFocus = getActivePlanFocus(this.planSteps);
+			this.activeStatus = planFocus ?? this.fallbackStatus;
+		}
+		this.updateHeader();
+	}
+
+	private renderPlanCard(): void {
+		if (!this.planCardEl) return;
+		this.planCardEl.empty();
+		if (this.planSteps.length === 0) {
+			this.planCardEl.addClass('anti-dian-hidden');
+			return;
+		}
+		this.planCardEl.removeClass('anti-dian-hidden');
+		this.planCardEl.toggleClass('is-paused', this.isSettled);
+
+		for (const step of this.planSteps) {
+			const item = this.planCardEl.createDiv({
+				cls: `anti-dian-plan-item is-${step.status}`,
+				attr: { role: 'listitem' },
+			});
+
+			if (step.status === 'in_progress' && !this.isSettled) {
+				const dots = item.createSpan({
+					cls: 'anti-dian-plan-dots',
+					attr: { 'aria-hidden': 'true' },
+				});
+				for (let i = 0; i < 4; i++) {
+					dots.createSpan({ cls: 'anti-dian-plan-dot' });
+				}
+			} else {
+				const icon = item.createSpan({
+					cls: 'anti-dian-plan-icon',
+					attr: { 'aria-hidden': 'true' },
+				});
+				const iconName =
+					step.status === 'done'
+						? 'check-circle'
+						: step.status === 'failed'
+							? 'alert-circle'
+							: step.status === 'skipped'
+								? 'minus-circle'
+								: step.status === 'in_progress' && this.wasCancelled
+									? 'ban'
+									: 'circle';
+				setIcon(icon, iconName);
+			}
+
+			item.createSpan({
+				cls: 'anti-dian-plan-title',
+				text: step.title,
+			});
+		}
+	}
+
 	private updateHeader(): void {
 		this.headerBtnEl.setAttribute('aria-expanded', String(this.isExpanded));
 
@@ -774,6 +953,7 @@ export class ThinkingStateView {
 			this.sparkleIconEl.addClass('is-settled');
 			this.statusTextEl.removeClass('is-shimmer');
 			this.statusTextEl.addClass('is-settled');
+			this.elapsedEl?.addClass('anti-dian-hidden');
 			this.statusTextEl.empty();
 			for (const part of this.summaryParts ?? [{ text: this.activeStatus }]) {
 				if (part.file) {
@@ -789,6 +969,7 @@ export class ThinkingStateView {
 			this.statusTextEl.addClass('is-shimmer');
 			this.statusTextEl.removeClass('is-settled');
 			this.statusTextEl.setText(this.activeStatus);
+			this.updateElapsedLabel();
 		}
 
 		this.chevronIconEl.toggleClass('is-collapsed', !this.isExpanded);
@@ -1089,16 +1270,15 @@ export class ThinkingStateView {
 				state: 'pending',
 				resolve: (decision) => {
 					step.approval = { state: decision === 'approve' ? 'applied' : 'rejected' };
-					this.activeStatus = 'Thinking';
-					this.updateHeader();
+					this.fallbackStatus = 'Thinking';
+					this.refreshLiveStatus();
 					this.renderSteps();
 					resolve(decision);
 				},
 			};
 			this.openStepIds.add(step.id);
 			this.isExpanded = true;
-			this.activeStatus = 'Waiting for approval';
-			this.updateHeader();
+			this.refreshLiveStatus();
 			this.renderSteps();
 			this.containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		});
