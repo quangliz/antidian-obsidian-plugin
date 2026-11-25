@@ -8,7 +8,7 @@ import {
 	UserQuotaResponse,
 	formatTokens,
 } from '../../core/models/antigravity-acp';
-import { createEffortSlider, EffortSlider } from './effort-slider';
+import { EffortSlider } from './effort-slider';
 import { attachNativeMenuGlider } from './menu-glider';
 
 interface UsageRow {
@@ -50,6 +50,8 @@ function selectedName(select: ModelSelect): string {
 export class ModelMenuController {
 	private ctx: ModelMenuContext;
 	private menu: Menu | null = null;
+	private modelRows = new Map<string, HTMLElement>();
+	private effortSlider: EffortSlider | null = null;
 	private menuAnchorEl: HTMLElement | null = null;
 	private menuHiddenAt = 0;
 	private usagePanelEl: HTMLElement | null = null;
@@ -96,19 +98,20 @@ export class ModelMenuController {
 		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
 		attachNativeMenuGlider(menu);
 		let releaseKeys: (() => void) | undefined;
+		this.modelRows.clear();
+		this.effortSlider = null;
 		if (config) {
 			this.addModels(menu, config.model);
-			if (config.thoughtLevel) {
-				menu.addSeparator();
-				const slider = createEffortSlider(
-					config.thoughtLevel,
-					this.ctx.onSelectThoughtLevel,
-				);
-				const title = createFragment();
-				title.append(slider.el);
-				menu.addItem((item) => item.setTitle(title));
-				releaseKeys = this.bindSliderKeys(slider, anchorEl.win);
-			}
+			menu.addSeparator();
+			const slider = new EffortSlider(
+				config.thoughtLevel,
+				this.ctx.onSelectThoughtLevel,
+			);
+			const title = createFragment();
+			title.append(slider.el);
+			menu.addItem((item) => item.setTitle(title));
+			this.effortSlider = slider;
+			releaseKeys = this.bindSliderKeys(slider, anchorEl.win);
 		} else {
 			menu.addItem((item) => item.setTitle('Loading models...').setIsLabel(true));
 		}
@@ -125,9 +128,22 @@ export class ModelMenuController {
 			usageItemEl = (item as MenuItemWithDom).dom;
 		});
 
+		const menuEl = (menu as MenuWithDom).dom;
+		// Keep the menu open after a click on a model, to set its effort next.
+		menuEl?.addEventListener(
+			'click',
+			(evt) => {
+				const itemEl = (evt.target as HTMLElement | null)?.closest('.menu-item');
+				for (const [model, row] of this.modelRows) {
+					if (!itemEl?.contains(row)) continue;
+					evt.stopPropagation();
+					this.ctx.onSelectModel(model);
+				}
+			},
+			true,
+		);
 		// Hovering "View Usage" shows the usage panel beside the menu, like a submenu;
 		// hovering any other item closes it again.
-		const menuEl = (menu as MenuWithDom).dom;
 		menuEl?.addEventListener('mouseover', (evt) => {
 			const target = evt.target as HTMLElement | null;
 			const itemEl = target?.closest('.menu-item');
@@ -158,13 +174,32 @@ export class ModelMenuController {
 		);
 	}
 
+	/** Shows the current choices in the open menu. */
+	refresh(): void {
+		const config = this.ctx.getModelConfig();
+		if (!this.menu || !config) return;
+		for (const [model, row] of this.modelRows) {
+			row.toggleClass('is-current', model === config.model.current);
+		}
+		this.effortSlider?.update(config.thoughtLevel);
+	}
+
 	private addModels(menu: Menu, models: ModelSelect): void {
 		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
 		for (const option of models.options) {
+			const title = createFragment();
+			const row = title.createSpan({
+				cls: 'anti-dian-model-row',
+				text: option.name,
+			});
+			row.toggleClass('is-current', option.value === models.current);
+			// Not `setChecked`: Obsidian does not bring a removed check mark back.
+			setIcon(row.createSpan({ cls: 'anti-dian-model-row-check' }), 'check');
+			this.modelRows.set(option.value, row);
+			// Enter closes the menu; a click does not reach this (see openMenu).
 			menu.addItem((item) =>
 				item
-					.setTitle(option.name)
-					.setChecked(option.value === models.current)
+					.setTitle(title)
 					.onClick(() => this.ctx.onSelectModel(option.value)),
 			);
 		}

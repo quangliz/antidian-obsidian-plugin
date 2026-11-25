@@ -167,7 +167,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.plugin.antigravityProvider.onSessionInfoChange(() => {
 				this.recordPendingForkIfReady();
 				this.updateSessionTitle();
-				this.promptBar?.updateModelLabel();
+				this.updateModelChoice();
 			});
 
 		this.unsubscribeContext = this.contextService.onContextChange(
@@ -690,8 +690,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 	/** Saving also passes the choice on to the backend. */
 	private saveModelChoice(): void {
-		void this.plugin.saveSettings().then(() => this.promptBar?.updateModelLabel());
+		void this.plugin.saveSettings().then(() => this.updateModelChoice());
 		this.promptBar?.playRainbowSweep();
+	}
+
+	private updateModelChoice(): void {
+		this.promptBar?.updateModelLabel();
+		this.modelMenuController.refresh();
 	}
 
 	private handleCancel(): void {
