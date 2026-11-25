@@ -218,6 +218,24 @@ const PROGRESS_BUILTIN_TOOLS = new Set(['update_steps', 'update_focus']);
 /** ACP auth method for a Google account sign-in through the browser. */
 const LOGIN_METHOD_ID = 'oauth-personal';
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
+/** ACP error code for a request that needs a sign-in. */
+const ACP_AUTH_REQUIRED = -32000;
+
+/** Whether the backend can be used, as far as known. */
+export interface BackendConnection {
+	status: 'checking' | 'ready' | 'signed-out' | 'not-installed' | 'error';
+	/** Why, for `error`. */
+	message?: string;
+}
+
+class AcpRequestError extends Error {
+	readonly code?: number;
+
+	constructor(message: string, code?: number) {
+		super(message);
+		this.code = code;
+	}
+}
 
 export function formatTokens(tokens?: number): string {
 	if (!tokens) return '';
@@ -370,6 +388,8 @@ export class AntigravityAcpClient {
 	private startPromise: Promise<void> | null = null;
 	private sessionTitle: string | null = null;
 	private sessionInfoListeners = new Set<() => void>();
+	private connection: BackendConnection = { status: 'checking' };
+	private connectionListeners = new Set<() => void>();
 	/** Collects `session/load` history replay; null outside a load. */
 	private replayBuffer: ReplayedMessage[] | null = null;
 	private promptInFlight = false;
@@ -504,10 +524,38 @@ export class AntigravityAcpClient {
 	 * its backend on activation.
 	 */
 	warmup(): void {
-		if (!isAgyBinaryAvailable(this.cliPath)) return;
-		void this.ensureSession().catch(() => {
-			// Best-effort warm-up; errors surface when the user interacts.
-		});
+		// Best-effort; a failure shows in the connection state.
+		void this.checkStatus();
+	}
+
+	getConnection(): BackendConnection {
+		return this.connection;
+	}
+
+	/** Notified when the connection state changes. */
+	onConnectionChange(listener: () => void): () => void {
+		this.connectionListeners.add(listener);
+		return () => this.connectionListeners.delete(listener);
+	}
+
+	private setConnection(
+		status: BackendConnection['status'],
+		message?: string,
+	): void {
+		if (
+			this.connection.status === status &&
+			this.connection.message === message
+		) {
+			return;
+		}
+		this.connection = { status, message };
+		for (const listener of this.connectionListeners) {
+			try {
+				listener();
+			} catch {
+				// A broken listener must not break the transport.
+			}
+		}
 	}
 
 	/** Triggers a non-blocking background quota refresh when stale or forced. */
@@ -667,6 +715,7 @@ export class AntigravityAcpClient {
 		error?: string;
 	}> {
 		if (!isAgyBinaryAvailable(this.cliPath)) {
+			this.setConnection('not-installed');
 			return {
 				cliFound: false,
 				authenticated: false,
@@ -675,8 +724,10 @@ export class AntigravityAcpClient {
 		}
 		const binaryPath = resolveAgyBinary(this.cliPath);
 
+		if (this.connection.status !== 'ready') this.setConnection('checking');
 		try {
 			await this.ensureSession();
+			this.setConnection('ready');
 			return {
 				cliFound: true,
 				binaryPath,
@@ -704,7 +755,7 @@ export class AntigravityAcpClient {
 		await this.ensureBinary(onProgress);
 		// A separate process, so that a running conversation survives a sign-in
 		// that fails or is abandoned.
-		this.loginClient?.destroyProcess();
+		this.cancelLogin();
 		const client = new AntigravityAcpClient({
 			cliPath: this.cliPath,
 			caCertificates: this.caCertificates,
@@ -722,17 +773,33 @@ export class AntigravityAcpClient {
 				await client.sendRequest('logout', {});
 				// Signed out from here on, even if the new sign-in fails.
 				this.destroyProcess();
+				this.setConnection('signed-out');
 				this.cachedTier = null;
 				this.cachedQuota = null;
 				this.emitCacheUpdate();
 			}
 			await client.authenticate();
+		} catch (err) {
+			if (this.loginClient !== client) {
+				throw new Error('Sign-in was cancelled.');
+			}
+			throw err;
 		} finally {
 			client.destroyProcess();
 			if (this.loginClient === client) this.loginClient = null;
 		}
-		// The next request starts a process that uses the new credentials.
+		// Start over in a process that uses the new credentials.
+		const starting = this.startPromise;
 		this.destroyProcess();
+		await starting?.catch(() => undefined);
+		void this.checkStatus();
+	}
+
+	/** Stops waiting for the browser; the pending `login` fails. */
+	cancelLogin(): void {
+		const client = this.loginClient;
+		this.loginClient = null;
+		client?.destroyProcess();
 	}
 
 	/**
@@ -1036,7 +1103,7 @@ export class AntigravityAcpClient {
 
 	async destroy(): Promise<void> {
 		await this.resetSession();
-		this.loginClient?.destroyProcess();
+		this.cancelLogin();
 		this.destroyProcess();
 		if (this.mcpToolServer) {
 			await this.mcpToolServer.stop();
@@ -1055,6 +1122,15 @@ export class AntigravityAcpClient {
 		this.startPromise = this.startAndCreateSession();
 		try {
 			await this.startPromise;
+		} catch (err) {
+			// Once connected, a later failure belongs to the request that met it.
+			if (this.connection.status === 'checking') {
+				this.setConnection(
+					'error',
+					err instanceof Error ? err.message : String(err),
+				);
+			}
+			throw err;
 		} finally {
 			this.startPromise = null;
 		}
@@ -1148,6 +1224,9 @@ export class AntigravityAcpClient {
 			return true;
 		} catch (err) {
 			if (this.conversationId !== id) return false;
+			if (err instanceof AcpRequestError && err.code === ACP_AUTH_REQUIRED) {
+				throw err;
+			}
 			const reason = err instanceof Error ? err.message : String(err);
 			throw new Error(
 				`Could not reconnect to this conversation: ${reason}. Try again, or start a new session.`,
@@ -1160,6 +1239,7 @@ export class AntigravityAcpClient {
 		sess: Partial<AcpSessionNewResult>,
 	): Promise<void> {
 		this.sessionId = sessionId;
+		this.setConnection('ready');
 		const config = parseModelConfig(sess.configOptions);
 		if (config) this.storeModelConfig(config);
 		this.appliedModel = config?.model.current ?? null;
@@ -1512,10 +1592,14 @@ export class AntigravityAcpClient {
 			const entry = this.pending.get(msg.id)!;
 			this.pending.delete(msg.id);
 			if (msg.error) {
+				if (msg.error.code === ACP_AUTH_REQUIRED) {
+					this.setConnection('signed-out');
+				}
 				entry.reject(
-					new Error(
+					new AcpRequestError(
 						msg.error.message ||
 							`ACP error (code ${msg.error.code ?? 'unknown'})`,
+						msg.error.code,
 					),
 				);
 			} else {

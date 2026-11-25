@@ -11,6 +11,7 @@ import {
 	AntigravityAcpClient,
 	type AntigravityAcpOptions,
 	type AvailableCommand,
+	type BackendConnection,
 	type CachedQuotaSnapshot,
 	type ContextWindowUsage,
 	type ModelConfig,
@@ -105,6 +106,18 @@ export class AntigravityProvider {
 		switchAccount = false,
 	): Promise<void> {
 		return this.client.login(onProgress, switchAccount);
+	}
+
+	cancelLogin(): void {
+		this.client.cancelLogin();
+	}
+
+	getConnection(): BackendConnection {
+		return this.client.getConnection();
+	}
+
+	onConnectionChange(listener: () => void): () => void {
+		return this.client.onConnectionChange(listener);
 	}
 
 	async fetchModelConfig(): Promise<ModelConfig | null> {

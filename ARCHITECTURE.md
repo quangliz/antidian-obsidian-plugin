@@ -35,7 +35,7 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
   - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, and `Editor` adapters.
   - `commands/` — Command palette registrations and editor context menu hooks.
   - `editor/` — CodeMirror 6 `InlineDiffController` for inline write approvals in open Markdown views.
-  - `views/` — Sidebar view, prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
+  - `views/` — Sidebar view, sign-in screen shown instead of the prompt bar until the backend is usable (`sign-in-view.ts`), prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
 - `src/main.ts` — Thin composition root that wires services, registers tools/views/commands, and handles lifecycle cleanup.
 - `src/settings.ts` — Persisted plugin settings and `AntiDianSettingTab`.
 

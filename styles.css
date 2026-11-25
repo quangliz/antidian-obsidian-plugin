@@ -434,6 +434,51 @@ button.anti-dian-session-drawer-close:hover {
 	text-align: center;
 }
 
+.anti-dian-sign-in {
+	display: none;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	max-width: 320px;
+	text-align: center;
+}
+
+.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-sign-in {
+	display: flex;
+}
+
+.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-promptbar-anchor,
+.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-empty-hero > .anti-dian-empty-title {
+	display: none;
+}
+
+.anti-dian-sign-in-desc,
+.anti-dian-sign-in-error {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+
+.anti-dian-sign-in-error {
+	color: var(--text-error);
+}
+
+.anti-dian-sign-in button {
+	cursor: pointer;
+}
+
+.anti-dian-sign-in button.anti-dian-sign-in-secondary {
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+
+.anti-dian-sign-in button.anti-dian-sign-in-secondary:hover {
+	color: var(--text-normal);
+}
+
 @container (max-width: 300px) {
 	.anti-dian-empty-logo {
 		width: 72px;

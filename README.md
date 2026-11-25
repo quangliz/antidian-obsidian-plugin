@@ -16,8 +16,8 @@ Chat with your notes, and let the agent read, write, and edit them with you. It 
    ```text
    obsidian://show-plugin?id=anti-dian
    ```
-2. Open **Settings → Anti-dian** and click **Sign in with Google**. The `agy` backend downloads automatically on first use.
-3. Open the sidebar from the ribbon icon or run `Anti-dian: Open sidebar`.
+2. Open the sidebar from the ribbon icon or run `Anti-dian: Open sidebar`.
+3. Click **Sign in with Google** there, or in **Settings → Anti-dian**. The `agy` backend is downloaded first if it is missing.
 
 ## How It Works
 

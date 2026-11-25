@@ -45,6 +45,7 @@ import {
 } from '../../core/sessions/transcript';
 import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
+import { SignInView } from './sign-in-view';
 import { ElicitationCardView } from './elicitation-card-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
@@ -69,6 +70,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private validator?: ChangeSetValidator;
 	private unsubscribeContext: (() => void) | null = null;
 	private unsubscribeSessionInfo: (() => void) | null = null;
+	private unsubscribeConnection: (() => void) | null = null;
+	private signInView: SignInView | null = null;
 	private modelMenuController: ModelMenuController;
 	private sessionMenu: SessionMenuController | null = null;
 	private sessionTitleEl: HTMLElement | null = null;
@@ -170,6 +173,12 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.updateModelChoice();
 			});
 
+		this.unsubscribeConnection =
+			this.plugin.antigravityProvider.onConnectionChange(() =>
+				this.updateSignIn(),
+			);
+		this.updateSignIn();
+
 		this.unsubscribeContext = this.contextService.onContextChange(
 			(context) => {
 				this.updateContextNav(context);
@@ -204,7 +213,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 		});
 
-		void this.loadModels();
+		void this.connect();
 	}
 
 	async onClose(): Promise<void> {
@@ -218,6 +227,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 		this.unsubscribeSessionInfo?.();
 		this.unsubscribeSessionInfo = null;
+		this.unsubscribeConnection?.();
+		this.unsubscribeConnection = null;
 		this.sessionMenu?.close();
 		this.promptBar?.destroy();
 		this.modelMenuController.closeMenu();
@@ -647,6 +658,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 		});
 		this.heroTitleEl = heroEl.createDiv({ cls: 'anti-dian-empty-title' });
 		this.refreshGreeting();
+		const provider = this.plugin.antigravityProvider;
+		this.signInView = new SignInView(heroEl, {
+			getConnection: () => provider.getConnection(),
+			getCustomPath: () => this.plugin.settings.cliPath?.trim() ?? '',
+			login: (onProgress) => provider.login(onProgress),
+			cancelLogin: () => provider.cancelLogin(),
+			checkAgain: () => void this.connect(),
+		});
 
 		const elicitationSlotEl = this.centerContainerEl.createDiv({
 			cls: 'anti-dian-elicitation-slot',
@@ -728,13 +747,17 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.resetEmptyState();
 	}
 
-	private async loadModels(): Promise<void> {
-		try {
-			await this.plugin.antigravityProvider.fetchModelConfig();
-			this.promptBar?.updateModelLabel();
-		} catch {
-			// Keep the cached models
-		}
+	private async connect(): Promise<void> {
+		await this.plugin.antigravityProvider.checkStatus();
+		this.promptBar?.updateModelLabel();
+	}
+
+	/** On the empty screen, asks to sign in instead of showing the prompt bar. */
+	private updateSignIn(): void {
+		const ready =
+			this.plugin.antigravityProvider.getConnection().status === 'ready';
+		this.rootEl?.toggleClass('needs-sign-in', !ready);
+		this.signInView?.render();
 	}
 
 	private async handleSend(

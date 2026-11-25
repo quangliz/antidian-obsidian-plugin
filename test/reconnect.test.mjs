@@ -1,6 +1,7 @@
 import './ts-resolve.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -23,10 +24,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 	const { id, method, params } = JSON.parse(line);
 	fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method, sessionId: params?.sessionId, methodId: params?.methodId, pid: process.pid }) + '\\n');
 	if (method === 'authenticate') {
+		if (fs.existsSync(${JSON.stringify(path.join(dir, 'hang'))})) return;
 		if (fs.existsSync(${JSON.stringify(path.join(dir, 'deny'))})) {
 			return send({ id, error: { code: -32603, message: 'sign-in was denied' } });
 		}
 		return send({ id, result: {} });
+	}
+	if (method === 'session/new' && fs.existsSync(${JSON.stringify(path.join(dir, 'signed-out'))})) {
+		return send({ id, error: { code: -32000, message: 'Authentication required' } });
 	}
 	if (method === 'session/new') return send({ id, result: { sessionId: 'new-' + process.pid + '-' + id } });
 	if (method === 'session/load') {
@@ -69,6 +74,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 		await run(client, {
 			requests,
 			loseSessions: () => fs.writeFileSync(gone, ''),
+			signOut: () => fs.writeFileSync(path.join(dir, 'signed-out'), ''),
+			signIn: () => fs.rmSync(path.join(dir, 'signed-out')),
+			hangLogin: () => fs.writeFileSync(path.join(dir, 'hang'), ''),
 			denyLogin: () => fs.writeFileSync(path.join(dir, 'deny'), ''),
 			rawLog: () => fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
 		});
@@ -227,4 +235,42 @@ test('AntigravityAcpClient signs out before switching accounts', async () => {
 		},
 		{ onCacheUpdate: (c) => cache.push(c) },
 	);
+});
+
+test('AntigravityAcpClient reports whether a sign-in is needed', async () => {
+	await withClient(async (client, agy) => {
+		const seen = [];
+		client.onConnectionChange(() => seen.push(client.getConnection().status));
+		assert.equal(client.getConnection().status, 'checking');
+
+		agy.signOut();
+		await client.checkStatus();
+		assert.deepEqual(seen, ['signed-out']);
+
+		// The state follows a sign-in by itself.
+		agy.signIn();
+		await client.login();
+		while (client.getConnection().status === 'checking') {
+			await delay(10);
+		}
+		assert.deepEqual(seen, ['signed-out', 'checking', 'ready']);
+
+		// A crash later on is not a sign-in problem.
+		await assert.rejects(client.prompt('die'));
+		assert.equal(client.getConnection().status, 'ready');
+
+		client.setCliPath('/nowhere/agy');
+		await client.checkStatus();
+		assert.equal(client.getConnection().status, 'not-installed');
+	});
+});
+
+test('AntigravityAcpClient can cancel a pending sign-in', async () => {
+	await withClient(async (client, agy) => {
+		agy.hangLogin();
+		const login = client.login((p) => {
+			if (p.phase === 'signing-in') void delay(200).then(() => client.cancelLogin());
+		});
+		await assert.rejects(login, /Sign-in was cancelled/);
+	});
 });
