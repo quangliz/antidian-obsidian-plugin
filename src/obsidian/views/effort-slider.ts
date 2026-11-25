@@ -6,6 +6,8 @@ import type { ModelSelect } from '../../core/models/antigravity-acp';
  */
 export class EffortSlider {
 	readonly el = createDiv({ cls: 'anti-dian-effort' });
+	/** Clipped while `el` animates open or shut (see styles.css). */
+	private contentEl = this.el.createDiv({ cls: 'anti-dian-effort-content' });
 	private select: ModelSelect | undefined;
 	private input: HTMLInputElement | null = null;
 	private stops: HTMLElement[] = [];
@@ -54,16 +56,15 @@ export class EffortSlider {
 	private build(select: ModelSelect | undefined): void {
 		this.select = select;
 		this.input = null;
-		this.el.empty();
-		this.el.createDiv({ cls: 'anti-dian-effort-heading', text: 'Effort' });
-		if (!select) {
-			// Keeps the height, so the menu does not move under the pointer.
-			this.el.createDiv({ cls: 'anti-dian-effort-none', text: 'Model default' });
-			return;
-		}
+		this.el.toggleClass('is-collapsed', !select);
+		this.el.inert = !select;
+		// The last levels stay visible while the section collapses.
+		if (!select) return;
 
 		const { options } = select;
-		const bar = this.el.createDiv({ cls: 'anti-dian-effort-bar' });
+		this.contentEl.empty();
+		this.contentEl.createDiv({ cls: 'anti-dian-effort-heading', text: 'Effort' });
+		const bar = this.contentEl.createDiv({ cls: 'anti-dian-effort-bar' });
 		bar.createDiv({ cls: 'anti-dian-effort-track' });
 		this.stops = options.map((option) =>
 			bar.createDiv({ cls: 'anti-dian-effort-stop', text: option.name }),
@@ -76,6 +77,8 @@ export class EffortSlider {
 		input.valueAsNumber = options.findIndex((o) => o.value === select.current);
 		input.addEventListener('input', () => this.render());
 		input.addEventListener('change', () => this.commit());
+		// Part of the section, so that it collapses with it.
+		this.contentEl.createDiv({ cls: 'anti-dian-menu-divider' });
 		this.input = input;
 		this.render();
 	}

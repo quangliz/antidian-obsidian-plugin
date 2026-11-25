@@ -52,6 +52,7 @@ export class ModelMenuController {
 	private menu: Menu | null = null;
 	private modelRows = new Map<string, HTMLElement>();
 	private effortSlider: EffortSlider | null = null;
+	private effortItem: MenuItem | null = null;
 	private menuAnchorEl: HTMLElement | null = null;
 	private menuHiddenAt = 0;
 	private usagePanelEl: HTMLElement | null = null;
@@ -100,23 +101,29 @@ export class ModelMenuController {
 		let releaseKeys: (() => void) | undefined;
 		this.modelRows.clear();
 		this.effortSlider = null;
+		this.effortItem = null;
 		if (config) {
 			this.addModels(menu, config.model);
 			menu.addSeparator();
+			// Ends with a divider of its own.
 			const slider = new EffortSlider(
 				config.thoughtLevel,
 				this.ctx.onSelectThoughtLevel,
 			);
 			const title = createFragment();
 			title.append(slider.el);
-			menu.addItem((item) => item.setTitle(title));
+			menu.addItem((item) => {
+				// Arrow keys skip the row while it is collapsed.
+				item.setTitle(title).setDisabled(!config.thoughtLevel);
+				this.effortItem = item;
+			});
 			this.effortSlider = slider;
 			releaseKeys = this.bindSliderKeys(slider, anchorEl.win);
 		} else {
 			menu.addItem((item) => item.setTitle('Loading models...').setIsLabel(true));
+			menu.addSeparator();
 		}
 
-		menu.addSeparator();
 		let usageItemEl: HTMLElement | undefined;
 		menu.addItem((item) => {
 			item
@@ -165,6 +172,10 @@ export class ModelMenuController {
 			}
 		});
 
+		if (menuEl) {
+			new ResizeObserver(() => this.keepOnScreen(menuEl)).observe(menuEl);
+		}
+
 		this.menu = menu;
 		this.menuAnchorEl = anchorEl;
 		const rect = anchorEl.getBoundingClientRect();
@@ -182,6 +193,14 @@ export class ModelMenuController {
 			row.toggleClass('is-current', model === config.model.current);
 		}
 		this.effortSlider?.update(config.thoughtLevel);
+		this.effortItem?.setDisabled(!config.thoughtLevel);
+	}
+
+	/** The menu grows when the new model has an effort bar and the last one had none. */
+	private keepOnScreen(dom: HTMLElement): void {
+		const overflow = dom.offsetTop + dom.offsetHeight - dom.win.innerHeight;
+		if (overflow <= 0) return;
+		dom.setCssProps({ top: `${Math.max(0, dom.offsetTop - overflow)}px` });
 	}
 
 	private addModels(menu: Menu, models: ModelSelect): void {

@@ -89,4 +89,6 @@ export function attachNativeMenuGlider(menu: Menu): void {
 		attributes: true,
 		attributeFilter: ['class'],
 	});
+	// Rows move when a section above them opens or collapses.
+	new ResizeObserver(sync).observe(dom);
 }
