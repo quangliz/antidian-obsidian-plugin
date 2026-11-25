@@ -217,7 +217,7 @@ test('replayed file reads keep their structured result', () => {
 	const [turn] = parseAgyTranscriptJsonl(
 		[
 			{ type: 'USER_INPUT', content: '<USER_REQUEST>\nhi\n</USER_REQUEST>' },
-			{ type: 'PLANNER_RESPONSE', tool_calls: [{ name: 'mcp_anti-dian-vault_read_note', args: { path: 'a.png' } }] },
+			{ type: 'PLANNER_RESPONSE', tool_calls: [{ name: 'mcp_antidian-vault_read_note', args: { path: 'a.png' } }] },
 			{
 				type: 'GENERIC',
 				content:

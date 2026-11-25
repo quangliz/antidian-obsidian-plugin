@@ -26,7 +26,7 @@ const MAX_FORK_CONTEXT_CHARS = 24_000;
  * embedded resources with other URI schemes into the user's text, while a
  * `file:` one stays apart from it, in slash commands and in replayed history.
  */
-export const CONTEXT_RESOURCE_URI = 'file:///anti-dian/obsidian-context.md';
+export const CONTEXT_RESOURCE_URI = 'file:///antidian/obsidian-context.md';
 
 /** Shown for `/compact`, which the CLI completes without a reply. */
 export const COMPACTED_REPLY = 'Conversation compacted.';

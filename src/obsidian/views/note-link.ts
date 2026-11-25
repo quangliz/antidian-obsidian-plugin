@@ -9,9 +9,9 @@ import {
 } from 'obsidian';
 
 /** Hover source id registered in main.ts via `registerHoverLinkSource`. */
-export const ANTI_DIAN_HOVER_SOURCE = 'anti-dian';
+export const ANTIDIAN_HOVER_SOURCE = 'antidian';
 
-const BOUND_ATTR = 'data-anti-dian-link';
+const BOUND_ATTR = 'data-antidian-link';
 
 /** Shared hover parent for views that are not themselves a `HoverParent`. */
 const sharedHoverParent: HoverParent = { hoverPopover: null as HoverPopover | null };
@@ -44,7 +44,7 @@ export function bindNoteLink(app: App, el: HTMLElement, opts: NoteLinkOptions): 
 	el.addEventListener('mouseover', (event: MouseEvent) => {
 		app.workspace.trigger('hover-link', {
 			event,
-			source: ANTI_DIAN_HOVER_SOURCE,
+			source: ANTIDIAN_HOVER_SOURCE,
 			hoverParent: opts.hoverParent ?? sharedHoverParent,
 			targetEl: el,
 			linktext: opts.path,
@@ -142,7 +142,7 @@ export function registerInternalLinkHandlers(
 		if (!link) return;
 		app.workspace.trigger('hover-link', {
 			event,
-			source: ANTI_DIAN_HOVER_SOURCE,
+			source: ANTIDIAN_HOVER_SOURCE,
 			hoverParent: hoverParent ?? sharedHoverParent,
 			targetEl: link,
 			linktext: linktext(link),
@@ -154,6 +154,6 @@ export function registerInternalLinkHandlers(
 /** Classes the wrapper `MarkdownRenderer` puts around each table, so wide tables scroll in it. */
 export function markTableWrappers(el: HTMLElement): void {
 	for (const table of Array.from(el.querySelectorAll(':scope > div > table'))) {
-		table.parentElement?.addClass('anti-dian-answer-table');
+		table.parentElement?.addClass('antidian-answer-table');
 	}
 }

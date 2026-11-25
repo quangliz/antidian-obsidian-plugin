@@ -19,6 +19,7 @@ import {
 	CONTEXT_RESOURCE_URI,
 	isCompactCommand,
 } from '../context/compiler';
+import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, stripMcpPrefix } from '../legacy-names';
 import { parseElicitationRequest } from './elicitation';
 import { parseFocusText, parsePlanSteps } from './plan';
 import {
@@ -36,6 +37,7 @@ import {
 	readCliLogTailFallback,
 	wasSuspendedSince,
 } from './agy-diagnostics';
+import { resolveAppDataDir } from './app-data-dir';
 import type { McpToolServer } from './mcp-tool-server';
 
 export interface ModelOption {
@@ -181,9 +183,6 @@ const AUTO_RECOVER_MAX_ATTEMPTS = 3;
 const AUTO_RECOVER_WINDOW_MS = 10 * 60_000;
 const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
 
-/** Dedicated agy data dir that keeps Antidian sessions out of the CLI history. */
-export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
-
 /**
  * Built-in agy commands left out of the slash menu: they spawn subagents, run
  * on timers outside a reviewed turn, or write files directly (`plan` also
@@ -199,9 +198,6 @@ const HIDDEN_COMMANDS = new Set([
 	'swarm',
 	'teamwork',
 ]);
-
-const MCP_SERVER_NAME = 'anti-dian-vault';
-const MCP_TOOL_PREFIX = `mcp_${MCP_SERVER_NAME}_`;
 
 const SAFE_BUILTIN_TOOLS = new Set([
 	'search_web',
@@ -406,7 +402,7 @@ export class AntigravityAcpClient {
 		this.thoughtLevel = options.thoughtLevel;
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
-		this.appDataDir = options.appDataDir ?? ANTI_DIAN_APP_DATA_DIR;
+		this.appDataDir = options.appDataDir ?? resolveAppDataDir();
 		this.onCacheUpdate = options.onCacheUpdate;
 		this.quotaFetcher = options.quotaFetcher;
 		if (options.initialCache) {
@@ -1151,7 +1147,7 @@ export class AntigravityAcpClient {
 					},
 				},
 				clientInfo: {
-					name: 'anti-dian',
+					name: 'antidian',
 					version: '1.0.0',
 				},
 			});
@@ -1819,9 +1815,7 @@ export class AntigravityAcpClient {
 		if (update.sessionUpdate === 'tool_call') {
 			if (this.turnCancelled) return;
 			const rawName = update.name ?? '';
-			const displayName = rawName.startsWith(MCP_TOOL_PREFIX)
-				? rawName.slice(MCP_TOOL_PREFIX.length)
-				: rawName;
+			const displayName = stripMcpPrefix(rawName);
 			if (update.toolCallId) {
 				this.activeToolNames.set(update.toolCallId, displayName);
 			}
@@ -1990,12 +1984,6 @@ function currentAgentMessage(buffer: ReplayedMessage[]): ReplayedMessage {
 	return msg;
 }
 
-function displayToolName(rawName: string): string {
-	return rawName.startsWith(MCP_TOOL_PREFIX)
-		? rawName.slice(MCP_TOOL_PREFIX.length)
-		: rawName;
-}
-
 function asRecord(v: unknown): Record<string, unknown> | undefined {
 	return v && typeof v === 'object' && !Array.isArray(v)
 		? (v as Record<string, unknown>)
@@ -2104,7 +2092,7 @@ export function applyReplayUpdate(
 		events.push({
 			type: 'tool',
 			callId: update.toolCallId,
-			toolName: displayToolName(update.name ?? ''),
+			toolName: stripMcpPrefix(update.name ?? ''),
 			toolArgs: asRecord(update.args) ?? asRecord(update.rawInput) ?? {},
 			status: update.status,
 			output: done

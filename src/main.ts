@@ -1,12 +1,12 @@
 import { Plugin, WorkspaceLeaf } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	AntiDianSettings,
-	AntiDianSettingTab,
+	AntidianSettings,
+	AntidianSettingTab,
 } from './settings';
 import {
-	ANTI_DIAN_VIEW_TYPE,
-	AntiDianView,
+	ANTIDIAN_VIEW_TYPE,
+	AntidianView,
 } from './obsidian/views/antidian-view';
 import type { SelectionSnippet } from './obsidian/views/prompt-bar-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
@@ -39,11 +39,12 @@ import {
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
 import { InlineDiffController } from './obsidian/editor/inline-diff';
-import { ANTI_DIAN_HOVER_SOURCE } from './obsidian/views/note-link';
-import { ANTI_DIAN_ICON, registerAntiDianIcon } from './obsidian/icon';
+import { loadLegacySettings } from './obsidian/legacy-settings';
+import { ANTIDIAN_HOVER_SOURCE } from './obsidian/views/note-link';
+import { ANTIDIAN_ICON, registerAntidianIcon } from './obsidian/icon';
 
-export default class AntiDianPlugin extends Plugin {
-	settings!: AntiDianSettings;
+export default class AntidianPlugin extends Plugin {
+	settings!: AntidianSettings;
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
 	stagingManager!: ChangeStagingManager;
@@ -137,23 +138,23 @@ export default class AntiDianPlugin extends Plugin {
 			contextCompiler: this.contextCompiler,
 		});
 
-		registerAntiDianIcon();
+		registerAntidianIcon();
 		this.registerView(
-			ANTI_DIAN_VIEW_TYPE,
-			(leaf: WorkspaceLeaf) => new AntiDianView(leaf, this),
+			ANTIDIAN_VIEW_TYPE,
+			(leaf: WorkspaceLeaf) => new AntidianView(leaf, this),
 		);
-		this.registerHoverLinkSource(ANTI_DIAN_HOVER_SOURCE, {
+		this.registerHoverLinkSource(ANTIDIAN_HOVER_SOURCE, {
 			display: 'Antidian',
 			defaultMod: true,
 		});
 
-		this.addRibbonIcon(ANTI_DIAN_ICON, `Open ${this.manifest.name}`, () => {
+		this.addRibbonIcon(ANTIDIAN_ICON, `Open ${this.manifest.name}`, () => {
 			void this.activateView();
 		});
 
 		registerCommands(this);
 
-		this.addSettingTab(new AntiDianSettingTab(this.app, this));
+		this.addSettingTab(new AntidianSettingTab(this.app, this));
 
 		this.antigravityProvider.warmup();
 	}
@@ -164,15 +165,15 @@ export default class AntiDianPlugin extends Plugin {
 		void this.antigravityProvider?.destroy();
 	}
 
-	async activateView(): Promise<AntiDianView | null> {
+	async activateView(): Promise<AntidianView | null> {
 		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(ANTI_DIAN_VIEW_TYPE)[0];
+		let leaf = workspace.getLeavesOfType(ANTIDIAN_VIEW_TYPE)[0];
 
 		if (!leaf) {
 			const rightLeaf = workspace.getRightLeaf(false);
 			if (rightLeaf) {
 				await rightLeaf.setViewState({
-					type: ANTI_DIAN_VIEW_TYPE,
+					type: ANTIDIAN_VIEW_TYPE,
 					active: true,
 				});
 				leaf = rightLeaf;
@@ -181,7 +182,7 @@ export default class AntiDianPlugin extends Plugin {
 
 		if (leaf) {
 			await workspace.revealLeaf(leaf);
-			return leaf.view instanceof AntiDianView ? leaf.view : null;
+			return leaf.view instanceof AntidianView ? leaf.view : null;
 		}
 		return null;
 	}
@@ -192,11 +193,10 @@ export default class AntiDianPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<AntiDianSettings>,
-		);
+		const stored = (await this.loadData()) as Partial<AntidianSettings> | null;
+		const legacy = stored ? null : await loadLegacySettings(this.app);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored ?? legacy);
+		if (legacy) await this.saveData(this.settings);
 		if (this.antigravityProvider) {
 			this.antigravityProvider.setCliPath(this.settings.cliPath);
 			this.antigravityProvider.setCaCertificates(

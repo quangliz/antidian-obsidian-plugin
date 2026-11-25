@@ -6,14 +6,14 @@ For a user-facing overview, see [README.md](./README.md). For contributor and co
 
 ## Runtime & Transport Architecture
 
-Antidian delegates reasoning to the official **Antigravity CLI (`agy`)** over ACP (Agent Client Protocol) while enforcing Obsidian vault boundaries through a local loopback HTTP MCP server (`anti-dian-vault` with bearer token authentication):
+Antidian delegates reasoning to the official **Antigravity CLI (`agy`)** over ACP (Agent Client Protocol) while enforcing Obsidian vault boundaries through a local loopback HTTP MCP server (`antidian-vault` with bearer token authentication):
 
 ```text
-AntiDianView (Obsidian Sidebar UI)
+AntidianView (Obsidian Sidebar UI)
   → Agent (src/core/agent/)
       → ContextCompiler (active note outline/selection, mode notice)
       → AntigravityProvider / AntigravityAcpClient (spawns `agy acp`)
-      → McpToolServer (127.0.0.1 HTTP MCP server `anti-dian-vault`)
+      → McpToolServer (127.0.0.1 HTTP MCP server `antidian-vault`)
           → ToolRegistry (10 vault tools + `update_focus`)
               → ObsidianVaultAdapter / StagedVaultOverlay / ChangeStagingManager
 ```
@@ -37,9 +37,9 @@ Antidian enforces a strict one-way dependency boundary (`src/main.ts` → `src/o
   - `editor/` — CodeMirror 6 `InlineDiffController` for inline write approvals in open Markdown views.
   - `views/` — Sidebar view, sign-in screen shown instead of the prompt bar until the backend is usable (`sign-in-view.ts`), prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
 - `src/main.ts` — Thin composition root that wires services, registers tools/views/commands, and handles lifecycle cleanup.
-- `src/settings.ts` — Persisted plugin settings and `AntiDianSettingTab`.
+- `src/settings.ts` — Persisted plugin settings and `AntidianSettingTab`.
 
-## MCP Tools (`anti-dian-vault`)
+## MCP Tools (`antidian-vault`)
 
 Note access goes through `ToolRegistry` exposed over `McpToolServer` so the model never bypasses Obsidian's vault boundaries:
 
@@ -116,7 +116,8 @@ Applied operations retain before-state snapshots in memory so they can be revert
 
 ## Sessions, Traces & Forking
 
-- **Isolated ACP data dir**: `agy acp` is spawned with `--app-data-dir antigravity-anti-dian` (`~/.gemini/antigravity-anti-dian/`). Vault conversations stay separate from terminal `agy` CLI `/resume` history while sharing Google authentication.
+- **Isolated ACP data dir**: `agy acp` is spawned with `--app-data-dir antigravity-antidian` (`~/.gemini/antigravity-antidian/`). Vault conversations stay separate from terminal `agy` CLI `/resume` history while sharing Google authentication. When the data dir of the former plugin id (`antigravity-antidian`) exists and the new one does not, `resolveAppDataDir()` keeps using it in place, because `agy` stores absolute paths there.
+- **Former plugin id**: `src/core/legacy-names.ts` lists the names stored before the rename from `antidian`: old transcripts use the old MCP tool prefix and context path, and `loadLegacySettings()` imports settings from the old plugin folder once.
 - **Session discovery & replay**: The session drawer lists vault-scoped sessions via ACP `session/list` and resumes them via `session/load`. Both a chosen model and thinking level are re-applied after a load.
 - **Reconnecting**: When the CLI process goes away (crash, changed binary path or certificates, stuck cancel), the next request picks the open conversation up with `session/resume`, which has no replay. If that fails the user gets an error; the client never goes on in a new session, where the agent would have forgotten the conversation. `session/load` stays for opening stored sessions, because an interrupted answer is missing from the CLI's transcript.
 - **Local trace enrichment**: Because the CLI does not persist reasoning text, MCP tool outputs, durations, or per-turn usage, `TurnTraceRecorder` saves compacted per-turn traces locally and merges them on replay.

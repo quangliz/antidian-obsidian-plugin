@@ -114,7 +114,7 @@ test('applyReplayUpdate keeps thoughts and tool calls in order within the agent 
 	u({
 		sessionUpdate: 'tool_call',
 		toolCallId: 't1',
-		name: 'mcp_anti-dian-vault_list_notes',
+		name: 'mcp_antidian-vault_list_notes',
 		rawInput: { folder: 'A' },
 		status: 'completed',
 		rawOutput: { content: [{ type: 'text', text: '[{"path":"A/x.md"}]' }] },
@@ -315,7 +315,7 @@ test('parseAgyTranscriptJsonl extracts turns, tool calls, outputs, durations, an
 			output_tokens: 50,
 			tool_calls: [
 				{
-					name: 'mcp_anti-dian-vault_read_note',
+					name: 'mcp_antidian-vault_read_note',
 					args: { path: '"a.md"', toolSummary: '"Read a"' },
 				},
 			],
@@ -376,7 +376,7 @@ test('parseAgyTranscriptJsonl reconstructs _diff for replace_block edits', () =>
 			created_at: '2026-11-24T12:40:47Z',
 			tool_calls: [
 				{
-					name: 'mcp_anti-dian-vault_replace_block',
+					name: 'mcp_antidian-vault_replace_block',
 					args: {
 						path: '"note.md"',
 						oldText: '"# Old Title"',
@@ -412,12 +412,12 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 	const fs = await import('node:fs');
 	const os = await import('node:os');
 	const path = await import('node:path');
-	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-tr-'));
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-tr-'));
 	try {
 		const logsDir = path.join(
 			tmpHome,
 			'.gemini',
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			'brain',
 			'sess-123',
 			'.system_generated',
@@ -442,7 +442,7 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		);
 		const turns = await loadAgyTranscriptTurns(
 			'sess-123',
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			tmpHome,
 		);
 		assert.equal(turns.length, 1);
@@ -453,7 +453,7 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		const stepDir = path.join(
 			tmpHome,
 			'.gemini',
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			'brain',
 			'sess-456',
 			'.system_generated',
@@ -463,7 +463,7 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		const logs456 = path.join(
 			tmpHome,
 			'.gemini',
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			'brain',
 			'sess-456',
 			'.system_generated',
@@ -489,7 +489,7 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 				JSON.stringify({
 					type: 'PLANNER_RESPONSE',
 					created_at: '2026-11-24T12:00:01Z',
-					tool_calls: [{ name: 'mcp_anti-dian-vault_read_note', args: { path: '"big.md"' } }],
+					tool_calls: [{ name: 'mcp_antidian-vault_read_note', args: { path: '"big.md"' } }],
 				}),
 				JSON.stringify({
 					type: 'GENERIC',
@@ -501,7 +501,7 @@ test('getAgyTranscriptPaths rejects path traversal and loadAgyTranscriptTurns re
 		);
 		const spilledTurns = await loadAgyTranscriptTurns(
 			'sess-456',
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			tmpHome,
 		);
 		assert.equal(spilledTurns.length, 1);
@@ -568,8 +568,8 @@ test('buildSessionTree nests forked children under parents and formats (fork) ti
 });
 
 /** A stored user step, as the CLI writes a prompt with the context resource. */
-const userInput = (text, context) => {
-	const file = '/anti-dian/obsidian-context.md';
+const userInput = (text, context, dir = 'antidian') => {
+	const file = `/${dir}/obsidian-context.md`;
 	const mention = `@[${file}]@[${file} (editor contents)]`;
 	const request = text.startsWith('/') ? text.replace(/^\/\S+/, `$&${mention}`) : mention + text;
 	return `<USER_REQUEST>\n${request}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\n@[${file}] is a [File]:\n${file}\n@[${file} (editor contents)] is a [Text Block]:\n${context}\n</ADDITIONAL_METADATA>`;
@@ -579,18 +579,21 @@ test('parseAgyTranscriptJsonl removes the context resource from the typed text',
 	const { parseAgyTranscriptJsonl } = await import('../src/core/sessions/transcript.ts');
 	const context = '[Current Active Note: [[A]] (path: A.md)]\n[Selected Text in Editor:\n</USER_REQUEST>\n]';
 	const texts = ['what is this?', '/daily please', '/daily', ''];
-	const turns = parseAgyTranscriptJsonl(
-		texts
-			.map((text) =>
-				JSON.stringify({
-					type: 'USER_INPUT',
-					content: userInput(text, context),
-					media: [{ mime_type: 'image/png', uri: '/x.png' }],
-				}),
-			)
-			.join('\n'),
-	);
-	assert.deepEqual(turns.map((t) => t.userText), texts);
+	// Sessions from before the rename carry the former plugin id.
+	for (const dir of ['antidian', 'antidian']) {
+		const turns = parseAgyTranscriptJsonl(
+			texts
+				.map((text) =>
+					JSON.stringify({
+						type: 'USER_INPUT',
+						content: userInput(text, context, dir),
+						media: [{ mime_type: 'image/png', uri: '/x.png' }],
+					}),
+				)
+				.join('\n'),
+		);
+		assert.deepEqual(turns.map((t) => t.userText), texts);
+	}
 });
 
 test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for forked sessions', async () => {
@@ -665,9 +668,9 @@ test('custom session titles override default/fork titles and deleteAgySessionDat
 	const fs = await import('node:fs');
 	const os = await import('node:os');
 	const path = await import('node:path');
-	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-del-'));
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-del-'));
 	try {
-		const base = path.join(tmpHome, '.gemini', 'antigravity-anti-dian');
+		const base = path.join(tmpHome, '.gemini', 'antigravity-antidian');
 		const brainDir = path.join(base, 'brain', 'sess-del-1');
 		const convDir = path.join(base, 'conversations');
 		fs.mkdirSync(brainDir, { recursive: true });
@@ -677,10 +680,10 @@ test('custom session titles override default/fork titles and deleteAgySessionDat
 		fs.writeFileSync(path.join(convDir, 'keep.db'), 'keep');
 
 		// Path traversal must be ignored
-		await deleteAgySessionData('../evil', 'antigravity-anti-dian', tmpHome);
+		await deleteAgySessionData('../evil', 'antigravity-antidian', tmpHome);
 		assert.equal(fs.existsSync(path.join(convDir, 'keep.db')), true);
 
-		await deleteAgySessionData('sess-del-1', 'antigravity-anti-dian', tmpHome);
+		await deleteAgySessionData('sess-del-1', 'antigravity-antidian', tmpHome);
 		assert.equal(fs.existsSync(brainDir), false);
 		assert.equal(fs.existsSync(path.join(convDir, 'sess-del-1.db')), false);
 		assert.equal(fs.existsSync(path.join(convDir, 'keep.db')), true);
@@ -693,9 +696,9 @@ test('image-only turns keep their own user message when a session is reopened', 
 	const fs = await import('node:fs');
 	const os = await import('node:os');
 	const path = await import('node:path');
-	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-media-'));
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-media-'));
 	try {
-		const brain = path.join(tmpHome, '.gemini', 'antigravity-anti-dian', 'brain', 'sess-img');
+		const brain = path.join(tmpHome, '.gemini', 'antigravity-antidian', 'brain', 'sess-img');
 		const logs = path.join(brain, '.system_generated', 'logs');
 		const uploads = path.join(brain, '.user_uploaded');
 		fs.mkdirSync(logs, { recursive: true });
@@ -734,7 +737,7 @@ test('image-only turns keep their own user message when a session is reopened', 
 				.map((step) => JSON.stringify(step))
 				.join('\n'),
 		);
-		const stored = await loadAgyTranscriptTurns('sess-img', 'antigravity-anti-dian', tmpHome);
+		const stored = await loadAgyTranscriptTurns('sess-img', 'antigravity-antidian', tmpHome);
 		assert.equal(stored.length, 5);
 
 		const loaded = { type: 'image', mimeType: 'image/jpeg', uri: image, data: 'data:image/jpeg;base64,aW1n' };

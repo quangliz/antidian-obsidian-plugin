@@ -186,7 +186,7 @@ export class McpToolServer {
 			this.sendResult(res, msg.id, {
 				protocolVersion: '2025-03-26',
 				capabilities: { tools: {} },
-				serverInfo: { name: 'anti-dian-vault', version: '1.0.0' },
+				serverInfo: { name: 'antidian-vault', version: '1.0.0' },
 			});
 			return;
 		}

@@ -11,20 +11,20 @@ export class MediaPreviewModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass('anti-dian-media-preview-modal');
+		this.modalEl.addClass('antidian-media-preview-modal');
 		const { contentEl, media } = this;
 		contentEl.empty();
 		if (!media.data) return;
 
 		if (media.type === 'video') {
 			const video = contentEl.createEl('video', {
-				cls: 'anti-dian-media-preview-full',
+				cls: 'antidian-media-preview-full',
 				attr: { src: media.data, controls: 'true', autoplay: 'true' },
 			});
 			video.playsInline = true;
 		} else {
 			contentEl.createEl('img', {
-				cls: 'anti-dian-media-preview-full',
+				cls: 'antidian-media-preview-full',
 				attr: { src: media.data, alt: 'Attached image' },
 			});
 		}

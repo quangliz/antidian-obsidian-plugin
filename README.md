@@ -12,9 +12,9 @@ Chat with your notes, and let the agent read, write, and edit them with you. It 
 
 **Requirements**: Obsidian Desktop `1.7.2+` and a Google account.
 
-1. [Open Antidian in Obsidian](obsidian://show-plugin?id=anti-dian), then install and enable it. If the link is not clickable, paste this into your browser:
+1. [Open Antidian in Obsidian](obsidian://show-plugin?id=antidian), then install and enable it. If the link is not clickable, paste this into your browser:
    ```text
-   obsidian://show-plugin?id=anti-dian
+   obsidian://show-plugin?id=antidian
    ```
 2. Open the sidebar from the ribbon icon or run `Antidian: Open sidebar`.
 3. Click **Sign in with Google** there, or in **Settings → Antidian**. The `agy` backend is downloaded first if it is missing.
@@ -31,6 +31,13 @@ Antidian runs `agy` in the background and talks to it over the **Agent Client Pr
 - **Google account & AI requests**: Antidian authenticates with your Google account and sends your prompts, attached media, and the notes and files accessed during a conversation to Google's Antigravity backend via the `agy` CLI. It never uploads your entire vault.
 - **Backend binary**: If `agy` is not already installed, Antidian downloads and verifies the official Antigravity CLI binary from Google's release endpoint (or you can provide a local binary path in **Settings → Antidian → Advanced**).
 - **No telemetry**: Antidian has no analytics of its own. The only server it runs is the MCP server, which listens on `127.0.0.1` and requires a bearer token.
+
+### Coming from Antidian
+
+Up to 1.0.1 the plugin was listed as Antidian (id `antidian`). Obsidian treats the new id as a separate plugin:
+
+1. Install and enable Antidian. It imports your Antidian settings on first start and keeps showing your conversations.
+2. Disable and uninstall Antidian, then reopen the sidebar. Custom hotkeys have to be assigned again.
 
 ### Why it needs these permissions
 

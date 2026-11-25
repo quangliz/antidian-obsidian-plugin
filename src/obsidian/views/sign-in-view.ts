@@ -21,7 +21,7 @@ export class SignInView {
 		private callbacks: SignInCallbacks,
 	) {
 		this.el = parentEl.createDiv({
-			cls: 'anti-dian-sign-in',
+			cls: 'antidian-sign-in',
 			attr: { 'aria-live': 'polite' },
 		});
 		this.render();
@@ -103,18 +103,18 @@ export class SignInView {
 	}
 
 	private addText(title: string, desc?: string): void {
-		this.el.createDiv({ cls: 'anti-dian-empty-title', text: title });
-		if (desc) this.el.createDiv({ cls: 'anti-dian-sign-in-desc', text: desc });
+		this.el.createDiv({ cls: 'antidian-empty-title', text: title });
+		if (desc) this.el.createDiv({ cls: 'antidian-sign-in-desc', text: desc });
 	}
 
 	private addError(): void {
 		if (!this.loginError) return;
-		this.el.createDiv({ cls: 'anti-dian-sign-in-error', text: this.loginError });
+		this.el.createDiv({ cls: 'antidian-sign-in-error', text: this.loginError });
 	}
 
 	private addButton(text: string, onClick: () => void, primary = false): void {
 		const button = this.el.createEl('button', {
-			cls: primary ? 'mod-cta' : 'anti-dian-sign-in-secondary',
+			cls: primary ? 'mod-cta' : 'antidian-sign-in-secondary',
 			text,
 		});
 		button.onclick = onClick;

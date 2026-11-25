@@ -24,7 +24,7 @@ src/main.ts → src/obsidian/ → src/core/
 
 ## Safety & Runtime Invariants
 - **Untrusted model output**: Validate paths (`isPathWithinVault`, no `..`, absolute paths, or URI schemes), tool arguments, stale `baseMtime`, scopes, `permissionMode`, and unique match targets.
-- **Vault boundary**: All vault access must go through `anti-dian-vault` MCP tools (except `agy` reading skill files itself); never bypass Obsidian via raw CLI filesystem/shell tools.
+- **Vault boundary**: All vault access must go through `antidian-vault` MCP tools (except `agy` reading skill files itself); never bypass Obsidian via raw CLI filesystem/shell tools.
 - **Permission modes**:
   - `ask` (default): Never perform silent unvalidated writes; writes must stage, diff, and wait for approval.
   - `plan`: Read-only; never bypass MCP-layer blocks on mutating tools.

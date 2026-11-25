@@ -71,7 +71,7 @@ const plural = (n: number, word: string): string =>
 /* ------------------------------------------------------------------ */
 
 function meta(el: HTMLElement, text: string): void {
-	el.createDiv({ cls: 'anti-dian-tool-detail-meta', text });
+	el.createDiv({ cls: 'antidian-tool-detail-meta', text });
 }
 
 function noteList(
@@ -80,24 +80,24 @@ function noteList(
 	opts: ToolDetailOptions,
 	label = (p: string) => p.replace(/\.md$/, '').split('/').pop() || p,
 ): void {
-	const list = el.createDiv({ cls: 'anti-dian-tool-detail-list' });
+	const list = el.createDiv({ cls: 'antidian-tool-detail-list' });
 	for (const path of paths.slice(0, MAX_LIST_ITEMS)) {
 		const item = list.createSpan({
-			cls: 'anti-dian-tool-detail-note',
+			cls: 'antidian-tool-detail-note',
 			text: label(path),
 		});
 		bindNoteLink(opts.app, item, { path, hoverParent: opts.hoverParent });
 	}
 	if (paths.length > MAX_LIST_ITEMS) {
 		list.createSpan({
-			cls: 'anti-dian-tool-detail-context',
+			cls: 'antidian-tool-detail-context',
 			text: `+${paths.length - MAX_LIST_ITEMS} more`,
 		});
 	}
 }
 
 function rawData(el: HTMLElement, input: ToolDetailInput): void {
-	const pre = el.createEl('pre', { cls: 'anti-dian-tool-detail-raw' });
+	const pre = el.createEl('pre', { cls: 'antidian-tool-detail-raw' });
 	const payload: Record<string, unknown> = { args: input.args ?? {} };
 	if (input.output !== undefined) payload.output = input.output;
 	let text: string;
@@ -159,18 +159,18 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 						plural(backlinks, 'backlink'),
 					].join(' · '),
 				);
-				const list = el.createDiv({ cls: 'anti-dian-tool-detail-outline' });
+				const list = el.createDiv({ cls: 'antidian-tool-detail-outline' });
 				for (const h of headings.slice(0, 12)) {
 					const level = Math.min(Math.max(num(h.level) ?? 1, 1), 6);
 					const item = list.createDiv({
-						cls: 'anti-dian-tool-detail-outline-item',
+						cls: 'antidian-tool-detail-outline-item',
 						text: str(h.heading) ?? '',
 					});
-					item.setCssProps({ '--anti-dian-outline-level': String(level - 1) });
+					item.setCssProps({ '--antidian-outline-level': String(level - 1) });
 				}
 				if (headings.length > 12) {
 					list.createDiv({
-						cls: 'anti-dian-tool-detail-context',
+						cls: 'antidian-tool-detail-context',
 						text: `+${headings.length - 12} more`,
 					});
 				}
@@ -198,10 +198,10 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 					return;
 				}
 				for (const skill of skills.slice(0, MAX_LIST_ITEMS)) {
-					const row = el.createDiv({ cls: 'anti-dian-tool-detail-skill' });
-					row.createSpan({ cls: 'anti-dian-tool-detail-prop-key', text: str(skill.name) ?? '' });
+					const row = el.createDiv({ cls: 'antidian-tool-detail-skill' });
+					row.createSpan({ cls: 'antidian-tool-detail-prop-key', text: str(skill.name) ?? '' });
 					row.createSpan({
-						cls: 'anti-dian-tool-detail-context',
+						cls: 'antidian-tool-detail-context',
 						text: truncate(str(skill.description) ?? '', PREVIEW_CHARS),
 					});
 				}
@@ -223,15 +223,15 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 			}
 			if (outcome.answers.length === 0) return null;
 			return (el) => {
-				const list = el.createDiv({ cls: 'anti-dian-question-summary-list' });
+				const list = el.createDiv({ cls: 'antidian-question-summary-list' });
 				for (const item of outcome.answers) {
-					const row = list.createDiv({ cls: 'anti-dian-question-summary-row' });
+					const row = list.createDiv({ cls: 'antidian-question-summary-row' });
 					row.createDiv({
-						cls: 'anti-dian-question-summary-q',
+						cls: 'antidian-question-summary-q',
 						text: item.question,
 					});
 					row.createDiv({
-						cls: 'anti-dian-question-summary-a',
+						cls: 'antidian-question-summary-a',
 						text: item.answer,
 					});
 				}
@@ -247,9 +247,9 @@ function fallbackDetail(input: ToolDetailInput): Renderer | null {
 	const entries = Object.entries(input.args ?? {}).filter(([k]) => k !== 'path');
 	if (entries.length === 0) return null;
 	return (el) => {
-		const box = el.createDiv({ cls: 'anti-dian-tool-detail-props' });
+		const box = el.createDiv({ cls: 'antidian-tool-detail-props' });
 		for (const [key, value] of entries) {
-			box.createSpan({ cls: 'anti-dian-tool-detail-prop-key', text: key });
+			box.createSpan({ cls: 'antidian-tool-detail-prop-key', text: key });
 			box.createSpan({ text: truncate(formatValue(value), PREVIEW_CHARS) });
 		}
 	};
@@ -288,7 +288,7 @@ export function buildToolDetail(
 
 	return (el) => {
 		if (input.error) {
-			el.createDiv({ cls: 'anti-dian-tool-detail-error', text: input.error });
+			el.createDiv({ cls: 'antidian-tool-detail-error', text: input.error });
 		}
 		summary?.(el);
 		if (opts.showRaw) rawData(el, input);

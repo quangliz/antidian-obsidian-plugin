@@ -12,7 +12,7 @@ export type ReplayedAgentEvent =
 	| {
 			type: 'tool';
 			callId?: string;
-			/** Display name (the `anti-dian-vault` MCP prefix is stripped). */
+			/** Display name (the `antidian-vault` MCP prefix is stripped). */
 			toolName: string;
 			toolArgs: Record<string, unknown>;
 			/** `completed` / `failed`, or unfinished (`pending`, `in_progress`). */

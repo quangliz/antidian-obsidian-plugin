@@ -96,7 +96,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 }
 
 async function withClient(options, run) {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-model-'));
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-model-'));
 	const agy = fakeAgy(dir);
 	const client = new AntigravityAcpClient({
 		cliPath: agy.bin,
@@ -238,7 +238,7 @@ test('AntigravityAcpClient sends context as a resource ahead of the typed text',
 				{
 					type: 'resource',
 					resource: {
-						uri: 'file:///anti-dian/obsidian-context.md',
+						uri: 'file:///antidian/obsidian-context.md',
 						mimeType: 'text/markdown',
 						text: '[Current Active Note: x]',
 					},

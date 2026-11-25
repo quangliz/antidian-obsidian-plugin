@@ -117,7 +117,7 @@ test('applyReplayUpdate and TurnTraceRecorder preserve plan steps for session re
 });
 
 test('AntigravityAcpClient routes update_steps, plan, and update_focus without polluting tool rows', async () => {
-	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-plan-'));
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-plan-'));
 	const fakeBin = path.join(tmpDir, 'fake-agy-plan.mjs');
 	fs.writeFileSync(
 		fakeBin,

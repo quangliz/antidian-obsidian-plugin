@@ -1,8 +1,8 @@
 import { Notice } from 'obsidian';
-import type AntiDianPlugin from '../../main';
-import { ANTI_DIAN_ICON } from '../icon';
+import type AntidianPlugin from '../../main';
+import { ANTIDIAN_ICON } from '../icon';
 
-export function registerCommands(plugin: AntiDianPlugin): void {
+export function registerCommands(plugin: AntidianPlugin): void {
 	plugin.addCommand({
 		id: 'open-sidebar',
 		name: 'Open sidebar',
@@ -41,7 +41,7 @@ export function registerCommands(plugin: AntiDianPlugin): void {
 			menu.addItem((item) => {
 				item
 					.setTitle(`Add to ${plugin.manifest.name}`)
-					.setIcon(ANTI_DIAN_ICON)
+					.setIcon(ANTIDIAN_ICON)
 					.onClick(() => {
 						void plugin.addSelectionToChat({
 							text: selected,

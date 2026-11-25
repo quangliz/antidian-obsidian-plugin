@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as tls from 'tls';
+import { resolveAppDataDir } from './app-data-dir';
 
 export const LINUX_SYSTEM_CA_PATHS = [
 	'/etc/ssl/certs/ca-certificates.crt',
@@ -368,7 +369,7 @@ function readTailLines(filePath: string): string | undefined {
  */
 export function readCliLogTailFallback(
 	sinceMs: number,
-	appDataDir: string = 'antigravity-anti-dian',
+	appDataDir: string = resolveAppDataDir(),
 	homeDir: string = os.homedir(),
 ): string | undefined {
 	const dirs = [

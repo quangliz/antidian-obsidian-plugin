@@ -122,18 +122,18 @@ class InlineDiffAddedWidget extends WidgetType {
 	}
 
 	override toDOM(): HTMLElement {
-		const container = createDiv({ cls: 'anti-dian-cm-diff-widget' });
+		const container = createDiv({ cls: 'antidian-cm-diff-widget' });
 
 		if (this.showActions) {
-			const bar = container.createDiv({ cls: 'anti-dian-cm-diff-bar' });
+			const bar = container.createDiv({ cls: 'antidian-cm-diff-bar' });
 			bar.createSpan({
-				cls: 'anti-dian-cm-diff-badge',
+				cls: 'antidian-cm-diff-badge',
 				text: `Antidian proposed edit (+${this.additions} / -${this.deletions})`,
 			});
-			const actions = bar.createDiv({ cls: 'anti-dian-cm-diff-actions' });
+			const actions = bar.createDiv({ cls: 'antidian-cm-diff-actions' });
 
 			const acceptBtn = actions.createEl('button', {
-				cls: 'anti-dian-cm-diff-btn is-accept',
+				cls: 'antidian-cm-diff-btn is-accept',
 				text: 'Accept',
 				attr: { type: 'button' },
 			});
@@ -148,7 +148,7 @@ class InlineDiffAddedWidget extends WidgetType {
 			});
 
 			const rejectBtn = actions.createEl('button', {
-				cls: 'anti-dian-cm-diff-btn is-reject',
+				cls: 'antidian-cm-diff-btn is-reject',
 				text: 'Reject',
 				attr: { type: 'button' },
 			});
@@ -164,12 +164,12 @@ class InlineDiffAddedWidget extends WidgetType {
 		}
 
 		if (this.addedLines.length > 0) {
-			const linesEl = container.createDiv({ cls: 'anti-dian-cm-diff-added' });
+			const linesEl = container.createDiv({ cls: 'antidian-cm-diff-added' });
 			for (const line of this.addedLines) {
-				const row = linesEl.createDiv({ cls: 'anti-dian-cm-diff-added-line' });
-				row.createSpan({ cls: 'anti-dian-cm-diff-gutter', text: '+' });
+				const row = linesEl.createDiv({ cls: 'antidian-cm-diff-added-line' });
+				row.createSpan({ cls: 'antidian-cm-diff-gutter', text: '+' });
 				row.createSpan({
-					cls: 'anti-dian-cm-diff-text',
+					cls: 'antidian-cm-diff-text',
 					text: line.length > 0 ? line : ' ',
 				});
 			}
@@ -296,7 +296,7 @@ export class InlineDiffController {
 					const line = state.doc.line(lineNum);
 					entries.push({
 						from: line.from,
-						deco: Decoration.line({ class: 'anti-dian-cm-diff-removed' }),
+						deco: Decoration.line({ class: 'antidian-cm-diff-removed' }),
 					});
 				}
 			}

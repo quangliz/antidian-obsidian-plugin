@@ -90,55 +90,55 @@ export class SessionMenuController {
 		triggerEl.addClass('is-active');
 		this.showAll = false;
 
-		const root = this.hostEl.createDiv({ cls: 'anti-dian-session-drawer' });
+		const root = this.hostEl.createDiv({ cls: 'antidian-session-drawer' });
 		this.rootEl = root;
-		const backdrop = root.createDiv({ cls: 'anti-dian-session-drawer-backdrop' });
+		const backdrop = root.createDiv({ cls: 'antidian-session-drawer-backdrop' });
 		backdrop.addEventListener('click', () => this.close());
 
 		const panel = root.createDiv({
-			cls: 'anti-dian-session-drawer-panel',
+			cls: 'antidian-session-drawer-panel',
 			attr: { role: 'dialog', 'aria-label': 'Conversations' },
 		});
 		panel.addEventListener('keydown', (e) => this.onKeyDown(e));
 		this.setupResize(panel);
 
 		const closeBtn = panel.createEl('button', {
-			cls: 'anti-dian-session-drawer-close',
+			cls: 'antidian-session-drawer-close',
 			attr: { 'aria-label': 'Close' },
 		});
 		setIcon(closeBtn, 'x');
 		closeBtn.addEventListener('click', () => this.close());
 
 		const newBtn = panel.createDiv({
-			cls: 'anti-dian-session-new',
+			cls: 'antidian-session-new',
 			attr: { role: 'button', tabindex: '-1' },
 		});
-		const newIcon = newBtn.createSpan({ cls: 'anti-dian-session-new-icon' });
+		const newIcon = newBtn.createSpan({ cls: 'antidian-session-new-icon' });
 		setIcon(newIcon, 'plus');
 		newBtn.createSpan({ text: 'New Conversation' });
 		this.items = [];
 		this.bindItem({ kind: 'new', el: newBtn });
 
-		this.searchWrapEl = panel.createDiv({ cls: 'anti-dian-session-search' });
+		this.searchWrapEl = panel.createDiv({ cls: 'antidian-session-search' });
 		const searchIcon = this.searchWrapEl.createSpan({
-			cls: 'anti-dian-session-search-icon',
+			cls: 'antidian-session-search-icon',
 		});
 		setIcon(searchIcon, 'search');
 		this.searchEl = this.searchWrapEl.createEl('input', {
 			type: 'text',
-			cls: 'anti-dian-session-search-input',
+			cls: 'antidian-session-search-input',
 			attr: { placeholder: 'Search conversations', spellcheck: 'false' },
 		});
 		this.searchEl.addEventListener('input', () => {
 			this.activeIndex = -1;
 			this.renderList();
 		});
-		this.searchWrapEl.toggleClass('anti-dian-hidden', !opts.search);
+		this.searchWrapEl.toggleClass('antidian-hidden', !opts.search);
 
-		panel.createDiv({ cls: 'anti-dian-session-section-label', text: 'Conversations' });
+		panel.createDiv({ cls: 'antidian-session-section-label', text: 'Conversations' });
 
 		this.listEl = panel.createDiv({
-			cls: 'anti-dian-session-list',
+			cls: 'antidian-session-list',
 			attr: { role: 'listbox' },
 		});
 		// Hide the highlight only when leaving the list, so it slides between rows
@@ -196,7 +196,7 @@ export class SessionMenuController {
 		apply(this.options.loadDrawerWidth?.() ?? null);
 
 		const handle = panel.createDiv({
-			cls: 'anti-dian-session-drawer-resize',
+			cls: 'antidian-session-drawer-resize',
 			attr: { role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize' },
 		});
 		handle.addEventListener('pointerdown', (e) => {
@@ -204,7 +204,7 @@ export class SessionMenuController {
 			e.preventDefault();
 			handle.setPointerCapture(e.pointerId);
 			const left = panel.getBoundingClientRect().left;
-			const root = panel.closest('.anti-dian-session-drawer');
+			const root = panel.closest('.antidian-session-drawer');
 			root?.addClass('is-resizing');
 			const onMove = (ev: PointerEvent) => apply(ev.clientX - left);
 			const onUp = () => {
@@ -227,7 +227,7 @@ export class SessionMenuController {
 	/** Slide the panel back out and fade the backdrop, then remove the drawer. */
 	private animateOut(root: HTMLElement): void {
 		root.addClass('is-closing');
-		const panel = root.querySelector('.anti-dian-session-drawer-panel');
+		const panel = root.querySelector('.antidian-session-drawer-panel');
 		let removed = false;
 		const remove = () => {
 			if (removed) return;
@@ -316,18 +316,18 @@ export class SessionMenuController {
 		};
 
 		if (!query && pinnedIds.length > 0) {
-			list.createDiv({ cls: 'anti-dian-session-group-label', text: 'Pinned' });
+			list.createDiv({ cls: 'antidian-session-group-label', text: 'Pinned' });
 			for (const id of pinnedIds) {
 				const node = nodesById.get(id);
 				if (node) renderNode(node, 0);
 			}
 		}
 
-		const folder = list.createDiv({ cls: 'anti-dian-session-folder' });
-		const folderIcon = folder.createSpan({ cls: 'anti-dian-session-folder-icon' });
+		const folder = list.createDiv({ cls: 'antidian-session-folder' });
+		const folderIcon = folder.createSpan({ cls: 'antidian-session-folder-icon' });
 		setIcon(folderIcon, 'folder-open');
 		folder.createSpan({
-			cls: 'anti-dian-session-folder-name',
+			cls: 'antidian-session-folder-name',
 			text: this.options.getVaultName(),
 		});
 
@@ -372,7 +372,7 @@ export class SessionMenuController {
 
 		if (collapsed) {
 			const seeAll = list.createDiv({
-				cls: 'anti-dian-session-see-all',
+				cls: 'antidian-session-see-all',
 				text: `See all (${totalCount})`,
 				attr: { role: 'button' },
 			});
@@ -410,19 +410,19 @@ export class SessionMenuController {
 		},
 	): void {
 		const row = list.createDiv({
-			cls: 'anti-dian-session-item',
+			cls: 'antidian-session-item',
 			attr: { role: 'option', 'aria-selected': String(opts.isCurrent) },
 		});
 		if (opts.isCurrent) row.addClass('is-current');
 		if (opts.isPinned) {
 			row.addClass('is-pinned');
-			const pinIcon = row.createSpan({ cls: 'anti-dian-session-pin-icon' });
+			const pinIcon = row.createSpan({ cls: 'antidian-session-pin-icon' });
 			setIcon(pinIcon, 'pin');
 		}
 		if (opts.depth > 0) {
 			row.addClass('is-child');
 			row.setCssProps({
-				'--anti-dian-session-depth': String(Math.min(opts.depth, 4)),
+				'--antidian-session-depth': String(Math.min(opts.depth, 4)),
 			});
 		}
 
@@ -432,11 +432,11 @@ export class SessionMenuController {
 		if (isEditing) row.addClass('is-editing');
 		if (isConfirmingDelete) row.addClass('is-confirming-delete');
 
-		const titleWrap = row.createSpan({ cls: 'anti-dian-session-item-main' });
+		const titleWrap = row.createSpan({ cls: 'antidian-session-item-main' });
 		if (isEditing) {
 			const input = titleWrap.createEl('input', {
 				type: 'text',
-				cls: 'anti-dian-session-rename-input',
+				cls: 'antidian-session-rename-input',
 				value: opts.displayTitle,
 				attr: { 'aria-label': 'Rename conversation', spellcheck: 'false' },
 			});
@@ -475,14 +475,14 @@ export class SessionMenuController {
 			}, 0);
 		} else {
 			const titleEl = titleWrap.createSpan({
-				cls: 'anti-dian-session-item-title',
+				cls: 'antidian-session-item-title',
 				attr: { title: opts.displayTitle },
 			});
 			this.renderHighlighted(titleEl, opts.displayTitle, opts.ranges);
 
 			if (opts.hasChildren) {
 				const toggleBtn = titleWrap.createEl('button', {
-					cls: 'anti-dian-session-chevron',
+					cls: 'antidian-session-chevron',
 					attr: {
 						type: 'button',
 						'aria-label': opts.isExpanded ? 'Collapse forks' : 'Expand forks',
@@ -519,10 +519,10 @@ export class SessionMenuController {
 		if (!isEditing) {
 			if (isConfirmingDelete && canDelete) {
 				const actions = row.createSpan({
-					cls: 'anti-dian-session-actions is-visible',
+					cls: 'antidian-session-actions is-visible',
 				});
 				const confirmBtn = actions.createEl('button', {
-					cls: 'anti-dian-session-action-btn is-danger',
+					cls: 'antidian-session-action-btn is-danger',
 					attr: { type: 'button', 'aria-label': 'Confirm delete' },
 				});
 				setIcon(confirmBtn, 'check');
@@ -538,7 +538,7 @@ export class SessionMenuController {
 				});
 
 				const cancelBtn = actions.createEl('button', {
-					cls: 'anti-dian-session-action-btn',
+					cls: 'antidian-session-action-btn',
 					attr: { type: 'button', 'aria-label': 'Cancel delete' },
 				});
 				setIcon(cancelBtn, 'x');
@@ -550,15 +550,15 @@ export class SessionMenuController {
 				});
 			} else {
 				row.createSpan({
-					cls: 'anti-dian-session-item-time',
+					cls: 'antidian-session-item-time',
 					text: formatRelativeTime(opts.session.updatedAt),
 				});
 
 				if (canPin || canRename || canDelete) {
-					const actions = row.createSpan({ cls: 'anti-dian-session-actions' });
+					const actions = row.createSpan({ cls: 'antidian-session-actions' });
 					if (canPin) {
 						const pinBtn = actions.createEl('button', {
-							cls: 'anti-dian-session-action-btn',
+							cls: 'antidian-session-action-btn',
 							attr: {
 								type: 'button',
 								'aria-label': opts.isPinned ? 'Unpin conversation' : 'Pin conversation',
@@ -573,7 +573,7 @@ export class SessionMenuController {
 					}
 					if (canRename) {
 						const renameBtn = actions.createEl('button', {
-							cls: 'anti-dian-session-action-btn',
+							cls: 'antidian-session-action-btn',
 							attr: { type: 'button', 'aria-label': 'Rename conversation' },
 						});
 						setIcon(renameBtn, 'pencil');
@@ -587,7 +587,7 @@ export class SessionMenuController {
 					}
 					if (canDelete) {
 						const deleteBtn = actions.createEl('button', {
-							cls: 'anti-dian-session-action-btn is-danger-hover',
+							cls: 'antidian-session-action-btn is-danger-hover',
 							attr: { type: 'button', 'aria-label': 'Delete conversation' },
 						});
 						setIcon(deleteBtn, 'trash-2');
@@ -659,14 +659,14 @@ export class SessionMenuController {
 		let pos = 0;
 		for (const [start, end] of ranges) {
 			if (start > pos) el.appendText(text.slice(pos, start));
-			el.createSpan({ cls: 'anti-dian-session-match', text: text.slice(start, end) });
+			el.createSpan({ cls: 'antidian-session-match', text: text.slice(start, end) });
 			pos = end;
 		}
 		if (pos < text.length) el.appendText(text.slice(pos));
 	}
 
 	private renderStatus(list: HTMLElement, text: string, spinner = false): void {
-		const el = list.createDiv({ cls: 'anti-dian-session-status', text });
+		const el = list.createDiv({ cls: 'antidian-session-status', text });
 		if (spinner) el.addClass('is-loading');
 	}
 

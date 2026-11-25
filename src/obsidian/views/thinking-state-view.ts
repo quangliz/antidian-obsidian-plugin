@@ -26,7 +26,7 @@ import {
 	parsePlanSteps,
 } from '../../core/models/plan';
 import type { PlanStep } from '../../core/types/plan';
-import { ANTI_DIAN_ICON } from '../icon';
+import { ANTIDIAN_ICON } from '../icon';
 import { AgentStepEvent } from '../../core/agent';
 
 /** One revolution of the thinking logo, in ms. */
@@ -163,7 +163,7 @@ export class ThinkingStateView {
 		this.app = app;
 		this.component = component;
 		this.containerEl = containerEl.createDiv({
-			cls: 'anti-dian-thinking-state',
+			cls: 'antidian-thinking-state',
 		});
 		this.startTime = performance.now();
 		this.component.register(() => this.stopElapsedTimer());
@@ -737,7 +737,7 @@ export class ThinkingStateView {
 
 	private render(): void {
 		this.headerBtnEl = this.containerEl.createEl('button', {
-			cls: 'anti-dian-thinking-header-btn',
+			cls: 'antidian-thinking-header-btn',
 			attr: {
 				type: 'button',
 				'aria-expanded': 'false',
@@ -745,23 +745,23 @@ export class ThinkingStateView {
 		});
 
 		this.sparkleIconEl = this.headerBtnEl.createSpan({
-			cls: 'anti-dian-thinking-sparkle-icon',
+			cls: 'antidian-thinking-sparkle-icon',
 		});
 		// Antidian logo; spins around its vertical axis while the turn is running.
-		setIcon(this.sparkleIconEl, ANTI_DIAN_ICON);
+		setIcon(this.sparkleIconEl, ANTIDIAN_ICON);
 
 		this.statusTextEl = this.headerBtnEl.createSpan({
-			cls: 'anti-dian-thinking-status-text is-shimmer',
+			cls: 'antidian-thinking-status-text is-shimmer',
 			text: 'Thinking',
 		});
 
 		this.elapsedEl = this.headerBtnEl.createSpan({
-			cls: 'anti-dian-thinking-elapsed',
+			cls: 'antidian-thinking-elapsed',
 			text: '',
 		});
 
 		this.chevronIconEl = this.headerBtnEl.createSpan({
-			cls: 'anti-dian-thinking-chevron-icon collapse-icon is-collapsed',
+			cls: 'antidian-thinking-chevron-icon collapse-icon is-collapsed',
 		});
 		setIcon(this.chevronIconEl, 'right-triangle');
 
@@ -774,24 +774,24 @@ export class ThinkingStateView {
 
 		// Trace collapsible container
 		this.traceWrapperEl = this.containerEl.createDiv({
-			cls: 'anti-dian-thinking-trace-wrapper',
+			cls: 'antidian-thinking-trace-wrapper',
 		});
 
 		this.traceContentEl = this.traceWrapperEl.createDiv({
-			cls: 'anti-dian-thinking-trace-content',
+			cls: 'antidian-thinking-trace-content',
 		});
 
 		this.guideLineEl = this.traceContentEl.createSpan({
-			cls: 'anti-dian-thinking-guideline',
+			cls: 'antidian-thinking-guideline',
 			attr: { 'aria-hidden': 'true' },
 		});
 
 		this.rowsContainerEl = this.traceContentEl.createDiv({
-			cls: 'anti-dian-thinking-rows-container',
+			cls: 'antidian-thinking-rows-container',
 		});
 
 		this.planCardEl = this.containerEl.createDiv({
-			cls: 'anti-dian-plan-card anti-dian-hidden',
+			cls: 'antidian-plan-card antidian-hidden',
 			attr: { role: 'list', 'aria-label': 'Task progress' },
 		});
 
@@ -867,16 +867,16 @@ export class ThinkingStateView {
 	private updateElapsedLabel(): void {
 		if (!this.elapsedEl) return;
 		if (this.isSettled) {
-			this.elapsedEl.addClass('anti-dian-hidden');
+			this.elapsedEl.addClass('antidian-hidden');
 			return;
 		}
 		const elapsedMs = performance.now() - this.startTime;
 		if (elapsedMs < 1000) {
 			this.elapsedEl.setText('');
-			this.elapsedEl.addClass('anti-dian-hidden');
+			this.elapsedEl.addClass('antidian-hidden');
 			return;
 		}
-		this.elapsedEl.removeClass('anti-dian-hidden');
+		this.elapsedEl.removeClass('antidian-hidden');
 		this.elapsedEl.setText(formatElapsedSeconds(elapsedMs));
 	}
 
@@ -899,29 +899,29 @@ export class ThinkingStateView {
 		if (!this.planCardEl) return;
 		this.planCardEl.empty();
 		if (this.planSteps.length === 0) {
-			this.planCardEl.addClass('anti-dian-hidden');
+			this.planCardEl.addClass('antidian-hidden');
 			return;
 		}
-		this.planCardEl.removeClass('anti-dian-hidden');
+		this.planCardEl.removeClass('antidian-hidden');
 		this.planCardEl.toggleClass('is-paused', this.isSettled);
 
 		for (const step of this.planSteps) {
 			const item = this.planCardEl.createDiv({
-				cls: `anti-dian-plan-item is-${step.status}`,
+				cls: `antidian-plan-item is-${step.status}`,
 				attr: { role: 'listitem' },
 			});
 
 			if (step.status === 'in_progress' && !this.isSettled) {
 				const dots = item.createSpan({
-					cls: 'anti-dian-plan-dots',
+					cls: 'antidian-plan-dots',
 					attr: { 'aria-hidden': 'true' },
 				});
 				for (let i = 0; i < 4; i++) {
-					dots.createSpan({ cls: 'anti-dian-plan-dot' });
+					dots.createSpan({ cls: 'antidian-plan-dot' });
 				}
 			} else {
 				const icon = item.createSpan({
-					cls: 'anti-dian-plan-icon',
+					cls: 'antidian-plan-icon',
 					attr: { 'aria-hidden': 'true' },
 				});
 				const iconName =
@@ -938,7 +938,7 @@ export class ThinkingStateView {
 			}
 
 			item.createSpan({
-				cls: 'anti-dian-plan-title',
+				cls: 'antidian-plan-title',
 				text: step.title,
 			});
 		}
@@ -953,11 +953,11 @@ export class ThinkingStateView {
 			this.sparkleIconEl.addClass('is-settled');
 			this.statusTextEl.removeClass('is-shimmer');
 			this.statusTextEl.addClass('is-settled');
-			this.elapsedEl?.addClass('anti-dian-hidden');
+			this.elapsedEl?.addClass('antidian-hidden');
 			this.statusTextEl.empty();
 			for (const part of this.summaryParts ?? [{ text: this.activeStatus }]) {
 				if (part.file) {
-					this.statusTextEl.createSpan({ cls: 'anti-dian-thinking-status-file', text: part.text });
+					this.statusTextEl.createSpan({ cls: 'antidian-thinking-status-file', text: part.text });
 				} else {
 					this.statusTextEl.appendText(part.text);
 				}
@@ -1014,7 +1014,7 @@ export class ThinkingStateView {
 			const hasPanel = renderDetail !== null || hasApprovalControls;
 			const isOpen = hasPanel && this.openStepIds.has(step.id);
 			const row = this.rowsContainerEl.createDiv({
-				cls: 'anti-dian-thinking-row',
+				cls: 'antidian-thinking-row',
 			});
 			row.toggleClass('is-expandable', hasPanel);
 			row.toggleClass('is-selected', isOpen);
@@ -1024,24 +1024,24 @@ export class ThinkingStateView {
 				step.approval?.state === 'pending' ||
 				step.questionState === 'waiting'
 			) {
-				const wait = row.createSpan({ cls: 'anti-dian-thinking-row-await' });
+				const wait = row.createSpan({ cls: 'antidian-thinking-row-await' });
 				setIcon(wait, 'hand');
 			} else if (step.status === 'running') {
-				row.createSpan({ cls: 'anti-dian-thinking-row-spinner' });
+				row.createSpan({ cls: 'antidian-thinking-row-spinner' });
 			} else if (step.status === 'done') {
-				const check = row.createSpan({ cls: 'anti-dian-thinking-row-check' });
+				const check = row.createSpan({ cls: 'antidian-thinking-row-check' });
 				setIcon(check, 'check');
 			} else if (step.status === 'cancelled') {
-				const stopIcon = row.createSpan({ cls: 'anti-dian-thinking-row-cancelled' });
+				const stopIcon = row.createSpan({ cls: 'antidian-thinking-row-cancelled' });
 				setIcon(stopIcon, 'ban');
 			} else {
-				const errIcon = row.createSpan({ cls: 'anti-dian-thinking-row-err' });
+				const errIcon = row.createSpan({ cls: 'antidian-thinking-row-err' });
 				setIcon(errIcon, 'alert-circle');
 			}
 
 			// Primary label
 			row.createSpan({
-				cls: 'anti-dian-thinking-row-primary',
+				cls: 'antidian-thinking-row-primary',
 				text: step.primary,
 			});
 
@@ -1056,7 +1056,7 @@ export class ThinkingStateView {
 				this.renderFileLink(row, targetPath, step.secondary);
 			} else if (step.secondary) {
 				row.createSpan({
-					cls: 'anti-dian-thinking-row-secondary',
+					cls: 'antidian-thinking-row-secondary',
 					text: step.secondary,
 				});
 			}
@@ -1065,7 +1065,7 @@ export class ThinkingStateView {
 			const readMeta = this.formatReadNoteInlineMeta(step);
 			if (readMeta) {
 				row.createSpan({
-					cls: 'anti-dian-thinking-row-secondary',
+					cls: 'antidian-thinking-row-secondary',
 					text: readMeta,
 				});
 			}
@@ -1073,7 +1073,7 @@ export class ThinkingStateView {
 			// Diff stats
 			if (step.add !== undefined || step.del !== undefined) {
 				const diffSpan = row.createSpan({
-					cls: 'anti-dian-thinking-row-diff',
+					cls: 'antidian-thinking-row-diff',
 				});
 				if (step.add !== undefined) {
 					diffSpan.createSpan({ cls: 'diff-add', text: `+${step.add}` });
@@ -1092,7 +1092,7 @@ export class ThinkingStateView {
 					undone: 'Undone',
 				}[step.approval.state];
 				row.createSpan({
-					cls: `anti-dian-thinking-row-tag is-${step.approval.state}`,
+					cls: `antidian-thinking-row-tag is-${step.approval.state}`,
 					text: label,
 				});
 			} else if (step.questionState) {
@@ -1103,7 +1103,7 @@ export class ThinkingStateView {
 					cancelled: { label: 'Cancelled', cls: 'is-rejected' },
 				}[step.questionState];
 				row.createSpan({
-					cls: `anti-dian-thinking-row-tag ${metaMap.cls}`,
+					cls: `antidian-thinking-row-tag ${metaMap.cls}`,
 					text: metaMap.label,
 				});
 			}
@@ -1111,7 +1111,7 @@ export class ThinkingStateView {
 			// Only rows with something to show are expandable.
 			if (hasPanel) {
 				const chevron = row.createSpan({
-					cls: `anti-dian-thinking-row-chevron collapse-icon ${isOpen ? '' : 'is-collapsed'}`,
+					cls: `antidian-thinking-row-chevron collapse-icon ${isOpen ? '' : 'is-collapsed'}`,
 				});
 				setIcon(chevron, 'right-triangle');
 				row.setAttribute('role', 'button');
@@ -1135,7 +1135,7 @@ export class ThinkingStateView {
 			}
 
 			if (isOpen) {
-				const panel = this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-step-detail' });
+				const panel = this.rowsContainerEl.createDiv({ cls: 'antidian-thinking-step-detail' });
 				renderDetail?.(panel);
 				this.renderApprovalControls(panel, step);
 			}
@@ -1147,7 +1147,7 @@ export class ThinkingStateView {
 					const srcRow = this.rowsContainerEl.createEl(
 						src.href ? 'a' : 'div',
 						{
-							cls: 'anti-dian-thinking-source-row',
+							cls: 'antidian-thinking-source-row',
 							attr: src.href
 								? { href: src.href, target: '_blank', rel: 'noopener noreferrer' }
 								: {},
@@ -1156,18 +1156,18 @@ export class ThinkingStateView {
 
 					// Grey source icon
 					const iconSpan = srcRow.createSpan({
-						cls: 'anti-dian-thinking-source-icon',
+						cls: 'antidian-thinking-source-icon',
 					});
 					setIcon(iconSpan, src.href ? 'globe' : 'file-text');
 
 					srcRow.createSpan({
-						cls: 'anti-dian-thinking-source-title',
+						cls: 'antidian-thinking-source-title',
 						text: src.title,
 					});
 
 					if (src.subtitle) {
 						srcRow.createSpan({
-							cls: 'anti-dian-thinking-source-subtitle',
+							cls: 'antidian-thinking-source-subtitle',
 							text: src.subtitle,
 						});
 					}
@@ -1183,7 +1183,7 @@ export class ThinkingStateView {
 
 				if (step.sources.length > 3) {
 					const moreSpan = this.rowsContainerEl.createSpan({
-						cls: 'anti-dian-thinking-more-count',
+						cls: 'antidian-thinking-more-count',
 					});
 					moreSpan.setText(`+${step.sources.length - 3} more`);
 				}
@@ -1195,14 +1195,14 @@ export class ThinkingStateView {
 
 	private renderAmbientRow(): void {
 		if (!this.ambient) return;
-		const row = this.rowsContainerEl.createDiv({ cls: 'anti-dian-thinking-row' });
-		const icon = row.createSpan({ cls: 'anti-dian-thinking-row-icon' });
+		const row = this.rowsContainerEl.createDiv({ cls: 'antidian-thinking-row' });
+		const icon = row.createSpan({ cls: 'antidian-thinking-row-icon' });
 		setIcon(icon, 'file-text');
-		row.createSpan({ cls: 'anti-dian-thinking-row-primary', text: 'Active note' });
+		row.createSpan({ cls: 'antidian-thinking-row-primary', text: 'Active note' });
 		this.renderFileLink(row, this.ambient.path, basename(this.ambient.path) ?? this.ambient.path);
 		if (this.ambient.selection) {
 			const sel = row.createSpan({
-				cls: 'anti-dian-thinking-row-tag',
+				cls: 'antidian-thinking-row-tag',
 				text: '+ selection',
 			});
 			setTooltip(sel, this.ambient.selection, { placement: 'top' });
@@ -1243,7 +1243,7 @@ export class ThinkingStateView {
 	private renderFileLink(row: HTMLElement, path: unknown, label: string): void {
 		const file = this.resolveNote(path);
 		const el = row.createSpan({
-			cls: 'anti-dian-thinking-row-secondary',
+			cls: 'antidian-thinking-row-secondary',
 			text: label,
 		});
 		if (file) {
@@ -1378,12 +1378,12 @@ export class ThinkingStateView {
 	private renderApprovalControls(parent: HTMLElement, step: ThinkingStep): void {
 		const approval = step.approval;
 		if (!approval) return;
-		const bar = parent.createDiv({ cls: 'anti-dian-approval-bar' });
+		const bar = parent.createDiv({ cls: 'antidian-approval-bar' });
 
 		if (approval.state === 'pending') {
 			bar.addClass('is-pending');
-			bar.createSpan({ cls: 'anti-dian-approval-label', text: 'Apply this change?' });
-			const actions = bar.createDiv({ cls: 'anti-dian-approval-actions' });
+			bar.createSpan({ cls: 'antidian-approval-label', text: 'Apply this change?' });
+			const actions = bar.createDiv({ cls: 'antidian-approval-actions' });
 			new ButtonComponent(actions)
 				.setButtonText('Reject')
 				.onClick(() => approval.resolve?.('reject'));
@@ -1395,21 +1395,21 @@ export class ThinkingStateView {
 		}
 
 		if (approval.state === 'rejected') {
-			bar.createSpan({ cls: 'anti-dian-approval-status', text: 'Rejected' });
+			bar.createSpan({ cls: 'antidian-approval-status', text: 'Rejected' });
 			return;
 		}
 		if (approval.state === 'undone') {
-			bar.createSpan({ cls: 'anti-dian-approval-status', text: 'Undone' });
+			bar.createSpan({ cls: 'antidian-approval-status', text: 'Undone' });
 			return;
 		}
 
 		bar.createSpan({
-			cls: 'anti-dian-approval-status is-applied',
+			cls: 'antidian-approval-status is-applied',
 			text: approval.autoApproved ? 'Applied automatically' : 'Applied',
 		});
 		const changeSetId = approval.appliedChangeSetId;
 		if (changeSetId && this.undoChange) {
-			new ButtonComponent(bar.createDiv({ cls: 'anti-dian-approval-actions' }))
+			new ButtonComponent(bar.createDiv({ cls: 'antidian-approval-actions' }))
 				.setIcon('undo')
 				.setTooltip('Undo this change')
 				.setDisabled(approval.busy === true)
@@ -1442,7 +1442,7 @@ export class ThinkingStateView {
 			if (!phase.displayedText || phase.afterStep !== afterStep) continue;
 			if (!phase.el) {
 				const el = createDiv({
-					cls: 'anti-dian-thinking-model-text is-streaming',
+					cls: 'antidian-thinking-model-text is-streaming',
 				});
 				el.setText(phase.displayedText);
 				el.onclick = (e) => {

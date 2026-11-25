@@ -42,7 +42,7 @@ function sha512Hex(buf) {
 }
 
 function makeTempDir() {
-	return fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-agy-test-'));
+	return fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-agy-test-'));
 }
 
 test('getManagedAgyBinaryPath matches VS Code extension path', () => {
@@ -595,12 +595,12 @@ test('diagnostics detect CPU flags, failure categories, suspend drift, CA env, a
 
 	const fakeHome = makeTempDir();
 	try {
-		const logDir = path.join(fakeHome, '.gemini', 'antigravity-anti-dian');
+		const logDir = path.join(fakeHome, '.gemini', 'antigravity-antidian');
 		fs.mkdirSync(logDir, { recursive: true });
 		fs.writeFileSync(path.join(logDir, 'cli.log'), 'line1\nfatal: boom\n');
 		const tail = readCliLogTailFallback(
 			Date.now() - 1000,
-			'antigravity-anti-dian',
+			'antigravity-antidian',
 			fakeHome,
 		);
 		assert.match(tail ?? '', /fatal: boom/);

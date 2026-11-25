@@ -8,7 +8,7 @@ import {
 	setIcon,
 	setTooltip,
 } from 'obsidian';
-import type AntiDianPlugin from '../../main';
+import type AntidianPlugin from '../../main';
 import {
 	ActiveContext,
 	ContextService,
@@ -49,9 +49,9 @@ import { SignInView } from './sign-in-view';
 import { ElicitationCardView } from './elicitation-card-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, markTableWrappers, registerInternalLinkHandlers } from './note-link';
-import { ANTI_DIAN_ICON } from '../icon';
+import { ANTIDIAN_ICON } from '../icon';
 
-export const ANTI_DIAN_VIEW_TYPE = 'anti-dian-sidebar';
+export const ANTIDIAN_VIEW_TYPE = 'antidian-sidebar';
 
 interface RenderedTurn {
 	userGroupEl: HTMLElement;
@@ -62,9 +62,9 @@ interface RenderedTurn {
 	thinkingState?: ThinkingStateView;
 }
 
-export class AntiDianView extends ItemView implements HoverParent {
+export class AntidianView extends ItemView implements HoverParent {
 	hoverPopover: HoverPopover | null = null;
-	private plugin: AntiDianPlugin;
+	private plugin: AntidianPlugin;
 	private contextService: ContextService;
 	private agent: Agent;
 	private validator?: ChangeSetValidator;
@@ -110,7 +110,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private sessionThoughtTokens = 0;
 	private lastTurnPromptTokens = 0;
 
-	constructor(leaf: WorkspaceLeaf, plugin: AntiDianPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: AntidianPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.contextService = plugin.workspaceAdapter;
@@ -141,7 +141,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	getViewType(): string {
-		return ANTI_DIAN_VIEW_TYPE;
+		return ANTIDIAN_VIEW_TYPE;
 	}
 
 	getDisplayText(): string {
@@ -149,7 +149,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	getIcon(): string {
-		return ANTI_DIAN_ICON;
+		return ANTIDIAN_ICON;
 	}
 
 	public addSelectionToPrompt(snippet: SelectionSnippet): void {
@@ -159,7 +159,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	async onOpen(): Promise<void> {
 		this.rootEl = this.contentEl;
 		this.rootEl.empty();
-		this.rootEl.addClass('anti-dian-sidebar-container');
+		this.rootEl.addClass('antidian-sidebar-container');
 		this.rootEl.addClass('is-empty-session');
 
 		this.renderTopNav();
@@ -189,8 +189,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 			const target = evt.target as HTMLElement;
 			if (
 				this.modelMenuController.isOpen() &&
-				!target.closest('.anti-dian-promptbar-model-pill') &&
-				!target.closest('.anti-dian-usage-popup') &&
+				!target.closest('.antidian-promptbar-model-pill') &&
+				!target.closest('.antidian-usage-popup') &&
 				// The "View usage" menu item click that opened the panel bubbles here.
 				!target.closest('.menu')
 			) {
@@ -198,8 +198,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 			}
 			if (
 				this.sessionMenu?.isOpen() &&
-				!target.closest('.anti-dian-session-drawer-panel') &&
-				!target.closest('.anti-dian-session-trigger') &&
+				!target.closest('.antidian-session-drawer-panel') &&
+				!target.closest('.antidian-session-trigger') &&
 				!target.closest('.menu')
 			) {
 				this.sessionMenu.close();
@@ -237,7 +237,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 	private renderTopNav(): void {
 		if (!this.rootEl) return;
-		this.topNavEl = this.rootEl.createDiv({ cls: 'anti-dian-top-nav' });
+		this.topNavEl = this.rootEl.createDiv({ cls: 'antidian-top-nav' });
 
 		const vaultName = this.app.vault.getName() || 'Antidian';
 		this.sessionMenu = new SessionMenuController(this.rootEl, {
@@ -273,10 +273,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 			onDeleteSession: (sessionId) => void this.deleteSession(sessionId),
 		});
 
-		const leftGroup = this.topNavEl.createDiv({ cls: 'anti-dian-nav-left' });
+		const leftGroup = this.topNavEl.createDiv({ cls: 'antidian-nav-left' });
 		const addDrawerButton = (icon: string, tooltip: string, search: boolean) => {
 			const btn = leftGroup.createEl('button', {
-				cls: 'anti-dian-nav-btn anti-dian-session-trigger',
+				cls: 'antidian-nav-btn antidian-session-trigger',
 				attr: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
 			});
 			setIcon(btn, icon);
@@ -291,15 +291,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 		addDrawerButton('panel-left', `Conversations in ${vaultName}`, false);
 		addDrawerButton('search', 'Search conversations', true);
 
-		this.sessionTitleEl = this.topNavEl.createSpan({ cls: 'anti-dian-nav-title' });
+		this.sessionTitleEl = this.topNavEl.createSpan({ cls: 'antidian-nav-title' });
 		this.updateSessionTitle();
 
 		const rightGroup = this.topNavEl.createDiv({
-			cls: 'anti-dian-nav-right',
+			cls: 'antidian-nav-right',
 		});
 
 		const newSessionBtn = rightGroup.createEl('button', {
-			cls: 'anti-dian-nav-btn',
+			cls: 'antidian-nav-btn',
 		});
 		setIcon(newSessionBtn, 'plus');
 		setTooltip(newSessionBtn, 'New conversation');
@@ -392,7 +392,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.updateSessionTitle();
 		this.clearMessages();
 		const loadingEl = this.messagesEl?.createDiv({
-			cls: 'anti-dian-session-loading',
+			cls: 'antidian-session-loading',
 			text: 'Loading session…',
 		});
 		if (this.rootEl) {
@@ -501,9 +501,9 @@ export class AntiDianView extends ItemView implements HoverParent {
 		for (let i = 0; i < messages.length; i++) {
 			if (options?.forkDividerAt !== undefined && i === options.forkDividerAt) {
 				const divider = this.messagesEl.createDiv({
-					cls: 'anti-dian-fork-divider',
+					cls: 'antidian-fork-divider',
 				});
-				const icon = divider.createSpan({ cls: 'anti-dian-fork-divider-icon' });
+				const icon = divider.createSpan({ cls: 'antidian-fork-divider-icon' });
 				setIcon(icon, 'git-fork');
 				divider.createSpan({ text: 'Forked into new conversation' });
 			}
@@ -511,13 +511,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 			if (message.role === 'user') {
 				const turn: RenderedTurn = {
 					userGroupEl: this.messagesEl.createDiv({
-						cls: 'anti-dian-message-user-group is-replayed',
+						cls: 'antidian-message-user-group is-replayed',
 					}),
 					userText: message.text,
 					historyStartIndex: this.history.length,
 				};
 				const userMsg = turn.userGroupEl.createDiv({
-					cls: 'anti-dian-message anti-dian-message-user is-replayed',
+					cls: 'antidian-message antidian-message-user is-replayed',
 				});
 				this.renderUserMedia(userMsg, message.media ?? []);
 				if (message.text) {
@@ -531,7 +531,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				this.renderedTurns.push(turn);
 			} else {
 				const agentMsg = this.messagesEl.createDiv({
-					cls: 'anti-dian-message anti-dian-message-agent is-replayed',
+					cls: 'antidian-message antidian-message-agent is-replayed',
 				});
 				const lastTurn = this.renderedTurns[this.renderedTurns.length - 1];
 				if (lastTurn && !lastTurn.agentEl) {
@@ -541,7 +541,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				if (message.events && message.events.length > 0) {
 					this.renderReplayedTrace(agentMsg, message.events, message.durationMs);
 				}
-				const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
+				const answerEl = agentMsg.createDiv({ cls: 'antidian-answer-body' });
 				await MarkdownRenderer.render(this.app, message.text, answerEl, '', this);
 				linkifyCodeWikilinks(this.app, answerEl, '');
 				markTableWrappers(answerEl);
@@ -638,7 +638,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private renderMessagesContainer(): void {
 		if (!this.rootEl) return;
 		this.messagesEl = this.rootEl.createDiv({
-			cls: 'anti-dian-messages',
+			cls: 'antidian-messages',
 		});
 		// Wikilinks in rendered answers and thoughts open notes like in the editor.
 		registerInternalLinkHandlers(this, this.app, this.messagesEl, () => '', this);
@@ -648,16 +648,16 @@ export class AntiDianView extends ItemView implements HoverParent {
 		if (!this.rootEl) return;
 
 		this.centerContainerEl = this.rootEl.createDiv({
-			cls: 'anti-dian-center-card-container',
+			cls: 'antidian-center-card-container',
 		});
 
 		// Empty-state hero above the prompt bar (hidden once a chat starts).
-		const heroEl = this.centerContainerEl.createDiv({ cls: 'anti-dian-empty-hero' });
+		const heroEl = this.centerContainerEl.createDiv({ cls: 'antidian-empty-hero' });
 		heroEl.createEl('img', {
-			cls: 'anti-dian-empty-logo',
+			cls: 'antidian-empty-logo',
 			attr: { src: logoUrl, alt: '', draggable: 'false' },
 		});
-		this.heroTitleEl = heroEl.createDiv({ cls: 'anti-dian-empty-title' });
+		this.heroTitleEl = heroEl.createDiv({ cls: 'antidian-empty-title' });
 		this.refreshGreeting();
 		const provider = this.plugin.antigravityProvider;
 		this.signInView = new SignInView(heroEl, {
@@ -669,7 +669,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		});
 
 		const elicitationSlotEl = this.centerContainerEl.createDiv({
-			cls: 'anti-dian-elicitation-slot',
+			cls: 'antidian-elicitation-slot',
 		});
 		this.elicitationCard = new ElicitationCardView(elicitationSlotEl);
 
@@ -785,13 +785,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 		const sentAtIso = new Date().toISOString();
 		const turnRecord: RenderedTurn = {
 			userGroupEl: this.messagesEl.createDiv({
-				cls: 'anti-dian-message-user-group',
+				cls: 'antidian-message-user-group',
 			}),
 			userText: text,
 			historyStartIndex: this.history.length,
 		};
 		const userMsg = turnRecord.userGroupEl.createDiv({
-			cls: 'anti-dian-message anti-dian-message-user',
+			cls: 'antidian-message antidian-message-user',
 		});
 
 		this.renderUserMedia(userMsg, mediaToSend);
@@ -809,7 +809,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.scrollToBottom();
 
 		const agentMsg = this.messagesEl.createDiv({
-			cls: 'anti-dian-message anti-dian-message-agent',
+			cls: 'antidian-message antidian-message-agent',
 		});
 		turnRecord.agentEl = agentMsg;
 		this.renderedTurns.push(turnRecord);
@@ -823,7 +823,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		});
 		turnRecord.thinkingState = thinkingState;
 		this.activeThinking = thinkingState;
-		const answerEl = agentMsg.createDiv({ cls: 'anti-dian-answer-body' });
+		const answerEl = agentMsg.createDiv({ cls: 'antidian-answer-body' });
 		let receivedMarkdown = '';
 		let streamedMarkdown = '';
 		let streamAnimationFrame: number | null = null;
@@ -840,7 +840,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		const appendStreamCaret = () => {
 			const target = (answerEl.lastElementChild ?? answerEl) as HTMLElement;
 			target.createSpan({
-				cls: 'anti-dian-stream-caret',
+				cls: 'antidian-stream-caret',
 				attr: { 'aria-hidden': 'true' },
 			});
 		};
@@ -1016,7 +1016,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				}
 				answerEl.createEl('p', {
 					text: 'Stopped',
-					cls: 'anti-dian-stopped-text',
+					cls: 'antidian-stopped-text',
 				});
 			} else {
 				thinkingState.settle();
@@ -1074,7 +1074,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			answerEl.empty();
 			answerEl.createEl('p', {
 				text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-				cls: 'anti-dian-error-text',
+				cls: 'antidian-error-text',
 			});
 		} finally {
 			if (myToken === this.turnToken) {
@@ -1117,7 +1117,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 	private createCopyButton(parent: HTMLElement, textToCopy: string): void {
 		const copyBtn = parent.createEl('button', {
-			cls: 'anti-dian-msg-action-btn',
+			cls: 'antidian-msg-action-btn',
 			attr: { type: 'button', 'aria-label': 'Copy message' },
 		});
 		setIcon(copyBtn, 'copy');
@@ -1152,7 +1152,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	): void {
 		const { selections, body } = parseUserMessage(text);
 		if (selections.length > 0) {
-			const row = userMsg.createDiv({ cls: 'anti-dian-user-chip-row' });
+			const row = userMsg.createDiv({ cls: 'antidian-user-chip-row' });
 			for (const selection of selections) this.renderSentSelectionChip(row, selection);
 		}
 		if (!body.trim()) return;
@@ -1172,7 +1172,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 				continue;
 			}
 			const chipEl = p.createSpan({
-				cls: `anti-dian-prompt-chip is-${segment.chip.kind}`,
+				cls: `antidian-prompt-chip is-${segment.chip.kind}`,
 				text: segment.text,
 			});
 			if (segment.chip.kind === 'file') {
@@ -1188,13 +1188,13 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private renderSentSelectionChip(row: HTMLElement, selection: SentSelection): void {
 		const note = selection.note;
 		const chip = row.createDiv({
-			cls: 'anti-dian-user-selection-chip',
+			cls: 'antidian-user-selection-chip',
 			attr: note ? { role: 'button', tabindex: '0' } : {},
 		});
-		const icon = chip.createSpan({ cls: 'anti-dian-user-selection-chip-icon' });
+		const icon = chip.createSpan({ cls: 'antidian-user-selection-chip-icon' });
 		setIcon(icon, 'text-quote');
 		chip.createSpan({
-			cls: 'anti-dian-user-selection-chip-name',
+			cls: 'antidian-user-selection-chip-name',
 			text: selectionChipLabel(selection),
 		});
 		const preview =
@@ -1222,11 +1222,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private renderUserMedia(userMsg: HTMLElement, media: MediaInput[]): void {
 		const images = media.filter((m) => m.type === 'image');
 		if (images.length === 0) return;
-		const row = userMsg.createDiv({ cls: 'anti-dian-user-media-row' });
+		const row = userMsg.createDiv({ cls: 'antidian-user-media-row' });
 		for (const image of images) {
 			if (image.data) {
 				row.createEl('img', {
-					cls: 'anti-dian-user-media-img',
+					cls: 'antidian-user-media-img',
 					attr: { src: image.data, alt: 'Attached image' },
 				});
 			} else {
@@ -1243,11 +1243,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 			onUndo: () => void;
 		},
 	): void {
-		const row = parent.createDiv({ cls: 'anti-dian-message-meta is-user' });
+		const row = parent.createDiv({ cls: 'antidian-message-meta is-user' });
 		const rel = this.formatRelativeTimestamp(opts.timestamp);
 		if (rel) {
 			const timeEl = row.createSpan({
-				cls: 'anti-dian-message-time',
+				cls: 'antidian-message-time',
 				text: rel,
 			});
 			if (opts.timestamp) {
@@ -1260,7 +1260,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 
 		const undoBtn = row.createEl('button', {
-			cls: 'anti-dian-msg-action-btn',
+			cls: 'antidian-msg-action-btn',
 			attr: { type: 'button', 'aria-label': 'Undo to before this message' },
 		});
 		setIcon(undoBtn, 'undo-2');
@@ -1291,15 +1291,15 @@ export class AntiDianView extends ItemView implements HoverParent {
 		const rel = this.formatRelativeTimestamp(opts.timestamp);
 		if (!hasCopy && !opts.onFork && !rel && !opts.usage) return;
 
-		const row = parent.createDiv({ cls: 'anti-dian-message-meta is-agent' });
-		const left = row.createDiv({ cls: 'anti-dian-message-meta-left' });
+		const row = parent.createDiv({ cls: 'antidian-message-meta is-agent' });
+		const left = row.createDiv({ cls: 'antidian-message-meta-left' });
 		if (hasCopy && opts.copyText) {
 			this.createCopyButton(left, opts.copyText);
 		}
 		if (opts.onFork) {
 			const onFork = opts.onFork;
 			const forkBtn = left.createEl('button', {
-				cls: 'anti-dian-msg-action-btn',
+				cls: 'antidian-msg-action-btn',
 				attr: { type: 'button', 'aria-label': 'Fork conversation from here' },
 			});
 			setIcon(forkBtn, 'git-fork');
@@ -1311,7 +1311,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 		}
 		if (rel) {
 			const timeEl = left.createSpan({
-				cls: 'anti-dian-message-time',
+				cls: 'antidian-message-time',
 				text: rel,
 			});
 			if (opts.timestamp) {
@@ -1351,7 +1351,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 		// Remove any previous fork dividers before placing the new branch marker
 		this.messagesEl
-			?.querySelectorAll('.anti-dian-fork-divider')
+			?.querySelectorAll('.antidian-fork-divider')
 			.forEach((el) => el.remove());
 
 		const forkedHistory = keptTurns.map((t) => ({
@@ -1389,9 +1389,9 @@ export class AntiDianView extends ItemView implements HoverParent {
 
 		if (this.messagesEl) {
 			const divider = this.messagesEl.createDiv({
-				cls: 'anti-dian-fork-divider',
+				cls: 'antidian-fork-divider',
 			});
-			const icon = divider.createSpan({ cls: 'anti-dian-fork-divider-icon' });
+			const icon = divider.createSpan({ cls: 'antidian-fork-divider-icon' });
 			setIcon(icon, 'git-fork');
 			divider.createSpan({ text: 'Forked into new conversation' });
 		}
@@ -1462,14 +1462,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 			thoughtTokens: number;
 		},
 	): HTMLElement {
-		const footer = parent.createDiv({ cls: 'anti-dian-turn-usage-footer' });
+		const footer = parent.createDiv({ cls: 'antidian-turn-usage-footer' });
 
-		const inSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
+		const inSpan = footer.createSpan({ cls: 'antidian-usage-item' });
 		inSpan.setText(`${usage.promptTokens.toLocaleString()} in`);
 		// Cached input is part of "in"; only shown when the provider reports it.
 		if (usage.cachedReadTokens > 0) {
 			const cached = footer.createSpan({
-				cls: 'anti-dian-usage-item anti-dian-usage-cached',
+				cls: 'antidian-usage-item antidian-usage-cached',
 				text: `${formatTokens(usage.cachedReadTokens)} cached`,
 			});
 			const pct =
@@ -1482,18 +1482,18 @@ export class AntiDianView extends ItemView implements HoverParent {
 			);
 		}
 
-		const outSpan = footer.createSpan({ cls: 'anti-dian-usage-item' });
+		const outSpan = footer.createSpan({ cls: 'antidian-usage-item' });
 		outSpan.setText(`${usage.candidatesTokens.toLocaleString()} out`);
 		if (usage.thoughtTokens > 0) {
 			const thought = footer.createSpan({
-				cls: 'anti-dian-usage-item anti-dian-usage-thought',
+				cls: 'antidian-usage-item antidian-usage-thought',
 				text: `${formatTokens(usage.thoughtTokens)} thinking`,
 			});
 			setTooltip(thought, `${usage.thoughtTokens.toLocaleString()} reasoning tokens`);
 		}
 
 		const ctxSpan = footer.createSpan({
-			cls: 'anti-dian-usage-item anti-dian-usage-ctx',
+			cls: 'antidian-usage-item antidian-usage-ctx',
 		});
 		ctxSpan.setText(`${formatTokens(usage.promptTokens)} ctx`);
 		return footer;

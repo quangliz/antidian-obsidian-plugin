@@ -8,7 +8,7 @@ import {
 	Setting,
 	type SettingDefinitionItem,
 } from 'obsidian';
-import type AntiDianPlugin from './main';
+import type AntidianPlugin from './main';
 import {
 	type ModelConfig,
 	type CachedProviderMetadata,
@@ -23,7 +23,7 @@ import {
 
 export type PermissionMode = 'ask' | 'plan' | 'auto';
 
-export interface AntiDianSettings {
+export interface AntidianSettings {
 	model?: string;
 	/** Thinking level to use with models that offer it. */
 	thoughtLevel?: string;
@@ -52,7 +52,7 @@ export interface AntiDianSettings {
 	deletedSessions?: string[];
 }
 
-export const DEFAULT_SETTINGS: AntiDianSettings = {
+export const DEFAULT_SETTINGS: AntidianSettings = {
 	model: '',
 	permissionMode: 'ask',
 	cliPath: '',
@@ -73,8 +73,8 @@ interface SettingGroupRows {
 	rows: SettingRow[];
 }
 
-export class AntiDianSettingTab extends PluginSettingTab {
-	plugin: AntiDianPlugin;
+export class AntidianSettingTab extends PluginSettingTab {
+	plugin: AntidianPlugin;
 	/** Rows currently on screen, updated by the live status check. */
 	private authSetting: Setting | null = null;
 	private authButton: ButtonComponent | null = null;
@@ -82,7 +82,7 @@ export class AntiDianSettingTab extends PluginSettingTab {
 	private modelDropdown: DropdownComponent | null = null;
 	private signedIn = false;
 
-	constructor(app: App, plugin: AntiDianPlugin) {
+	constructor(app: App, plugin: AntidianPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -308,10 +308,10 @@ export class AntiDianSettingTab extends PluginSettingTab {
 	}
 
 	private renderVaultSkills(setting: Setting): void {
-		void this.app.vault.adapter.exists('.anti-dian/skills').then((legacy) => {
+		void this.app.vault.adapter.exists('.antidian/skills').then((legacy) => {
 			if (!legacy) return;
 			setting.setDesc(
-				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
+				'Skills in .antidian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
 			);
 		});
 	}

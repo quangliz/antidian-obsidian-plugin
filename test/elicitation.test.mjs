@@ -238,7 +238,7 @@ test('parseAskQuestionOutcome handles live structured outcomes and replayed agy 
 });
 
 test('AntigravityAcpClient advertises elicitation.form and completes elicitation/create round-trip', async () => {
-	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-elicit-'));
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-elicit-'));
 	const fakeBin = path.join(tmpDir, 'fake-agy.mjs');
 	fs.writeFileSync(
 		fakeBin,

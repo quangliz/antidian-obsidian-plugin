@@ -11,7 +11,7 @@ import {
 	setIcon,
 	setTooltip,
 } from 'obsidian';
-import type AntiDianPlugin from '../../main';
+import type AntidianPlugin from '../../main';
 import { ActiveContext } from '../../core/types/context';
 import { MediaInput } from '../../core/types/model';
 import type { PermissionMode } from '../../settings';
@@ -139,7 +139,7 @@ const CLEAR_COMMAND: AutocompleteItem = {
 
 export class PromptBarView {
 	private app: App;
-	private plugin: AntiDianPlugin;
+	private plugin: AntidianPlugin;
 	private callbacks: PromptBarCallbacks;
 
 	private rootEl: HTMLElement;
@@ -172,15 +172,15 @@ export class PromptBarView {
 		const target = e.target as HTMLElement;
 		if (
 			this.contextMenuEl &&
-			!target.closest('.anti-dian-context-menu') &&
-			!target.closest('.anti-dian-promptbar-btn-plus')
+			!target.closest('.antidian-context-menu') &&
+			!target.closest('.antidian-promptbar-btn-plus')
 		) {
 			this.closePlusMenu();
 		}
 		if (
 			this.menuContainerEl &&
-			!target.closest('.anti-dian-promptbar-autocomplete') &&
-			!target.closest('.anti-dian-promptbar-btn-plus')
+			!target.closest('.antidian-promptbar-autocomplete') &&
+			!target.closest('.antidian-promptbar-btn-plus')
 		) {
 			this.closeAutocompleteMenu();
 		}
@@ -210,7 +210,7 @@ export class PromptBarView {
 	constructor(
 		containerEl: HTMLElement,
 		app: App,
-		plugin: AntiDianPlugin,
+		plugin: AntidianPlugin,
 		callbacks: PromptBarCallbacks,
 	) {
 		this.app = app;
@@ -309,12 +309,12 @@ export class PromptBarView {
 		const { name, effort } = this.callbacks.getCurrentModelLabel();
 		this.modelPillLabelEl.empty();
 		this.modelPillLabelEl.createSpan({
-			cls: 'anti-dian-promptbar-model-base',
+			cls: 'antidian-promptbar-model-base',
 			text: name,
 		});
 		if (effort) {
 			this.modelPillLabelEl.createSpan({
-				cls: 'anti-dian-promptbar-model-effort',
+				cls: 'antidian-promptbar-model-effort',
 				text: effort,
 			});
 		}
@@ -463,7 +463,7 @@ export class PromptBarView {
 
 	private render(): void {
 		this.composerAnchorEl = this.rootEl.createDiv({
-			cls: 'anti-dian-promptbar-anchor',
+			cls: 'antidian-promptbar-anchor',
 		});
 
 		// Hidden file input for media uploads
@@ -487,16 +487,16 @@ export class PromptBarView {
 
 		// Outer shell (Antigravity-style context strip + composer card)
 		const shellEl = this.composerAnchorEl.createDiv({
-			cls: 'anti-dian-promptbar-shell',
+			cls: 'antidian-promptbar-shell',
 		});
 		this.setupDropZone(shellEl);
 
 		// Top context bar (active note toggle)
 		const contextBarEl = shellEl.createDiv({
-			cls: 'anti-dian-promptbar-context-bar',
+			cls: 'antidian-promptbar-context-bar',
 		});
 		this.activeNotePillEl = contextBarEl.createDiv({
-			cls: 'anti-dian-promptbar-note-pill',
+			cls: 'antidian-promptbar-note-pill',
 			attr: {
 				role: 'button',
 				tabindex: '0',
@@ -504,11 +504,11 @@ export class PromptBarView {
 			},
 		});
 		const noteIcon = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-promptbar-note-icon',
+			cls: 'antidian-promptbar-note-icon',
 		});
 		setIcon(noteIcon, 'file-text');
 		this.activeNoteLabelEl = this.activeNotePillEl.createSpan({
-			cls: 'anti-dian-promptbar-note-label',
+			cls: 'antidian-promptbar-note-label',
 			text: 'No note',
 		});
 		this.activeNotePillEl.onclick = (e) => {
@@ -526,34 +526,34 @@ export class PromptBarView {
 
 		// The PromptBar Composer Card
 		this.cardEl = shellEl.createDiv({
-			cls: 'anti-dian-promptbar-card',
+			cls: 'antidian-promptbar-card',
 		});
 
 		// Canvas for rainbow sweep animation
 		this.canvasEl = this.cardEl.createEl('canvas', {
-			cls: 'anti-dian-promptbar-canvas',
+			cls: 'antidian-promptbar-canvas',
 			attr: { 'aria-hidden': 'true' },
 		});
 
 		// Measure span for calculating text wrapping width
 		this.measureEl = this.cardEl.createSpan({
-			cls: 'anti-dian-promptbar-measure',
+			cls: 'antidian-promptbar-measure',
 			attr: { 'aria-hidden': 'true' },
 		});
 
 		// Media tray (chips for attachments)
 		this.mediaTrayEl = this.cardEl.createDiv({
-			cls: 'anti-dian-promptbar-media-tray anti-dian-hidden',
+			cls: 'antidian-promptbar-media-tray antidian-hidden',
 		});
 
 		// Main Textarea, over a mirror that draws chips for autocompleted items.
-		const inputWrapEl = this.cardEl.createDiv({ cls: 'anti-dian-promptbar-input-wrap' });
+		const inputWrapEl = this.cardEl.createDiv({ cls: 'antidian-promptbar-input-wrap' });
 		this.highlightEl = inputWrapEl.createDiv({
-			cls: 'anti-dian-promptbar-highlight',
+			cls: 'antidian-promptbar-highlight',
 			attr: { 'aria-hidden': 'true' },
 		});
 		this.inputEl = inputWrapEl.createEl('textarea', {
-			cls: 'anti-dian-promptbar-textarea',
+			cls: 'antidian-promptbar-textarea',
 			attr: {
 				placeholder: 'Ask anything, @ to mention, / for actions',
 				rows: '1',
@@ -563,17 +563,17 @@ export class PromptBarView {
 
 		// Controls row
 		this.controlsRowEl = this.cardEl.createDiv({
-			cls: 'anti-dian-promptbar-controls',
+			cls: 'antidian-promptbar-controls',
 		});
 
 		// --- Left Controls ---
 		const leftControls = this.controlsRowEl.createDiv({
-			cls: 'anti-dian-promptbar-controls-left',
+			cls: 'antidian-promptbar-controls-left',
 		});
 
 		// Plus button (+)
 		this.plusBtnEl = leftControls.createEl('button', {
-			cls: 'anti-dian-promptbar-btn-plus',
+			cls: 'antidian-promptbar-btn-plus',
 			attr: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
 		});
 		setIcon(this.plusBtnEl, 'plus');
@@ -585,7 +585,7 @@ export class PromptBarView {
 
 		// Model pill
 		this.modelPillEl = leftControls.createDiv({
-			cls: 'anti-dian-promptbar-model-pill',
+			cls: 'antidian-promptbar-model-pill',
 			attr: {
 				role: 'button',
 				tabindex: '0',
@@ -593,11 +593,11 @@ export class PromptBarView {
 			},
 		});
 		this.modelPillLabelEl = this.modelPillEl.createSpan({
-			cls: 'anti-dian-promptbar-model-name',
+			cls: 'antidian-promptbar-model-name',
 		});
 		this.updateModelLabel();
 		const modelChevron = this.modelPillEl.createSpan({
-			cls: 'anti-dian-promptbar-chevron',
+			cls: 'antidian-promptbar-chevron',
 		});
 		setIcon(modelChevron, 'chevron-down');
 		this.modelPillEl.onclick = (e) => {
@@ -609,12 +609,12 @@ export class PromptBarView {
 
 		// --- Right Controls ---
 		const rightControls = this.controlsRowEl.createDiv({
-			cls: 'anti-dian-promptbar-controls-right',
+			cls: 'antidian-promptbar-controls-right',
 		});
 
 		// Permission mode pill
 		this.permissionPillEl = rightControls.createDiv({
-			cls: 'anti-dian-promptbar-model-pill anti-dian-promptbar-permission-pill',
+			cls: 'antidian-promptbar-model-pill antidian-promptbar-permission-pill',
 			attr: {
 				role: 'button',
 				tabindex: '0',
@@ -624,14 +624,14 @@ export class PromptBarView {
 			},
 		});
 		this.permissionIconEl = this.permissionPillEl.createSpan({
-			cls: 'anti-dian-promptbar-perm-icon',
+			cls: 'antidian-promptbar-perm-icon',
 		});
 		this.permissionLabelEl = this.permissionPillEl.createSpan({
-			cls: 'anti-dian-promptbar-model-name',
+			cls: 'antidian-promptbar-model-name',
 		});
 		this.updatePermissionPill();
 		const permissionChevron = this.permissionPillEl.createSpan({
-			cls: 'anti-dian-promptbar-chevron',
+			cls: 'antidian-promptbar-chevron',
 		});
 		setIcon(permissionChevron, 'chevron-down');
 		this.permissionPillEl.onclick = (e) => {
@@ -651,7 +651,7 @@ export class PromptBarView {
 
 		// Circular Send / Stop button
 		this.sendBtnEl = rightControls.createEl('button', {
-			cls: 'anti-dian-promptbar-btn-send',
+			cls: 'antidian-promptbar-btn-send',
 			attr: { type: 'button', disabled: 'true', 'aria-label': 'Send message' },
 		});
 		setIcon(this.sendBtnEl, 'arrow-right');
@@ -802,7 +802,7 @@ export class PromptBarView {
 			menu.addItem((item) => {
 				const title = createFragment();
 				title.appendText(option.label);
-				title.createDiv({ cls: 'anti-dian-menu-item-desc', text: option.desc });
+				title.createDiv({ cls: 'antidian-menu-item-desc', text: option.desc });
 				item
 					.setTitle(title)
 					.setIcon(option.icon)
@@ -1152,12 +1152,12 @@ export class PromptBarView {
 		const finish = () => {
 			tray.empty();
 			tray.removeClass('has-tiles');
-			tray.addClass('anti-dian-hidden');
+			tray.addClass('antidian-hidden');
 			tray.removeClass('is-collapsing');
 			this.adjustTextareaHeight();
 		};
 		const reduceMotion = tray.win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		if (tray.hasClass('anti-dian-hidden') || reduceMotion) {
+		if (tray.hasClass('antidian-hidden') || reduceMotion) {
 			finish();
 			return;
 		}
@@ -1213,7 +1213,7 @@ export class PromptBarView {
 		if (!this.mediaTrayEl) return;
 		const tray = this.mediaTrayEl;
 		// Where the tray's box is right now, so growing starts from there.
-		const wasHidden = tray.hasClass('anti-dian-hidden');
+		const wasHidden = tray.hasClass('antidian-hidden');
 		const from = wasHidden ? null : this.measureTray();
 		// New media while collapsing: stop the collapse and grow back from its current size.
 		if (this.trayCollapse) {
@@ -1230,7 +1230,7 @@ export class PromptBarView {
 		}
 
 		tray.empty();
-		tray.removeClass('anti-dian-hidden');
+		tray.removeClass('antidian-hidden');
 		tray.toggleClass('has-tiles', this.stagedMedia.some(isPreviewable));
 		this.renderMediaTrayItems();
 		this.animateTrayOpen(from);
@@ -1314,14 +1314,14 @@ export class PromptBarView {
 						: `:${snippet.startLine}`
 					: '';
 			const chip = this.mediaTrayEl.createDiv({
-				cls: 'anti-dian-promptbar-media-chip anti-dian-promptbar-selection-chip',
+				cls: 'antidian-promptbar-media-chip antidian-promptbar-selection-chip',
 			});
 			const iconSpan = chip.createSpan({
-				cls: 'anti-dian-promptbar-chip-icon',
+				cls: 'antidian-promptbar-chip-icon',
 			});
 			setIcon(iconSpan, 'text-quote');
 			chip.createSpan({
-				cls: 'anti-dian-promptbar-chip-name',
+				cls: 'antidian-promptbar-chip-name',
 				text: `${noteName}${lineRange}`,
 			});
 			const preview =
@@ -1329,7 +1329,7 @@ export class PromptBarView {
 					? `${snippet.text.slice(0, 240)}…`
 					: snippet.text;
 			setTooltip(chip, preview);
-			this.createMediaRemoveButton(chip, 'anti-dian-promptbar-chip-remove', () => {
+			this.createMediaRemoveButton(chip, 'antidian-promptbar-chip-remove', () => {
 				this.stagedSelections.splice(idx, 1);
 				this.renderMediaTray();
 				this.updateSendButtonState();
@@ -1349,7 +1349,7 @@ export class PromptBarView {
 			// Images and videos get a preview tile; anything else a compact chip.
 			if (isPreviewable(item) && item.data) {
 				const tile = this.mediaTrayEl.createDiv({
-					cls: 'anti-dian-promptbar-media-tile',
+					cls: 'antidian-promptbar-media-tile',
 					attr: {
 						role: 'button',
 						tabindex: '0',
@@ -1370,35 +1370,35 @@ export class PromptBarView {
 				});
 				if (item.type === 'image') {
 					tile.createEl('img', {
-						cls: 'anti-dian-promptbar-media-preview',
+						cls: 'antidian-promptbar-media-preview',
 						attr: { src: item.data, alt: 'Attached image', draggable: 'false' },
 					});
 				} else {
 					const video = tile.createEl('video', {
-						cls: 'anti-dian-promptbar-media-preview',
+						cls: 'antidian-promptbar-media-preview',
 						attr: { src: item.data, preload: 'metadata', 'aria-label': 'Attached video' },
 					});
 					video.muted = true;
 					video.playsInline = true;
-					const badge = tile.createSpan({ cls: 'anti-dian-promptbar-media-badge' });
+					const badge = tile.createSpan({ cls: 'antidian-promptbar-media-badge' });
 					setIcon(badge, 'play');
 				}
-				this.createMediaRemoveButton(tile, 'anti-dian-promptbar-media-tile-remove', remove);
+				this.createMediaRemoveButton(tile, 'antidian-promptbar-media-tile-remove', remove);
 				continue;
 			}
 
 			const chip = this.mediaTrayEl.createDiv({
-				cls: 'anti-dian-promptbar-media-chip',
+				cls: 'antidian-promptbar-media-chip',
 			});
 			const iconSpan = chip.createSpan({
-				cls: 'anti-dian-promptbar-chip-icon',
+				cls: 'antidian-promptbar-chip-icon',
 			});
 			setIcon(iconSpan, item.type === 'video' ? 'video' : item.type === 'audio' ? 'audio-lines' : 'file');
 			chip.createSpan({
-				cls: 'anti-dian-promptbar-chip-name',
+				cls: 'antidian-promptbar-chip-name',
 				text: item.type === 'image' ? 'Image' : item.type,
 			});
-			this.createMediaRemoveButton(chip, 'anti-dian-promptbar-chip-remove', remove);
+			this.createMediaRemoveButton(chip, 'antidian-promptbar-chip-remove', remove);
 		}
 	}
 
@@ -1504,25 +1504,25 @@ export class PromptBarView {
 		];
 
 		const menuEl = this.composerAnchorEl.createDiv({
-			cls: 'anti-dian-context-menu',
+			cls: 'antidian-context-menu',
 			attr: { role: 'menu', 'aria-label': 'Add context' },
 		});
 		this.contextMenuEl = menuEl;
 		this.plusBtnEl.setAttribute('aria-expanded', 'true');
 
 		menuEl.createDiv({
-			cls: 'anti-dian-context-menu-header',
+			cls: 'antidian-context-menu-header',
 			text: 'Add context',
 		});
 
 		const listEl = menuEl.createDiv({
-			cls: 'anti-dian-context-menu-list',
+			cls: 'antidian-context-menu-list',
 		});
-		new MenuGlider(listEl).trackHover('.anti-dian-context-menu-row');
+		new MenuGlider(listEl).trackHover('.antidian-context-menu-row');
 
 		for (const item of items) {
 			const rowBtn = listEl.createEl('button', {
-				cls: 'anti-dian-context-menu-row',
+				cls: 'antidian-context-menu-row',
 				attr: {
 					type: 'button',
 					role: 'menuitem',
@@ -1531,18 +1531,18 @@ export class PromptBarView {
 			});
 
 			const iconEl = rowBtn.createSpan({
-				cls: 'anti-dian-context-menu-icon',
+				cls: 'antidian-context-menu-icon',
 			});
 			setIcon(iconEl, item.icon);
 
 			rowBtn.createSpan({
-				cls: 'anti-dian-context-menu-label',
+				cls: 'antidian-context-menu-label',
 				text: item.label,
 			});
 
 			if (item.badge) {
 				rowBtn.createSpan({
-					cls: `anti-dian-context-menu-badge${item.badge === 'On' ? ' is-on' : ''}`,
+					cls: `antidian-context-menu-badge${item.badge === 'On' ? ' is-on' : ''}`,
 					text: item.badge,
 				});
 			}
@@ -1643,7 +1643,7 @@ export class PromptBarView {
 
 		if (!this.menuContainerEl) {
 			this.menuContainerEl = this.composerAnchorEl.createDiv({
-				cls: 'anti-dian-promptbar-autocomplete',
+				cls: 'antidian-promptbar-autocomplete',
 			});
 		} else {
 			this.menuContainerEl.empty();
@@ -1654,18 +1654,18 @@ export class PromptBarView {
 		this.isGliderEngaged = false;
 
 		const listEl = this.menuContainerEl.createDiv({
-			cls: 'anti-dian-promptbar-menu-list',
+			cls: 'antidian-promptbar-menu-list',
 		});
 
 		// Gliding highlight element (inside listEl so offsetTop aligns 1:1 with rows)
 		this.gliderEl = listEl.createSpan({
-			cls: 'anti-dian-promptbar-glider',
+			cls: 'antidian-promptbar-glider',
 			attr: { 'aria-hidden': 'true' },
 		});
 
 		if (items.length === 0) {
 			listEl.createDiv({
-				cls: 'anti-dian-promptbar-menu-empty',
+				cls: 'antidian-promptbar-menu-empty',
 				text: `No matches for "${query}"`,
 			});
 		} else {
@@ -1674,19 +1674,19 @@ export class PromptBarView {
 				if (!item) continue;
 
 				const rowBtn = listEl.createEl('button', {
-					cls: 'anti-dian-promptbar-menu-row',
+					cls: 'antidian-promptbar-menu-row',
 					attr: { type: 'button' },
 				});
 
 				const iconWrapper = rowBtn.createSpan({
-					cls: 'anti-dian-promptbar-menu-icon',
+					cls: 'antidian-promptbar-menu-icon',
 				});
 				if (item.icon) {
 					setIcon(iconWrapper, item.icon);
 				}
 
 				const nameEl = rowBtn.createSpan({
-					cls: 'anti-dian-promptbar-menu-name',
+					cls: 'antidian-promptbar-menu-name',
 				});
 				if (item.type === 'command') {
 					// Slash command matches are computed without the leading "/".
@@ -1698,7 +1698,7 @@ export class PromptBarView {
 				}
 
 				rowBtn.createSpan({
-					cls: 'anti-dian-promptbar-menu-desc',
+					cls: 'antidian-promptbar-menu-desc',
 					text: item.desc,
 				});
 
@@ -1719,7 +1719,7 @@ export class PromptBarView {
 
 		// Menu footer guide
 		const footer = this.menuContainerEl.createDiv({
-			cls: 'anti-dian-promptbar-menu-footer',
+			cls: 'antidian-promptbar-menu-footer',
 		});
 		footer.setText(
 			kind === 'at'
@@ -1826,7 +1826,7 @@ export class PromptBarView {
 		for (const segment of segmentPrompt(this.inputEl.value, this.chips)) {
 			if (segment.chip) {
 				el.createSpan({
-					cls: `anti-dian-prompt-chip is-${segment.chip.kind}`,
+					cls: `antidian-prompt-chip is-${segment.chip.kind}`,
 					text: segment.text,
 				});
 			} else {

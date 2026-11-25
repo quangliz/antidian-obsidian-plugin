@@ -96,7 +96,7 @@ export class ModelMenuController {
 		const config = this.ctx.getModelConfig();
 		// The effort bar needs a DOM menu (macOS uses native menus by default).
 		const menu = new Menu().setUseNativeMenu(false);
-		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
+		(menu as MenuWithDom).dom?.addClass('antidian-model-menu');
 		attachNativeMenuGlider(menu);
 		let releaseKeys: (() => void) | undefined;
 		this.modelRows.clear();
@@ -115,7 +115,7 @@ export class ModelMenuController {
 			menu.addItem((item) => {
 				// Arrow keys skip the row while it is collapsed.
 				item.setTitle(title).setDisabled(!config.thoughtLevel);
-				(item as MenuItemWithDom).dom?.addClass('anti-dian-effort-item');
+				(item as MenuItemWithDom).dom?.addClass('antidian-effort-item');
 				this.effortItem = item;
 			});
 			this.effortSlider = slider;
@@ -209,12 +209,12 @@ export class ModelMenuController {
 		for (const option of models.options) {
 			const title = createFragment();
 			const row = title.createSpan({
-				cls: 'anti-dian-model-row',
+				cls: 'antidian-model-row',
 				text: option.name,
 			});
 			row.toggleClass('is-current', option.value === models.current);
 			// Not `setChecked`: Obsidian does not bring a removed check mark back.
-			setIcon(row.createSpan({ cls: 'anti-dian-model-row-check' }), 'check');
+			setIcon(row.createSpan({ cls: 'antidian-model-row-check' }), 'check');
 			this.modelRows.set(option.value, row);
 			// Enter closes the menu; a click does not reach this (see openMenu).
 			menu.addItem((item) =>
@@ -242,7 +242,7 @@ export class ModelMenuController {
 	private viewUsageTitle(): DocumentFragment {
 		const frag = createFragment();
 		frag.appendText('View Usage');
-		const chevron = frag.createSpan({ cls: 'anti-dian-menu-item-chevron' });
+		const chevron = frag.createSpan({ cls: 'antidian-menu-item-chevron' });
 		setIcon(chevron, 'chevron-right');
 		return frag;
 	}
@@ -251,7 +251,7 @@ export class ModelMenuController {
 		this.closeUsagePanel();
 
 		const panel = anchorEl.doc.body.createDiv({
-			cls: 'anti-dian-usage-popup',
+			cls: 'antidian-usage-popup',
 		});
 		this.usagePanelEl = panel;
 		this.usagePanelFromHover = beside;
@@ -287,39 +287,39 @@ export class ModelMenuController {
 
 		const tier = quotaData?.accountTier ?? this.ctx.getAccountTier();
 		const tierRow = panel.createDiv({
-			cls: 'anti-dian-usage-tier-row',
+			cls: 'antidian-usage-tier-row',
 		});
 		tierRow.createSpan({
 			text: tier?.tierName || 'Antigravity CLI (ACP)',
-			cls: 'anti-dian-usage-tier-badge',
+			cls: 'antidian-usage-tier-badge',
 		});
 		if (tier?.tierId === 'free-tier') {
 			tierRow.createSpan({
 				text: 'Free',
-				cls: 'anti-dian-usage-tier-tag',
+				cls: 'antidian-usage-tier-tag',
 			});
 		}
 
 		const groups = quotaData?.groups ?? [];
 		if (isLoadingQuota && groups.length === 0) {
-			panel.createDiv({ cls: 'anti-dian-menu-divider' });
+			panel.createDiv({ cls: 'antidian-menu-divider' });
 			panel
-				.createDiv({ cls: 'anti-dian-usage-row' })
+				.createDiv({ cls: 'antidian-usage-row' })
 				.createSpan({
 					text: 'Loading quota limits...',
-					cls: 'anti-dian-usage-row-detail',
+					cls: 'antidian-usage-row-detail',
 				});
 		}
 
 		for (const group of groups) {
-			panel.createDiv({ cls: 'anti-dian-menu-divider' });
+			panel.createDiv({ cls: 'antidian-menu-divider' });
 
 			const groupSec = panel.createDiv({
-				cls: 'anti-dian-usage-section',
+				cls: 'antidian-usage-section',
 			});
 			groupSec.createDiv({
 				text: group.name,
-				cls: 'anti-dian-usage-sec-title',
+				cls: 'antidian-usage-sec-title',
 			});
 
 			for (const bucket of group.buckets) {
@@ -342,14 +342,14 @@ export class ModelMenuController {
 			}
 		}
 
-		panel.createDiv({ cls: 'anti-dian-menu-divider' });
+		panel.createDiv({ cls: 'antidian-menu-divider' });
 
 		const sessionSec = panel.createDiv({
-			cls: 'anti-dian-usage-section',
+			cls: 'antidian-usage-section',
 		});
 		sessionSec.createDiv({
 			text: 'This session',
-			cls: 'anti-dian-usage-sec-title',
+			cls: 'antidian-usage-sec-title',
 		});
 
 		const stats = this.ctx.getSessionStats();
@@ -408,18 +408,18 @@ export class ModelMenuController {
 	}
 
 	private renderUsageRow(parent: HTMLElement, opts: UsageRow): void {
-		const row = parent.createDiv({ cls: 'anti-dian-usage-row' });
-		const label = row.createDiv({ cls: 'anti-dian-usage-row-label' });
-		label.createSpan({ text: opts.title, cls: 'anti-dian-usage-row-title' });
+		const row = parent.createDiv({ cls: 'antidian-usage-row' });
+		const label = row.createDiv({ cls: 'antidian-usage-row-label' });
+		label.createSpan({ text: opts.title, cls: 'antidian-usage-row-title' });
 		if (opts.detail) {
-			label.createSpan({ text: opts.detail, cls: 'anti-dian-usage-row-detail' });
+			label.createSpan({ text: opts.detail, cls: 'antidian-usage-row-detail' });
 		}
-		label.createSpan({ text: opts.value, cls: 'anti-dian-usage-row-value' });
+		label.createSpan({ text: opts.value, cls: 'antidian-usage-row-value' });
 
 		if (opts.bar) {
-			const bar = row.createDiv({ cls: `anti-dian-usage-bar is-${opts.bar.status}` });
-			bar.createDiv({ cls: 'anti-dian-usage-bar-fill' }).setCssProps({
-				'--anti-dian-usage-pct': `${opts.bar.pct}%`,
+			const bar = row.createDiv({ cls: `antidian-usage-bar is-${opts.bar.status}` });
+			bar.createDiv({ cls: 'antidian-usage-bar-fill' }).setCssProps({
+				'--antidian-usage-pct': `${opts.bar.pct}%`,
 			});
 		}
 	}

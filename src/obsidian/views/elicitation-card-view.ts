@@ -153,7 +153,7 @@ export class ElicitationCardView {
 		if (!field) return;
 
 		const card = this.slotEl.createDiv({
-			cls: 'anti-dian-question-card',
+			cls: 'antidian-question-card',
 			attr: {
 				role: 'region',
 				'aria-label': request.message,
@@ -164,14 +164,14 @@ export class ElicitationCardView {
 		card.addEventListener('keydown', (e) => this.handleKeydown(e, field));
 
 		// Header
-		const header = card.createDiv({ cls: 'anti-dian-question-header' });
+		const header = card.createDiv({ cls: 'antidian-question-header' });
 		const titleGroup = header.createDiv({
-			cls: 'anti-dian-question-header-left',
+			cls: 'antidian-question-header-left',
 		});
-		const iconEl = titleGroup.createSpan({ cls: 'anti-dian-question-icon' });
+		const iconEl = titleGroup.createSpan({ cls: 'antidian-question-icon' });
 		setIcon(iconEl, 'help-circle');
 		titleGroup.createSpan({
-			cls: 'anti-dian-question-title',
+			cls: 'antidian-question-title',
 			text:
 				fields.length > 1
 					? `Question ${this.currentIndex + 1} of ${fields.length}`
@@ -179,11 +179,11 @@ export class ElicitationCardView {
 		});
 
 		if (fields.length > 1) {
-			const tabs = header.createDiv({ cls: 'anti-dian-question-tabs' });
+			const tabs = header.createDiv({ cls: 'antidian-question-tabs' });
 			fields.forEach((f, idx) => {
 				const answered = isFieldAnswered(f, this.drafts[f.key]);
 				const tabBtn = tabs.createEl('button', {
-					cls: 'anti-dian-question-tab',
+					cls: 'antidian-question-tab',
 					attr: {
 						type: 'button',
 						'aria-label': `Question ${idx + 1}: ${f.title}`,
@@ -194,7 +194,7 @@ export class ElicitationCardView {
 				tabBtn.toggleClass('is-answered', answered);
 				if (answered) {
 					const checkEl = tabBtn.createSpan({
-						cls: 'anti-dian-question-tab-check',
+						cls: 'antidian-question-tab-check',
 					});
 					setIcon(checkEl, 'check');
 				}
@@ -205,16 +205,16 @@ export class ElicitationCardView {
 		}
 
 		// Body
-		const body = card.createDiv({ cls: 'anti-dian-question-body' });
+		const body = card.createDiv({ cls: 'antidian-question-body' });
 		body.createDiv({
-			cls: 'anti-dian-question-prompt',
+			cls: 'antidian-question-prompt',
 			text: field.title,
 		});
 
 		const hintText = this.getFieldHint(field);
 		if (hintText) {
 			body.createDiv({
-				cls: 'anti-dian-question-hint',
+				cls: 'antidian-question-hint',
 				text: hintText,
 			});
 		}
@@ -228,30 +228,30 @@ export class ElicitationCardView {
 		}
 
 		// Footer
-		const footer = card.createDiv({ cls: 'anti-dian-question-footer' });
+		const footer = card.createDiv({ cls: 'antidian-question-footer' });
 		const leftActions = footer.createDiv({
-			cls: 'anti-dian-question-footer-left',
+			cls: 'antidian-question-footer-left',
 		});
 		const skipBtn = leftActions.createEl('button', {
-			cls: 'anti-dian-question-btn is-ghost',
+			cls: 'antidian-question-btn is-ghost',
 			text: 'Skip',
 			attr: { type: 'button' },
 		});
 		skipBtn.onclick = () => this.decline();
 
 		this.statusEl = leftActions.createSpan({
-			cls: 'anti-dian-question-status',
+			cls: 'antidian-question-status',
 		});
 
 		const rightActions = footer.createDiv({
-			cls: 'anti-dian-question-footer-right',
+			cls: 'antidian-question-footer-right',
 		});
 		const isMultiQuestion = fields.length > 1;
 		const isLast = this.currentIndex === fields.length - 1;
 
 		if (isMultiQuestion && this.currentIndex > 0) {
 			const backBtn = rightActions.createEl('button', {
-				cls: 'anti-dian-question-btn',
+				cls: 'antidian-question-btn',
 				text: 'Back',
 				attr: { type: 'button' },
 			});
@@ -260,14 +260,14 @@ export class ElicitationCardView {
 
 		if (isMultiQuestion && !isLast) {
 			const nextBtn = rightActions.createEl('button', {
-				cls: 'anti-dian-question-btn mod-cta',
+				cls: 'antidian-question-btn mod-cta',
 				text: 'Next',
 				attr: { type: 'button' },
 			});
 			nextBtn.onclick = () => this.goTo(this.currentIndex + 1);
 		} else {
 			const submitBtn = rightActions.createEl('button', {
-				cls: 'anti-dian-question-btn mod-cta',
+				cls: 'antidian-question-btn mod-cta',
 				text: 'Submit',
 				attr: { type: 'button' },
 			});
@@ -302,14 +302,14 @@ export class ElicitationCardView {
 		const options = field.options ?? [];
 
 		const list = parent.createDiv({
-			cls: 'anti-dian-question-options',
+			cls: 'antidian-question-options',
 			attr: { role: isMulti ? 'group' : 'radiogroup' },
 		});
 
 		options.forEach((opt, idx) => {
 			const isSelected = selectedSet.has(opt.value);
 			const btn = list.createEl('button', {
-				cls: 'anti-dian-question-option',
+				cls: 'antidian-question-option',
 				attr: {
 					type: 'button',
 					role: isMulti ? 'checkbox' : 'radio',
@@ -319,24 +319,24 @@ export class ElicitationCardView {
 			btn.toggleClass('is-selected', isSelected);
 
 			btn.createSpan({
-				cls: 'anti-dian-question-option-num',
+				cls: 'antidian-question-option-num',
 				text: String(idx + 1),
 			});
 
 			const indicator = btn.createSpan({
-				cls: `anti-dian-question-indicator ${isMulti ? 'is-checkbox' : 'is-radio'}`,
+				cls: `antidian-question-indicator ${isMulti ? 'is-checkbox' : 'is-radio'}`,
 			});
 			if (isMulti && isSelected) {
 				setIcon(indicator, 'check');
 			}
 
 			const labelWrap = btn.createSpan({
-				cls: 'anti-dian-question-option-label',
+				cls: 'antidian-question-option-label',
 			});
 			labelWrap.createSpan({ text: opt.label });
 			if (opt.recommended) {
 				labelWrap.createSpan({
-					cls: 'anti-dian-question-recommended',
+					cls: 'antidian-question-recommended',
 					text: 'Recommended',
 				});
 			}
@@ -353,12 +353,12 @@ export class ElicitationCardView {
 				: Boolean(draft.otherSelected);
 
 			const otherWrap = list.createDiv({
-				cls: 'anti-dian-question-other-wrap',
+				cls: 'antidian-question-other-wrap',
 			});
 			otherWrap.toggleClass('is-selected', otherSelected);
 
 			const otherBtn = otherWrap.createEl('button', {
-				cls: 'anti-dian-question-option is-other',
+				cls: 'antidian-question-option is-other',
 				attr: {
 					type: 'button',
 					role: isMulti ? 'checkbox' : 'radio',
@@ -369,24 +369,24 @@ export class ElicitationCardView {
 			this.otherRowEl = otherBtn;
 
 			otherBtn.createSpan({
-				cls: 'anti-dian-question-option-num',
+				cls: 'antidian-question-option-num',
 				text: String(otherIndex),
 			});
 
 			const indicator = otherBtn.createSpan({
-				cls: `anti-dian-question-indicator ${isMulti ? 'is-checkbox' : 'is-radio'}`,
+				cls: `antidian-question-indicator ${isMulti ? 'is-checkbox' : 'is-radio'}`,
 			});
 			if (isMulti && otherSelected) {
 				setIcon(indicator, 'check');
 			}
 
 			otherBtn.createSpan({
-				cls: 'anti-dian-question-option-label',
+				cls: 'antidian-question-option-label',
 				text: field.otherLabel ?? 'Other',
 			});
 
 			const input = otherWrap.createEl('input', {
-				cls: 'anti-dian-question-other-input',
+				cls: 'antidian-question-other-input',
 				attr: {
 					type: 'text',
 					placeholder: 'Type your own answer...',
@@ -396,7 +396,7 @@ export class ElicitationCardView {
 			input.value = draft.otherText ?? '';
 			this.otherInputEl = input;
 			if (!otherSelected && !input.value) {
-				input.addClass('anti-dian-hidden');
+				input.addClass('antidian-hidden');
 			}
 
 			otherBtn.onclick = () => {
@@ -453,7 +453,7 @@ export class ElicitationCardView {
 	): void {
 		const draft = this.getDraft(field.key);
 		const list = parent.createDiv({
-			cls: 'anti-dian-question-options',
+			cls: 'antidian-question-options',
 			attr: { role: 'radiogroup' },
 		});
 
@@ -464,7 +464,7 @@ export class ElicitationCardView {
 		choices.forEach((choice, idx) => {
 			const isSelected = draft.booleanValue === choice.value;
 			const btn = list.createEl('button', {
-				cls: 'anti-dian-question-option',
+				cls: 'antidian-question-option',
 				attr: {
 					type: 'button',
 					role: 'radio',
@@ -473,14 +473,14 @@ export class ElicitationCardView {
 			});
 			btn.toggleClass('is-selected', isSelected);
 			btn.createSpan({
-				cls: 'anti-dian-question-option-num',
+				cls: 'antidian-question-option-num',
 				text: String(idx + 1),
 			});
 			btn.createSpan({
-				cls: 'anti-dian-question-indicator is-radio',
+				cls: 'antidian-question-indicator is-radio',
 			});
 			btn.createSpan({
-				cls: 'anti-dian-question-option-label',
+				cls: 'antidian-question-option-label',
 				text: choice.label,
 			});
 			btn.onclick = () => {
@@ -496,7 +496,7 @@ export class ElicitationCardView {
 	): void {
 		const draft = this.getDraft(field.key);
 		const input = parent.createEl('input', {
-			cls: 'anti-dian-question-text-input',
+			cls: 'antidian-question-text-input',
 			attr: {
 				type: field.kind === 'number' ? 'number' : 'text',
 				placeholder:
@@ -571,7 +571,7 @@ export class ElicitationCardView {
 				tab.empty();
 				if (answered) {
 					const checkEl = tab.createSpan({
-						cls: 'anti-dian-question-tab-check',
+						cls: 'antidian-question-tab-check',
 					});
 					setIcon(checkEl, 'check');
 				}
@@ -614,7 +614,7 @@ export class ElicitationCardView {
 		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
 			const optionBtns = Array.from(
 				this.cardEl?.querySelectorAll<HTMLButtonElement>(
-					'.anti-dian-question-option',
+					'.antidian-question-option',
 				) ?? [],
 			);
 			if (optionBtns.length === 0) return;
@@ -663,7 +663,7 @@ export class ElicitationCardView {
 			// Let focused option/footer buttons handle their own click via Enter
 			if (
 				target instanceof HTMLButtonElement &&
-				target.hasClass('anti-dian-question-btn')
+				target.hasClass('antidian-question-btn')
 			) {
 				return;
 			}

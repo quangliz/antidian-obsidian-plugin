@@ -5,7 +5,7 @@ import type { ModelSelect } from '../../core/models/antigravity-acp';
  * A transparent range input on top handles dragging, clicking and accessibility.
  */
 export class EffortSlider {
-	readonly el = createDiv({ cls: 'anti-dian-effort' });
+	readonly el = createDiv({ cls: 'antidian-effort' });
 	private select: ModelSelect | undefined;
 	private railEl: HTMLElement;
 	private input: HTMLInputElement;
@@ -22,20 +22,20 @@ export class EffortSlider {
 		}
 
 		// Clipped while `el` animates open or shut (see styles.css).
-		const content = this.el.createDiv({ cls: 'anti-dian-effort-content' });
-		content.createDiv({ cls: 'anti-dian-effort-heading', text: 'Effort' });
-		const bar = content.createDiv({ cls: 'anti-dian-effort-bar' });
-		this.railEl = bar.createDiv({ cls: 'anti-dian-effort-rail' });
-		this.railEl.createDiv({ cls: 'anti-dian-effort-track' });
-		this.railEl.createDiv({ cls: 'anti-dian-effort-thumb' });
+		const content = this.el.createDiv({ cls: 'antidian-effort-content' });
+		content.createDiv({ cls: 'antidian-effort-heading', text: 'Effort' });
+		const bar = content.createDiv({ cls: 'antidian-effort-bar' });
+		this.railEl = bar.createDiv({ cls: 'antidian-effort-rail' });
+		this.railEl.createDiv({ cls: 'antidian-effort-track' });
+		this.railEl.createDiv({ cls: 'antidian-effort-thumb' });
 		this.input = bar.createEl('input', {
-			cls: 'anti-dian-effort-input',
+			cls: 'antidian-effort-input',
 			attr: { type: 'range', min: 0, step: 1 },
 		});
 		this.input.addEventListener('input', () => this.render());
 		this.input.addEventListener('change', () => this.commit());
 		// Part of the section, so that it collapses with it.
-		content.createDiv({ cls: 'anti-dian-menu-divider' });
+		content.createDiv({ cls: 'antidian-menu-divider' });
 
 		this.setSelect(select);
 	}
@@ -109,7 +109,7 @@ export class EffortSlider {
 		options.forEach((option, i) => {
 			let stop = this.stops.get(option.value);
 			if (!stop) {
-				stop = this.railEl.createDiv({ cls: 'anti-dian-effort-stop' });
+				stop = this.railEl.createDiv({ cls: 'antidian-effort-stop' });
 				this.stops.set(option.value, stop);
 				if (animate) {
 					stop.animate([{ opacity: 0 }, { opacity: 1 }], {
@@ -119,7 +119,7 @@ export class EffortSlider {
 				}
 			}
 			stop.setText(option.name);
-			stop.setCssProps({ '--anti-dian-effort-pos': `${this.position(i)}` });
+			stop.setCssProps({ '--antidian-effort-pos': `${this.position(i)}` });
 		});
 	}
 
@@ -131,7 +131,7 @@ export class EffortSlider {
 
 	private render(): void {
 		const index = this.input.valueAsNumber;
-		this.railEl.setCssProps({ '--anti-dian-effort-pos': `${this.position(index)}` });
+		this.railEl.setCssProps({ '--antidian-effort-pos': `${this.position(index)}` });
 		this.select?.options.forEach((option, i) => {
 			const stop = this.stops.get(option.value);
 			stop?.toggleClass('is-filled', i <= index);

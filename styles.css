@@ -1,4 +1,4 @@
-.anti-dian-sidebar-container {
+.antidian-sidebar-container {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -14,7 +14,7 @@
 /* Top Navigation Bar                                            */
 /* ------------------------------------------------------------- */
 
-.anti-dian-top-nav {
+.antidian-top-nav {
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -23,19 +23,19 @@
 	flex-shrink: 0;
 }
 
-.anti-dian-nav-left,
-.anti-dian-nav-right {
+.antidian-nav-left,
+.antidian-nav-right {
 	display: flex;
 	align-items: center;
 	gap: 2px;
 	flex-shrink: 0;
 }
 
-.anti-dian-nav-right {
+.antidian-nav-right {
 	margin-left: auto;
 }
 
-.anti-dian-nav-title {
+.antidian-nav-title {
 	min-width: 0;
 	padding-left: 4px;
 	overflow: hidden;
@@ -45,16 +45,16 @@
 	color: var(--text-faint);
 }
 
-.anti-dian-nav-title.is-loading {
-	animation: anti-dian-session-pulse 1.2s ease-in-out infinite;
+.antidian-nav-title.is-loading {
+	animation: antidian-session-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes anti-dian-session-pulse {
+@keyframes antidian-session-pulse {
 	50% { opacity: 0.45; }
 }
 
-.anti-dian-nav-btn,
-button.anti-dian-nav-btn {
+.antidian-nav-btn,
+button.antidian-nav-btn {
 	width: 28px;
 	height: 28px;
 	padding: 0;
@@ -71,13 +71,13 @@ button.anti-dian-nav-btn {
 	--icon-size: 16px;
 }
 
-.anti-dian-nav-btn:hover,
-.anti-dian-nav-btn.is-active {
+.antidian-nav-btn:hover,
+.antidian-nav-btn.is-active {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-nav-btn:focus-visible {
+.antidian-nav-btn:focus-visible {
 	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
 }
 
@@ -85,21 +85,21 @@ button.anti-dian-nav-btn {
 /* Session drawer (slides in from the left)                      */
 /* ------------------------------------------------------------- */
 
-.anti-dian-session-drawer {
+.antidian-session-drawer {
 	position: absolute;
 	inset: 0;
 	z-index: 120;
 	overflow: hidden;
 }
 
-.anti-dian-session-drawer-backdrop {
+.antidian-session-drawer-backdrop {
 	position: absolute;
 	inset: 0;
 	background: rgba(0, 0, 0, 0.35);
-	animation: anti-dian-drawer-fade 160ms ease both;
+	animation: antidian-drawer-fade 160ms ease both;
 }
 
-.anti-dian-session-drawer-panel {
+.antidian-session-drawer-panel {
 	position: absolute;
 	top: 0;
 	bottom: 0;
@@ -117,33 +117,33 @@ button.anti-dian-nav-btn {
 	border-right: 1px solid var(--background-modifier-border);
 	box-shadow: var(--shadow-l);
 	outline: none;
-	animation: anti-dian-drawer-slide 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+	animation: antidian-drawer-slide 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-session-drawer.is-closing {
+.antidian-session-drawer.is-closing {
 	pointer-events: none;
 }
 
-.anti-dian-session-drawer.is-closing .anti-dian-session-drawer-panel {
-	animation: anti-dian-drawer-slide-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.antidian-session-drawer.is-closing .antidian-session-drawer-panel {
+	animation: antidian-drawer-slide-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
-.anti-dian-session-drawer.is-closing .anti-dian-session-drawer-backdrop {
-	animation: anti-dian-drawer-fade-out 180ms ease both;
+.antidian-session-drawer.is-closing .antidian-session-drawer-backdrop {
+	animation: antidian-drawer-fade-out 180ms ease both;
 }
 
-@keyframes anti-dian-drawer-slide-out {
+@keyframes antidian-drawer-slide-out {
 	from { transform: translateX(0); }
 	to { transform: translateX(-100%); }
 }
 
-@keyframes anti-dian-drawer-fade-out {
+@keyframes antidian-drawer-fade-out {
 	from { opacity: 1; }
 	to { opacity: 0; }
 }
 
 /* Drag handle on the drawer's right edge (see setupResize). */
-.anti-dian-session-drawer-resize {
+.antidian-session-drawer-resize {
 	position: absolute;
 	top: 0;
 	right: -4px;
@@ -154,7 +154,7 @@ button.anti-dian-nav-btn {
 	touch-action: none;
 }
 
-.anti-dian-session-drawer-resize::after {
+.antidian-session-drawer-resize::after {
 	content: '';
 	position: absolute;
 	top: 0;
@@ -166,27 +166,27 @@ button.anti-dian-nav-btn {
 	transition: opacity 0.15s ease;
 }
 
-.anti-dian-session-drawer-resize:hover::after,
-.anti-dian-session-drawer.is-resizing .anti-dian-session-drawer-resize::after {
+.antidian-session-drawer-resize:hover::after,
+.antidian-session-drawer.is-resizing .antidian-session-drawer-resize::after {
 	opacity: 1;
 }
 
-.anti-dian-session-drawer.is-resizing {
+.antidian-session-drawer.is-resizing {
 	cursor: col-resize;
 	user-select: none;
 }
 
-@keyframes anti-dian-drawer-slide {
+@keyframes antidian-drawer-slide {
 	from { transform: translateX(-100%); }
 	to { transform: translateX(0); }
 }
 
-@keyframes anti-dian-drawer-fade {
+@keyframes antidian-drawer-fade {
 	from { opacity: 0; }
 	to { opacity: 1; }
 }
 
-button.anti-dian-session-drawer-close {
+button.antidian-session-drawer-close {
 	align-self: flex-start;
 	width: 28px;
 	height: 28px;
@@ -204,12 +204,12 @@ button.anti-dian-session-drawer-close {
 	--icon-size: 16px;
 }
 
-button.anti-dian-session-drawer-close:hover {
+button.antidian-session-drawer-close:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-session-new {
+.antidian-session-new {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -226,18 +226,18 @@ button.anti-dian-session-drawer-close:hover {
 	transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.anti-dian-session-new.is-highlighted {
+.antidian-session-new.is-highlighted {
 	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
 
-.anti-dian-session-new-icon {
+.antidian-session-new-icon {
 	display: flex;
 	color: var(--text-muted);
 	--icon-size: 14px;
 }
 
-.anti-dian-session-search {
+.antidian-session-search {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -248,17 +248,17 @@ button.anti-dian-session-drawer-close:hover {
 	border: 1px solid var(--background-modifier-border);
 }
 
-.anti-dian-session-search:focus-within {
+.antidian-session-search:focus-within {
 	border-color: var(--background-modifier-border-focus);
 }
 
-.anti-dian-session-search-icon {
+.antidian-session-search-icon {
 	display: flex;
 	color: var(--text-faint);
 	--icon-size: 14px;
 }
 
-.anti-dian-session-search-input.anti-dian-session-search-input {
+.antidian-session-search-input.antidian-session-search-input {
 	flex: 1;
 	min-width: 0;
 	height: 28px;
@@ -270,14 +270,14 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 /* Beat Obsidian's `input[type='text']:focus` ring; the wrapper shows focus instead. */
-.anti-dian-session-search input.anti-dian-session-search-input:is(:focus, :focus-visible, :hover, :active) {
+.antidian-session-search input.antidian-session-search-input:is(:focus, :focus-visible, :hover, :active) {
 	border: none;
 	outline: none;
 	box-shadow: none;
 	background: transparent;
 }
 
-.anti-dian-session-section-label {
+.antidian-session-section-label {
 	margin-top: 18px;
 	padding: 4px 8px;
 	font-size: var(--font-ui-smaller);
@@ -285,7 +285,7 @@ button.anti-dian-session-drawer-close:hover {
 	user-select: none;
 }
 
-.anti-dian-session-list {
+.antidian-session-list {
 	flex: 1;
 	min-height: 0;
 	display: flex;
@@ -295,11 +295,11 @@ button.anti-dian-session-drawer-close:hover {
 	transition: opacity 120ms ease;
 }
 
-.anti-dian-session-list.is-refreshing {
+.antidian-session-list.is-refreshing {
 	opacity: 0.75;
 }
 
-.anti-dian-session-folder {
+.antidian-session-folder {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -309,20 +309,20 @@ button.anti-dian-session-drawer-close:hover {
 	user-select: none;
 }
 
-.anti-dian-session-folder-icon {
+.antidian-session-folder-icon {
 	display: flex;
 	flex-shrink: 0;
 	--icon-size: 14px;
 }
 
-.anti-dian-session-folder-name {
+.antidian-session-folder-name {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.anti-dian-session-item {
+.antidian-session-item {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -338,11 +338,11 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 
-.anti-dian-session-item.is-current {
+.antidian-session-item.is-current {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-session-item-title {
+.antidian-session-item-title {
 	flex: 1;
 	min-width: 0;
 	overflow: hidden;
@@ -350,40 +350,40 @@ button.anti-dian-session-drawer-close:hover {
 	white-space: nowrap;
 }
 
-.anti-dian-session-match {
+.antidian-session-match {
 	color: var(--text-accent);
 	font-weight: var(--font-semibold);
 }
 
-.anti-dian-session-item-time {
+.antidian-session-item-time {
 	flex-shrink: 0;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 }
 
-.anti-dian-session-see-all,
-.anti-dian-session-status {
+.antidian-session-see-all,
+.antidian-session-status {
 	padding: 6px 8px 6px 30px;
 	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 }
 
-.anti-dian-session-see-all {
+.antidian-session-see-all {
 	border-radius: 6px;
 	cursor: pointer;
 }
 
-.anti-dian-session-see-all:hover {
+.antidian-session-see-all:hover {
 	color: var(--text-muted);
 }
 
-.anti-dian-session-status.is-loading,
-.anti-dian-session-loading {
-	animation: anti-dian-session-pulse 1.2s ease-in-out infinite;
+.antidian-session-status.is-loading,
+.antidian-session-loading {
+	animation: antidian-session-pulse 1.2s ease-in-out infinite;
 }
 
-.anti-dian-session-loading {
+.antidian-session-loading {
 	padding: 12px 4px;
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
@@ -393,11 +393,11 @@ button.anti-dian-session-drawer-close:hover {
 /* Centered vs Docked Layout Modes                               */
 /* ------------------------------------------------------------- */
 
-.anti-dian-sidebar-container.is-empty-session .anti-dian-messages {
+.antidian-sidebar-container.is-empty-session .antidian-messages {
 	display: none;
 }
 
-.anti-dian-sidebar-container.is-empty-session .anti-dian-center-card-container {
+.antidian-sidebar-container.is-empty-session .antidian-center-card-container {
 	container-type: inline-size;
 	flex: 1;
 	display: flex;
@@ -407,34 +407,34 @@ button.anti-dian-session-drawer-close:hover {
 	width: 100%;
 }
 
-.anti-dian-empty-hero {
+.antidian-empty-hero {
 	display: none;
 }
 
-.anti-dian-sidebar-container.is-empty-session .anti-dian-empty-hero {
+.antidian-sidebar-container.is-empty-session .antidian-empty-hero {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	gap: 18px;
 	margin-bottom: 28px;
 	user-select: none;
-	animation: anti-dian-hero-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+	animation: antidian-hero-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-empty-logo {
+.antidian-empty-logo {
 	width: 112px;
 	height: auto;
 	pointer-events: none;
 }
 
-.anti-dian-empty-title {
+.antidian-empty-title {
 	font-size: 22px;
 	font-weight: var(--font-normal);
 	color: var(--text-muted);
 	text-align: center;
 }
 
-.anti-dian-sign-in {
+.antidian-sign-in {
 	display: none;
 	flex-direction: column;
 	align-items: center;
@@ -443,17 +443,17 @@ button.anti-dian-session-drawer-close:hover {
 	text-align: center;
 }
 
-.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-sign-in {
+.antidian-sidebar-container.is-empty-session.needs-sign-in .antidian-sign-in {
 	display: flex;
 }
 
-.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-promptbar-anchor,
-.anti-dian-sidebar-container.is-empty-session.needs-sign-in .anti-dian-empty-hero > .anti-dian-empty-title {
+.antidian-sidebar-container.is-empty-session.needs-sign-in .antidian-promptbar-anchor,
+.antidian-sidebar-container.is-empty-session.needs-sign-in .antidian-empty-hero > .antidian-empty-title {
 	display: none;
 }
 
-.anti-dian-sign-in-desc,
-.anti-dian-sign-in-error {
+.antidian-sign-in-desc,
+.antidian-sign-in-error {
 	font-size: var(--font-ui-small);
 	line-height: var(--line-height-tight);
 	color: var(--text-muted);
@@ -461,35 +461,35 @@ button.anti-dian-session-drawer-close:hover {
 	user-select: text;
 }
 
-.anti-dian-sign-in-error {
+.antidian-sign-in-error {
 	color: var(--text-error);
 }
 
-.anti-dian-sign-in button {
+.antidian-sign-in button {
 	cursor: pointer;
 }
 
-.anti-dian-sign-in button.anti-dian-sign-in-secondary {
+.antidian-sign-in button.antidian-sign-in-secondary {
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-muted);
 }
 
-.anti-dian-sign-in button.anti-dian-sign-in-secondary:hover {
+.antidian-sign-in button.antidian-sign-in-secondary:hover {
 	color: var(--text-normal);
 }
 
 @container (max-width: 300px) {
-	.anti-dian-empty-logo {
+	.antidian-empty-logo {
 		width: 72px;
 	}
 
-	.anti-dian-empty-title {
+	.antidian-empty-title {
 		font-size: 18px;
 	}
 }
 
-@keyframes anti-dian-hero-in {
+@keyframes antidian-hero-in {
 	from {
 		opacity: 0;
 		transform: translateY(8px);
@@ -500,7 +500,7 @@ button.anti-dian-session-drawer-close:hover {
 	}
 }
 
-.anti-dian-sidebar-container.has-chat .anti-dian-messages {
+.antidian-sidebar-container.has-chat .antidian-messages {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
@@ -517,7 +517,7 @@ button.anti-dian-session-drawer-close:hover {
 	padding-inline: 6px;
 }
 
-.anti-dian-sidebar-container.has-chat .anti-dian-center-card-container {
+.antidian-sidebar-container.has-chat .antidian-center-card-container {
 	flex-shrink: 0;
 	width: 100%;
 }
@@ -526,14 +526,14 @@ button.anti-dian-session-drawer-close:hover {
 /* PromptBar Composer (Modern Input UI)                          */
 /* ------------------------------------------------------------- */
 
-.anti-dian-promptbar-anchor {
+.antidian-promptbar-anchor {
 	position: relative;
 	width: 100%;
 }
 
-.anti-dian-promptbar-shell {
+.antidian-promptbar-shell {
 	container-type: inline-size;
-	container-name: anti-dian-promptbar;
+	container-name: antidian-promptbar;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
@@ -546,11 +546,11 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 /* Drag & drop target (files from the OS or Obsidian's file explorer). */
-.anti-dian-promptbar-shell {
+.antidian-promptbar-shell {
 	position: relative;
 }
 
-.anti-dian-promptbar-shell::after {
+.antidian-promptbar-shell::after {
 	content: 'Drop to attach';
 	position: absolute;
 	inset: 0;
@@ -569,15 +569,15 @@ button.anti-dian-session-drawer-close:hover {
 	transition: opacity 0.15s ease;
 }
 
-.anti-dian-promptbar-shell.is-drag-over::after {
+.antidian-promptbar-shell.is-drag-over::after {
 	opacity: 1;
 }
 
-.anti-dian-promptbar-shell:focus-within {
+.antidian-promptbar-shell:focus-within {
 	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
-.anti-dian-promptbar-context-bar {
+.antidian-promptbar-context-bar {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -586,7 +586,7 @@ button.anti-dian-session-drawer-close:hover {
 	box-sizing: border-box;
 }
 
-.anti-dian-promptbar-card {
+.antidian-promptbar-card {
 	position: relative;
 	isolation: isolate;
 	display: flex;
@@ -601,11 +601,11 @@ button.anti-dian-session-drawer-close:hover {
 	overflow: hidden;
 }
 
-.anti-dian-promptbar-card.is-expanded {
+.antidian-promptbar-card.is-expanded {
 	padding-bottom: 8px;
 }
 
-.anti-dian-promptbar-canvas {
+.antidian-promptbar-canvas {
 	position: absolute;
 	inset: 0;
 	width: 100%;
@@ -615,7 +615,7 @@ button.anti-dian-session-drawer-close:hover {
 	z-index: -1;
 }
 
-.anti-dian-promptbar-measure {
+.antidian-promptbar-measure {
 	position: absolute;
 	visibility: hidden;
 	pointer-events: none;
@@ -625,7 +625,7 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 /* Media Tray inside PromptBar */
-.anti-dian-promptbar-media-tray {
+.antidian-promptbar-media-tray {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
@@ -634,23 +634,23 @@ button.anti-dian-session-drawer-close:hover {
 }
 
 /* While the tray animates open/shut (see animateTrayOpen / collapseMediaTray). */
-.anti-dian-promptbar-media-tray.is-resizing {
+.antidian-promptbar-media-tray.is-resizing {
 	overflow: hidden;
 }
 
-.anti-dian-promptbar-media-tray.is-collapsing {
+.antidian-promptbar-media-tray.is-collapsing {
 	overflow: hidden;
 	pointer-events: none;
 }
 
 /* Image / video attachment: preview tile with a round remove button on its corner. */
-.anti-dian-promptbar-media-tray.has-tiles {
+.antidian-promptbar-media-tray.has-tiles {
 	gap: 12px;
 	/* Room for the remove button, which overhangs the tile's top-right corner. */
 	padding: 10px 10px 4px 0;
 }
 
-.anti-dian-promptbar-media-tile {
+.antidian-promptbar-media-tile {
 	position: relative;
 	width: 104px;
 	height: 104px;
@@ -664,16 +664,16 @@ button.anti-dian-session-drawer-close:hover {
 	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-promptbar-media-tile:hover {
+.antidian-promptbar-media-tile:hover {
 	border-color: var(--text-faint);
 }
 
-.anti-dian-promptbar-media-tile:focus-visible {
+.antidian-promptbar-media-tile:focus-visible {
 	outline: none;
 	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
 }
 
-.anti-dian-promptbar-media-preview {
+.antidian-promptbar-media-preview {
 	display: block;
 	width: 100%;
 	height: 100%;
@@ -684,7 +684,7 @@ button.anti-dian-session-drawer-close:hover {
 	pointer-events: none;
 }
 
-.anti-dian-promptbar-media-badge {
+.antidian-promptbar-media-badge {
 	position: absolute;
 	left: 50%;
 	top: 50%;
@@ -701,8 +701,8 @@ button.anti-dian-session-drawer-close:hover {
 	--icon-size: 14px;
 }
 
-.anti-dian-promptbar-media-tile-remove,
-button.anti-dian-promptbar-media-tile-remove {
+.antidian-promptbar-media-tile-remove,
+button.antidian-promptbar-media-tile-remove {
 	position: absolute;
 	top: -9px;
 	right: -9px;
@@ -727,14 +727,14 @@ button.anti-dian-promptbar-media-tile-remove {
 	--icon-size: 14px;
 }
 
-.anti-dian-promptbar-media-tile:is(:hover, :focus-within) .anti-dian-promptbar-media-tile-remove {
+.antidian-promptbar-media-tile:is(:hover, :focus-within) .antidian-promptbar-media-tile-remove {
 	opacity: 1;
 	transform: scale(1);
 	pointer-events: auto;
 }
 
 @media (hover: none) {
-	.anti-dian-promptbar-media-tile .anti-dian-promptbar-media-tile-remove {
+	.antidian-promptbar-media-tile .antidian-promptbar-media-tile-remove {
 		opacity: 1;
 		transform: none;
 		pointer-events: auto;
@@ -742,7 +742,7 @@ button.anti-dian-promptbar-media-tile-remove {
 }
 
 /* Attachment lightbox (MediaPreviewModal). */
-.modal.anti-dian-media-preview-modal {
+.modal.antidian-media-preview-modal {
 	width: auto;
 	max-width: min(92vw, 1400px);
 	max-height: 90vh;
@@ -753,20 +753,20 @@ button.anti-dian-promptbar-media-tile-remove {
 	overflow: visible;
 }
 
-.modal.anti-dian-media-preview-modal .modal-close-button {
+.modal.antidian-media-preview-modal .modal-close-button {
 	top: -36px;
 	right: 0;
 	color: #fff;
 }
 
-.modal.anti-dian-media-preview-modal .modal-content {
+.modal.antidian-media-preview-modal .modal-content {
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	padding: 0;
 }
 
-.anti-dian-media-preview-full {
+.antidian-media-preview-full {
 	display: block;
 	max-width: min(92vw, 1400px);
 	max-height: 86vh;
@@ -776,18 +776,18 @@ button.anti-dian-promptbar-media-tile-remove {
 	cursor: zoom-out;
 }
 
-video.anti-dian-media-preview-full {
+video.antidian-media-preview-full {
 	cursor: auto;
 	background: #000;
 }
 
-.anti-dian-promptbar-media-tile-remove:hover,
-button.anti-dian-promptbar-media-tile-remove:hover {
+.antidian-promptbar-media-tile-remove:hover,
+button.antidian-promptbar-media-tile-remove:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-media-chip {
+.antidian-promptbar-media-chip {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -801,20 +801,20 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-promptbar-chip-thumb {
+.antidian-promptbar-chip-thumb {
 	width: 20px;
 	height: 20px;
 	object-fit: cover;
 	border-radius: 3px;
 }
 
-.anti-dian-promptbar-chip-icon {
+.antidian-promptbar-chip-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-chip-name {
+.antidian-promptbar-chip-name {
 	max-width: 120px;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -822,7 +822,7 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	font-size: calc(var(--font-ui-smaller) * 0.95);
 }
 
-.anti-dian-promptbar-chip-remove {
+.antidian-promptbar-chip-remove {
 	background: transparent;
 	border: none;
 	color: var(--text-muted);
@@ -837,17 +837,17 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	transition: all 0.1s ease;
 }
 
-.anti-dian-promptbar-chip-remove:hover {
+.antidian-promptbar-chip-remove:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
 /* Textarea in PromptBar */
-.anti-dian-promptbar-textarea,
-.anti-dian-promptbar-textarea:focus,
-.anti-dian-promptbar-textarea:hover,
-.anti-dian-promptbar-textarea:active,
-.anti-dian-promptbar-textarea:focus-visible {
+.antidian-promptbar-textarea,
+.antidian-promptbar-textarea:focus,
+.antidian-promptbar-textarea:hover,
+.antidian-promptbar-textarea:active,
+.antidian-promptbar-textarea:focus-visible {
 	width: 100%;
 	resize: none;
 	font-size: var(--font-ui-small);
@@ -863,7 +863,7 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 }
 
 /* Outranks Obsidian's own textarea states (textarea:hover, :focus, ...). */
-.anti-dian-promptbar-input-wrap textarea.anti-dian-promptbar-textarea {
+.antidian-promptbar-input-wrap textarea.antidian-promptbar-textarea {
 	border: none;
 	border-radius: 0;
 	background: transparent;
@@ -871,11 +871,11 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	outline: none;
 }
 
-.anti-dian-promptbar-textarea.is-scrollable {
+.antidian-promptbar-textarea.is-scrollable {
 	overflow-y: auto;
 }
 
-.anti-dian-promptbar-textarea::placeholder {
+.antidian-promptbar-textarea::placeholder {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	white-space: nowrap;
@@ -884,7 +884,7 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 }
 
 /* Empty input: keep the placeholder on one line and truncate it with an ellipsis. */
-.anti-dian-promptbar-textarea:placeholder-shown {
+.antidian-promptbar-textarea:placeholder-shown {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -892,18 +892,18 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 
 /* Chip mirror: sits behind the transparent textarea with identical text metrics,
    painting backgrounds for autocompleted @mentions and /commands only. */
-.anti-dian-promptbar-input-wrap {
+.antidian-promptbar-input-wrap {
 	position: relative;
 	width: 100%;
 }
 
-.anti-dian-promptbar-input-wrap .anti-dian-promptbar-textarea {
+.antidian-promptbar-input-wrap .antidian-promptbar-textarea {
 	position: relative;
 	z-index: 1;
 	display: block;
 }
 
-.anti-dian-promptbar-highlight {
+.antidian-promptbar-highlight {
 	position: absolute;
 	inset: 0;
 	z-index: 0;
@@ -921,34 +921,34 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	user-select: none;
 }
 
-.anti-dian-promptbar-highlight.is-scrollable {
+.antidian-promptbar-highlight.is-scrollable {
 	overflow-y: scroll;
 	scrollbar-color: transparent transparent;
 }
 
-.anti-dian-promptbar-highlight.is-scrollable::-webkit-scrollbar-thumb {
+.antidian-promptbar-highlight.is-scrollable::-webkit-scrollbar-thumb {
 	background: transparent;
 }
 
 /* Background + spread shadow give the chip padding without changing text layout. */
-.anti-dian-prompt-chip {
+.antidian-prompt-chip {
 	border-radius: 4px;
 	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 }
 
-.anti-dian-prompt-chip.is-command {
+.antidian-prompt-chip.is-command {
 	background: rgba(var(--color-green-rgb), 0.18);
 	box-shadow: 0 0 0 2px rgba(var(--color-green-rgb), 0.18);
 }
 
-.anti-dian-prompt-chip.is-source {
+.antidian-prompt-chip.is-source {
 	background: rgba(var(--color-blue-rgb), 0.18);
 	box-shadow: 0 0 0 2px rgba(var(--color-blue-rgb), 0.18);
 }
 
 /* Bottom Controls */
-.anti-dian-promptbar-controls {
+.antidian-promptbar-controls {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -956,7 +956,7 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	width: 100%;
 }
 
-.anti-dian-promptbar-controls-left {
+.antidian-promptbar-controls-left {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -964,7 +964,7 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 	flex: 1;
 }
 
-.anti-dian-promptbar-controls-right {
+.antidian-promptbar-controls-right {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -972,8 +972,8 @@ button.anti-dian-promptbar-media-tile-remove:hover {
 }
 
 /* Plus button (flat, borderless like Antigravity) */
-.anti-dian-promptbar-btn-plus,
-button.anti-dian-promptbar-btn-plus {
+.antidian-promptbar-btn-plus,
+button.antidian-promptbar-btn-plus {
 	width: 28px;
 	height: 28px;
 	border-radius: 8px;
@@ -988,36 +988,36 @@ button.anti-dian-promptbar-btn-plus {
 }
 
 /* Outranks Obsidian's button:not(.clickable-icon) and button:hover. */
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-plus {
+.antidian-promptbar-controls button.antidian-promptbar-btn-plus {
 	border: none;
 	background: transparent;
 	box-shadow: none;
 }
 
-.anti-dian-promptbar-btn-plus:hover,
-button.anti-dian-promptbar-btn-plus:hover,
-.anti-dian-promptbar-btn-plus[aria-expanded="true"],
-button.anti-dian-promptbar-btn-plus[aria-expanded="true"] {
+.antidian-promptbar-btn-plus:hover,
+button.antidian-promptbar-btn-plus:hover,
+.antidian-promptbar-btn-plus[aria-expanded="true"],
+button.antidian-promptbar-btn-plus[aria-expanded="true"] {
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-plus:hover,
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-plus[aria-expanded="true"] {
+.antidian-promptbar-controls button.antidian-promptbar-btn-plus:hover,
+.antidian-promptbar-controls button.antidian-promptbar-btn-plus[aria-expanded="true"] {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-promptbar-btn-plus:active,
-button.anti-dian-promptbar-btn-plus:active {
+.antidian-promptbar-btn-plus:active,
+button.antidian-promptbar-btn-plus:active {
 	transform: scale(0.94);
 }
 
-.anti-dian-promptbar-btn-plus svg {
+.antidian-promptbar-btn-plus svg {
 	width: 16px;
 	height: 16px;
 }
 
 /* Model & Permission pills */
-.anti-dian-promptbar-model-pill {
+.antidian-promptbar-model-pill {
 	display: flex;
 	align-items: center;
 	gap: 5px;
@@ -1034,16 +1034,16 @@ button.anti-dian-promptbar-btn-plus:active {
 }
 
 /* The model pill gives up width first: its label truncates with an ellipsis. */
-.anti-dian-promptbar-controls-left .anti-dian-promptbar-model-pill {
+.antidian-promptbar-controls-left .antidian-promptbar-model-pill {
 	flex-shrink: 1;
 }
 
-.anti-dian-promptbar-model-pill:hover {
+.antidian-promptbar-model-pill:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-model-name {
+.antidian-promptbar-model-name {
 	display: block;
 	min-width: 0;
 	font-size: calc(var(--font-ui-smaller) * 0.98);
@@ -1054,7 +1054,7 @@ button.anti-dian-promptbar-btn-plus:active {
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-model-effort {
+.antidian-promptbar-model-effort {
 	margin-left: 4px;
 }
 
@@ -1063,79 +1063,79 @@ button.anti-dian-promptbar-btn-plus:active {
  * trim the box to cap height. Padding + equal negative margin keep the trimmed
  * box centered while giving ascenders/descenders room inside overflow: hidden.
  */
-.anti-dian-promptbar-model-name {
+.antidian-promptbar-model-name {
 	text-box: trim-both cap alphabetic;
 	padding-block: 0.3em;
 	margin-block: -0.3em;
 }
 
-.anti-dian-promptbar-model-base {
+.antidian-promptbar-model-base {
 	color: var(--text-normal);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-promptbar-model-effort {
+.antidian-promptbar-model-effort {
 	color: var(--text-muted);
 	font-weight: var(--font-normal);
 }
 
-.anti-dian-promptbar-permission-pill .anti-dian-promptbar-model-name {
+.antidian-promptbar-permission-pill .antidian-promptbar-model-name {
 	color: var(--text-muted);
 	font-weight: var(--font-normal);
 }
 
-.anti-dian-promptbar-permission-pill:hover .anti-dian-promptbar-model-name {
+.antidian-promptbar-permission-pill:hover .antidian-promptbar-model-name {
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-perm-icon {
+.antidian-promptbar-perm-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-perm-icon svg {
+.antidian-promptbar-perm-icon svg {
 	width: 13px;
 	height: 13px;
 }
 
-.anti-dian-promptbar-chevron {
+.antidian-promptbar-chevron {
 	display: flex;
 	align-items: center;
 	flex-shrink: 0;
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-perm-icon {
+.antidian-promptbar-perm-icon {
 	flex-shrink: 0;
 }
 
 /* Narrow sidebar: the permission pill collapses to its icon. */
-@container anti-dian-promptbar (max-width: 340px) {
-	.anti-dian-promptbar-permission-pill .anti-dian-promptbar-model-name {
+@container antidian-promptbar (max-width: 340px) {
+	.antidian-promptbar-permission-pill .antidian-promptbar-model-name {
 		display: none;
 	}
 
-	.anti-dian-promptbar-permission-pill {
+	.antidian-promptbar-permission-pill {
 		padding: 0 6px;
 		gap: 3px;
 	}
 }
 
 /* Very narrow: drop the chevrons too. */
-@container anti-dian-promptbar (max-width: 240px) {
-	.anti-dian-promptbar-permission-pill .anti-dian-promptbar-chevron {
+@container antidian-promptbar (max-width: 240px) {
+	.antidian-promptbar-permission-pill .antidian-promptbar-chevron {
 		display: none;
 	}
 }
 
-.anti-dian-promptbar-chevron svg {
+.antidian-promptbar-chevron svg {
 	width: 13px;
 	height: 13px;
 }
 
 /* Active note pill (compact context bar item) */
-.anti-dian-promptbar-note-pill {
+.antidian-promptbar-note-pill {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
@@ -1151,50 +1151,50 @@ button.anti-dian-promptbar-btn-plus:active {
 	transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
-.anti-dian-promptbar-note-pill:hover {
+.antidian-promptbar-note-pill:hover {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-promptbar-note-pill.is-active .anti-dian-promptbar-note-icon {
+.antidian-promptbar-note-pill.is-active .antidian-promptbar-note-icon {
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-note-pill.is-active .anti-dian-promptbar-note-label {
+.antidian-promptbar-note-pill.is-active .antidian-promptbar-note-label {
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-note-pill.is-active:hover .anti-dian-promptbar-note-icon,
-.anti-dian-promptbar-note-pill.is-active:hover .anti-dian-promptbar-note-label {
+.antidian-promptbar-note-pill.is-active:hover .antidian-promptbar-note-icon,
+.antidian-promptbar-note-pill.is-active:hover .antidian-promptbar-note-label {
 	color: var(--text-normal);
 }
 
-.anti-dian-promptbar-note-pill.is-inactive {
+.antidian-promptbar-note-pill.is-inactive {
 	opacity: 0.45;
 }
 
-.anti-dian-promptbar-note-pill.is-inactive .anti-dian-promptbar-note-label {
+.antidian-promptbar-note-pill.is-inactive .antidian-promptbar-note-label {
 	text-decoration: line-through;
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-note-pill.is-empty {
+.antidian-promptbar-note-pill.is-empty {
 	opacity: 0.4;
 	cursor: default;
 }
 
-.anti-dian-promptbar-note-icon {
+.antidian-promptbar-note-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 	flex-shrink: 0;
 }
 
-.anti-dian-promptbar-note-icon svg {
+.antidian-promptbar-note-icon svg {
 	width: 12px;
 	height: 12px;
 }
 
-.anti-dian-promptbar-note-label {
+.antidian-promptbar-note-label {
 	font-size: calc(var(--font-ui-smaller) * 0.92);
 	font-weight: var(--font-normal);
 	color: var(--text-muted);
@@ -1204,8 +1204,8 @@ button.anti-dian-promptbar-btn-plus:active {
 }
 
 /* Circular Send button (Antigravity style) */
-.anti-dian-promptbar-btn-send,
-button.anti-dian-promptbar-btn-send {
+.antidian-promptbar-btn-send,
+button.antidian-promptbar-btn-send {
 	width: 28px;
 	height: 28px;
 	border-radius: 50%;
@@ -1220,63 +1220,63 @@ button.anti-dian-promptbar-btn-send {
 	transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease, transform 0.1s ease;
 }
 
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-send {
+.antidian-promptbar-controls button.antidian-promptbar-btn-send {
 	border: none;
 	box-shadow: none;
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-promptbar-btn-send svg {
+.antidian-promptbar-btn-send svg {
 	width: 15px;
 	height: 15px;
 }
 
-.anti-dian-promptbar-btn-send.is-active,
-button.anti-dian-promptbar-btn-send.is-active,
-.anti-dian-promptbar-btn-send:enabled,
-button.anti-dian-promptbar-btn-send:enabled {
+.antidian-promptbar-btn-send.is-active,
+button.antidian-promptbar-btn-send.is-active,
+.antidian-promptbar-btn-send:enabled,
+button.antidian-promptbar-btn-send:enabled {
 	cursor: pointer;
 	opacity: 1;
 }
 
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-send.is-active,
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-send:enabled {
+.antidian-promptbar-controls button.antidian-promptbar-btn-send.is-active,
+.antidian-promptbar-controls button.antidian-promptbar-btn-send:enabled {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 }
 
-.anti-dian-promptbar-btn-send:enabled:hover,
-button.anti-dian-promptbar-btn-send:enabled:hover {
+.antidian-promptbar-btn-send:enabled:hover,
+button.antidian-promptbar-btn-send:enabled:hover {
 	opacity: 0.9;
 }
 
-.anti-dian-promptbar-btn-send:enabled:active,
-button.anti-dian-promptbar-btn-send:enabled:active {
+.antidian-promptbar-btn-send:enabled:active,
+button.antidian-promptbar-btn-send:enabled:active {
 	transform: scale(0.94);
 }
 
-.anti-dian-promptbar-btn-send.is-stop,
-button.anti-dian-promptbar-btn-send.is-stop {
+.antidian-promptbar-btn-send.is-stop,
+button.antidian-promptbar-btn-send.is-stop {
 	cursor: pointer;
 	opacity: 1;
 }
 
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-send.is-stop {
+.antidian-promptbar-controls button.antidian-promptbar-btn-send.is-stop {
 	background: var(--text-normal);
 	color: var(--background-primary);
 }
 
-.anti-dian-promptbar-btn-send.is-stop:hover,
-button.anti-dian-promptbar-btn-send.is-stop:hover {
+.antidian-promptbar-btn-send.is-stop:hover,
+button.antidian-promptbar-btn-send.is-stop:hover {
 	opacity: 1;
 }
 
-.anti-dian-promptbar-controls button.anti-dian-promptbar-btn-send.is-stop:hover {
+.antidian-promptbar-controls button.antidian-promptbar-btn-send.is-stop:hover {
 	background: var(--color-red);
 	color: var(--text-on-accent);
 }
 
-.anti-dian-promptbar-btn-send.is-stop svg {
+.antidian-promptbar-btn-send.is-stop svg {
 	width: 11px;
 	height: 11px;
 	fill: currentColor;
@@ -1286,7 +1286,7 @@ button.anti-dian-promptbar-btn-send.is-stop:hover {
 /* Add Context Compact Popover (+ button, Antigravity style)     */
 /* ------------------------------------------------------------- */
 
-.anti-dian-context-menu {
+.antidian-context-menu {
 	position: absolute;
 	left: 0;
 	bottom: 100%;
@@ -1306,7 +1306,7 @@ button.anti-dian-promptbar-btn-send.is-stop:hover {
 	gap: 2px;
 }
 
-.anti-dian-context-menu-header {
+.antidian-context-menu-header {
 	padding: 4px 10px 6px 10px;
 	font-size: 12px;
 	font-weight: var(--font-medium);
@@ -1314,14 +1314,14 @@ button.anti-dian-promptbar-btn-send.is-stop:hover {
 	user-select: none;
 }
 
-.anti-dian-context-menu-list {
+.antidian-context-menu-list {
 	display: flex;
 	flex-direction: column;
 	gap: 1px;
 }
 
-.anti-dian-context-menu-row,
-button.anti-dian-context-menu-row {
+.antidian-context-menu-row,
+button.antidian-context-menu-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -1338,20 +1338,20 @@ button.anti-dian-context-menu-row {
 	transition: background-color 0.12s ease;
 }
 
-.anti-dian-context-menu-list button.anti-dian-context-menu-row {
+.antidian-context-menu-list button.antidian-context-menu-row {
 	border: none;
 	background: transparent;
 	box-shadow: none;
 }
 
 
-.anti-dian-context-menu-row:disabled,
-button.anti-dian-context-menu-row:disabled {
+.antidian-context-menu-row:disabled,
+button.antidian-context-menu-row:disabled {
 	opacity: 0.45;
 	cursor: default;
 }
 
-.anti-dian-context-menu-icon {
+.antidian-context-menu-icon {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1361,19 +1361,19 @@ button.anti-dian-context-menu-row:disabled {
 	flex-shrink: 0;
 }
 
-.anti-dian-context-menu-icon svg {
+.antidian-context-menu-icon svg {
 	width: 15px;
 	height: 15px;
 }
 
-.anti-dian-context-menu-label {
+.antidian-context-menu-label {
 	flex: 1;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.anti-dian-context-menu-badge {
+.antidian-context-menu-badge {
 	font-size: 11.5px;
 	font-weight: var(--font-medium);
 	color: var(--text-muted);
@@ -1381,7 +1381,7 @@ button.anti-dian-context-menu-row:disabled {
 	flex-shrink: 0;
 }
 
-.anti-dian-context-menu-badge.is-on {
+.antidian-context-menu-badge.is-on {
 	color: var(--text-accent);
 }
 
@@ -1389,7 +1389,7 @@ button.anti-dian-context-menu-row:disabled {
 /* Autocomplete Floating Menu (@ and /)                         */
 /* ------------------------------------------------------------- */
 
-.anti-dian-promptbar-autocomplete {
+.antidian-promptbar-autocomplete {
 	position: absolute;
 	left: 0;
 	right: 0;
@@ -1409,7 +1409,7 @@ button.anti-dian-context-menu-row:disabled {
 	overflow-y: auto;
 }
 
-.anti-dian-promptbar-glider {
+.antidian-promptbar-glider {
 	position: absolute;
 	left: 0;
 	right: 0;
@@ -1421,11 +1421,11 @@ button.anti-dian-context-menu-row:disabled {
 }
 
 /* Shared sliding highlight for every menu (see menu-glider.ts). */
-.anti-dian-glide-host:not(.menu) {
+.antidian-glide-host:not(.menu) {
 	position: relative;
 }
 
-.anti-dian-glider {
+.antidian-glider {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -1442,41 +1442,41 @@ button.anti-dian-context-menu-row:disabled {
 		opacity 150ms ease;
 }
 
-.anti-dian-glider.is-visible {
+.antidian-glider.is-visible {
 	opacity: 1;
 }
 
-.anti-dian-glider.is-instant {
+.antidian-glider.is-instant {
 	transition: opacity 150ms ease;
 }
 
-.anti-dian-glide-host > :not(.anti-dian-glider),
-.anti-dian-glide-menu .menu-item {
+.antidian-glide-host > :not(.antidian-glider),
+.antidian-glide-menu .menu-item {
 	position: relative;
 	z-index: 1;
 }
 
 /* Native menus: the glider replaces Obsidian's per-item highlight. */
-body .menu.anti-dian-glide-menu .menu-item.selected,
-body .menu.anti-dian-glide-menu .menu-item:hover {
+body .menu.antidian-glide-menu .menu-item.selected,
+body .menu.antidian-glide-menu .menu-item:hover {
 	background-color: transparent;
 }
 
 /* Label rows ("Model", "Permission") are headings, not choices. */
-body .menu.anti-dian-glide-menu .menu-item.is-label {
+body .menu.antidian-glide-menu .menu-item.is-label {
 	cursor: default;
 	pointer-events: none;
 }
 
-.menu.anti-dian-glide-menu .anti-dian-glider {
+.menu.antidian-glide-menu .antidian-glider {
 	border-radius: var(--radius-s);
 }
 
-.menu.anti-dian-model-menu .anti-dian-glider {
+.menu.antidian-model-menu .antidian-glider {
 	border-radius: 6px;
 }
 
-.anti-dian-promptbar-menu-list {
+.antidian-promptbar-menu-list {
 	display: flex;
 	flex-direction: column;
 	position: relative;
@@ -1485,8 +1485,8 @@ body .menu.anti-dian-glide-menu .menu-item.is-label {
 	overflow-y: auto;
 }
 
-.anti-dian-promptbar-menu-row,
-button.anti-dian-promptbar-menu-row {
+.antidian-promptbar-menu-row,
+button.antidian-promptbar-menu-row {
 	flex-shrink: 0;
 	position: relative;
 	z-index: 2;
@@ -1501,13 +1501,13 @@ button.anti-dian-promptbar-menu-row {
 	text-align: left;
 }
 
-.anti-dian-promptbar-menu-list button.anti-dian-promptbar-menu-row {
+.antidian-promptbar-menu-list button.antidian-promptbar-menu-row {
 	border: none;
 	background: transparent;
 	box-shadow: none;
 }
 
-.anti-dian-promptbar-menu-icon {
+.antidian-promptbar-menu-icon {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1517,7 +1517,7 @@ button.anti-dian-promptbar-menu-row {
 	flex-shrink: 0;
 }
 
-.anti-dian-promptbar-menu-name {
+.antidian-promptbar-menu-name {
 	font-size: 12.5px;
 	font-weight: var(--font-medium);
 	color: var(--text-normal);
@@ -1525,7 +1525,7 @@ button.anti-dian-promptbar-menu-row {
 	flex-shrink: 0;
 }
 
-.anti-dian-promptbar-menu-desc {
+.antidian-promptbar-menu-desc {
 	font-size: 12px;
 	color: var(--text-muted);
 	overflow: hidden;
@@ -1535,7 +1535,7 @@ button.anti-dian-promptbar-menu-row {
 	flex: 1;
 }
 
-.anti-dian-promptbar-menu-empty {
+.antidian-promptbar-menu-empty {
 	display: flex;
 	align-items: center;
 	height: 34px;
@@ -1544,7 +1544,7 @@ button.anti-dian-promptbar-menu-row {
 	color: var(--text-muted);
 }
 
-.anti-dian-promptbar-menu-footer {
+.antidian-promptbar-menu-footer {
 	margin-top: 4px;
 	border-top: 1px solid var(--background-modifier-border);
 	padding: 6px 8px 2px 8px;
@@ -1568,14 +1568,14 @@ button.anti-dian-promptbar-menu-row {
 /* ------------------------------------------------------------- */
 
 /* Extra text inside native Menu item titles. */
-.anti-dian-menu-item-chevron {
+.antidian-menu-item-chevron {
 	display: inline-flex;
 	margin-left: auto;
 	padding-left: 16px;
 	color: var(--text-muted);
 }
 
-.anti-dian-menu-item-chevron svg {
+.antidian-menu-item-chevron svg {
 	width: 14px;
 	height: 14px;
 }
@@ -1584,12 +1584,12 @@ button.anti-dian-promptbar-menu-row {
  * The model menu (a native Menu, scoped by class) and the usage panel beside it
  * share one look: frame, insets, headings, dividers and bars.
  */
-.menu.anti-dian-model-menu,
-.anti-dian-usage-popup {
-	--anti-dian-popup-padding: 6px;
-	--anti-dian-popup-inset: 10px;
-	--anti-dian-popup-bar-size: 4px;
-	--anti-dian-popup-bar-color: var(--background-modifier-border);
+.menu.antidian-model-menu,
+.antidian-usage-popup {
+	--antidian-popup-padding: 6px;
+	--antidian-popup-inset: 10px;
+	--antidian-popup-bar-size: 4px;
+	--antidian-popup-bar-color: var(--background-modifier-border);
 	min-width: 330px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
@@ -1599,76 +1599,76 @@ button.anti-dian-promptbar-menu-row {
 }
 
 /* The native menu pads its scroller, not itself. */
-.menu.anti-dian-model-menu .menu-scroll,
-.anti-dian-usage-popup {
-	padding: var(--anti-dian-popup-padding);
+.menu.antidian-model-menu .menu-scroll,
+.antidian-usage-popup {
+	padding: var(--antidian-popup-padding);
 }
 
-.menu.anti-dian-model-menu .menu-item.is-label,
-.anti-dian-effort-heading,
-.anti-dian-usage-sec-title {
-	padding: 4px var(--anti-dian-popup-inset);
+.menu.antidian-model-menu .menu-item.is-label,
+.antidian-effort-heading,
+.antidian-usage-sec-title {
+	padding: 4px var(--antidian-popup-inset);
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
 	line-height: 1.3;
 	color: var(--text-muted);
 }
 
-.menu.anti-dian-model-menu .menu-separator,
-.anti-dian-menu-divider {
+.menu.antidian-model-menu .menu-separator,
+.antidian-menu-divider {
 	flex-shrink: 0;
 	height: 0;
-	margin: var(--anti-dian-popup-padding) calc(-1 * var(--anti-dian-popup-padding));
+	margin: var(--antidian-popup-padding) calc(-1 * var(--antidian-popup-padding));
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.menu.anti-dian-model-menu .menu-item {
-	padding: 5px var(--anti-dian-popup-inset);
+.menu.antidian-model-menu .menu-item {
+	padding: 5px var(--antidian-popup-inset);
 	border-radius: 6px;
 	font-size: var(--font-ui-small);
 }
 
 /* Rows without an icon start at the same edge as the "View Usage" icon. */
-.menu.anti-dian-model-menu .menu-item-icon:first-child:empty {
+.menu.antidian-model-menu .menu-item-icon:first-child:empty {
 	display: none;
 }
 
-.menu.anti-dian-model-menu .menu-item-title {
+.menu.antidian-model-menu .menu-item-title {
 	display: flex;
 	align-items: center;
 	white-space: nowrap;
 }
 
-.menu.anti-dian-model-menu .menu-item-icon.mod-submenu,
-.menu.anti-dian-model-menu .menu-item.mod-submenu::after {
+.menu.antidian-model-menu .menu-item-icon.mod-submenu,
+.menu.antidian-model-menu .menu-item.mod-submenu::after {
 	color: var(--text-muted);
 }
 
-.anti-dian-model-row {
+.antidian-model-row {
 	display: flex;
 	flex: 1;
 	align-items: center;
 	justify-content: space-between;
 }
 
-.anti-dian-model-row-check {
+.antidian-model-row-check {
 	display: none;
 	color: var(--text-muted);
 	--icon-size: var(--icon-s);
 	--icon-stroke: var(--icon-s-stroke-width);
 }
 
-.anti-dian-model-row.is-current .anti-dian-model-row-check {
+.antidian-model-row.is-current .antidian-model-row-check {
 	display: flex;
 }
 
 /* Effort bar: a rail of fixed length, divided evenly by the thinking levels. */
-.menu.anti-dian-model-menu .menu-item.anti-dian-effort-item {
+.menu.antidian-model-menu .menu-item.antidian-effort-item {
 	padding: 0;
 }
 
 /* Opens and collapses with the timing of the prompt bar's attachment tray. */
-.anti-dian-effort {
+.antidian-effort {
 	display: grid;
 	flex: 1;
 	grid-template-rows: 1fr;
@@ -1680,7 +1680,7 @@ button.anti-dian-promptbar-menu-row {
 }
 
 /* The model has no thinking levels. */
-.anti-dian-effort.is-collapsed {
+.antidian-effort.is-collapsed {
 	grid-template-rows: 0fr;
 	opacity: 0;
 	transition-duration: 220ms;
@@ -1688,46 +1688,46 @@ button.anti-dian-promptbar-menu-row {
 }
 
 /* Only clips vertically: the divider reaches past the sides. */
-.anti-dian-effort-content {
+.antidian-effort-content {
 	min-height: 0;
 	overflow-y: clip;
 }
 
-.anti-dian-effort-bar {
+.antidian-effort-bar {
 	/* Room for half of the first and last label. */
-	--anti-dian-effort-inset: 36px;
-	--anti-dian-effort-motion: 240ms cubic-bezier(0.23, 1, 0.32, 1);
+	--antidian-effort-inset: 36px;
+	--antidian-effort-motion: 240ms cubic-bezier(0.23, 1, 0.32, 1);
 	position: relative;
 	height: calc(26px + 1.3 * var(--font-ui-smaller));
 }
 
-.anti-dian-effort-rail {
+.antidian-effort-rail {
 	position: absolute;
-	inset: 0 var(--anti-dian-effort-inset);
+	inset: 0 var(--antidian-effort-inset);
 }
 
-.anti-dian-effort-track {
+.antidian-effort-track {
 	position: absolute;
-	top: calc(8px - var(--anti-dian-popup-bar-size) / 2);
+	top: calc(8px - var(--antidian-popup-bar-size) / 2);
 	right: 0;
 	left: 0;
-	height: var(--anti-dian-popup-bar-size);
-	background: var(--anti-dian-popup-bar-color);
+	height: var(--antidian-popup-bar-size);
+	background: var(--antidian-popup-bar-color);
 }
 
-.anti-dian-effort-track::after {
+.antidian-effort-track::after {
 	content: '';
 	position: absolute;
 	inset: 0 auto 0 0;
-	width: calc(100% * var(--anti-dian-effort-pos));
+	width: calc(100% * var(--antidian-effort-pos));
 	background: var(--interactive-accent);
-	transition: width var(--anti-dian-effort-motion);
+	transition: width var(--antidian-effort-motion);
 }
 
-.anti-dian-effort-stop {
+.antidian-effort-stop {
 	position: absolute;
 	top: 0;
-	left: calc(100% * var(--anti-dian-effort-pos));
+	left: calc(100% * var(--antidian-effort-pos));
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -1739,11 +1739,11 @@ button.anti-dian-promptbar-menu-row {
 	color: var(--text-muted);
 	transform: translateX(-50%);
 	transition:
-		left var(--anti-dian-effort-motion),
+		left var(--antidian-effort-motion),
 		color 150ms ease-out;
 }
 
-.anti-dian-effort-stop::before {
+.antidian-effort-stop::before {
 	content: '';
 	width: 8px;
 	height: 8px;
@@ -1752,20 +1752,20 @@ button.anti-dian-promptbar-menu-row {
 	transition: background-color 150ms ease-out;
 }
 
-.anti-dian-effort-stop.is-filled::before {
+.antidian-effort-stop.is-filled::before {
 	background: var(--interactive-accent);
 }
 
-.anti-dian-effort-stop.is-current {
+.antidian-effort-stop.is-current {
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
 
-.anti-dian-effort-thumb {
+.antidian-effort-thumb {
 	position: absolute;
 	z-index: 1;
 	top: 0;
-	left: calc(100% * var(--anti-dian-effort-pos));
+	left: calc(100% * var(--antidian-effort-pos));
 	width: 16px;
 	height: 16px;
 	border: 2px solid var(--interactive-accent);
@@ -1773,50 +1773,50 @@ button.anti-dian-promptbar-menu-row {
 	background: var(--background-secondary);
 	transform: translateX(-50%);
 	transition:
-		left var(--anti-dian-effort-motion),
+		left var(--antidian-effort-motion),
 		box-shadow 150ms ease-out;
 }
 
-.menu-item.selected .anti-dian-effort-thumb {
+.menu-item.selected .antidian-effort-thumb {
 	box-shadow: 0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
 }
 
 /* Invisible. Its thumb is wide, so that the outer half of the end labels is clickable too. */
-input[type='range'].anti-dian-effort-input {
-	--anti-dian-effort-grab: 56px;
+input[type='range'].antidian-effort-input {
+	--antidian-effort-grab: 56px;
 	position: absolute;
 	z-index: 2;
 	top: 0;
-	left: calc(var(--anti-dian-effort-inset) - var(--anti-dian-effort-grab) / 2);
-	width: calc(100% - 2 * var(--anti-dian-effort-inset) + var(--anti-dian-effort-grab));
+	left: calc(var(--antidian-effort-inset) - var(--antidian-effort-grab) / 2);
+	width: calc(100% - 2 * var(--antidian-effort-inset) + var(--antidian-effort-grab));
 	height: 100%;
 	margin: 0;
 	opacity: 0;
 	cursor: pointer;
 }
 
-input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
-	width: var(--anti-dian-effort-grab);
+input[type='range'].antidian-effort-input::-webkit-slider-thumb {
+	width: var(--antidian-effort-grab);
 	height: 100%;
 }
 
-.anti-dian-effort.is-instant :is(.anti-dian-effort-stop, .anti-dian-effort-thumb),
-.anti-dian-effort.is-instant .anti-dian-effort-track::after {
+.antidian-effort.is-instant :is(.antidian-effort-stop, .antidian-effort-thumb),
+.antidian-effort.is-instant .antidian-effort-track::after {
 	transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.anti-dian-effort,
-	.anti-dian-effort.is-collapsed,
-	.anti-dian-effort-track::after,
-	.anti-dian-effort-stop,
-	.anti-dian-effort-stop::before,
-	.anti-dian-effort-thumb {
+	.antidian-effort,
+	.antidian-effort.is-collapsed,
+	.antidian-effort-track::after,
+	.antidian-effort-stop,
+	.antidian-effort-stop::before,
+	.antidian-effort-thumb {
 		transition: none;
 	}
 }
 
-.anti-dian-menu-item-desc {
+.antidian-menu-item-desc {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
@@ -1825,7 +1825,7 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 /* Usage Popup                                                   */
 /* ------------------------------------------------------------- */
 
-.anti-dian-usage-popup {
+.antidian-usage-popup {
 	position: fixed;
 	z-index: 10000;
 	max-height: min(560px, calc(100vh - 30px));
@@ -1834,20 +1834,20 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	flex-direction: column;
 }
 
-.anti-dian-usage-tier-row {
+.antidian-usage-tier-row {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	padding: 5px var(--anti-dian-popup-inset);
+	padding: 5px var(--antidian-popup-inset);
 }
 
-.anti-dian-usage-tier-badge {
+.antidian-usage-tier-badge {
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-medium);
 	color: var(--text-normal);
 }
 
-.anti-dian-usage-tier-tag {
+.antidian-usage-tier-tag {
 	font-size: calc(var(--font-ui-smaller) * 0.75);
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
@@ -1858,14 +1858,14 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	font-weight: var(--font-semibold);
 }
 
-.anti-dian-usage-row {
+.antidian-usage-row {
 	display: flex;
 	flex-direction: column;
 	gap: 5px;
-	padding: 5px var(--anti-dian-popup-inset);
+	padding: 5px var(--antidian-popup-inset);
 }
 
-.anti-dian-usage-row-label {
+.antidian-usage-row-label {
 	display: flex;
 	align-items: baseline;
 	gap: 10px;
@@ -1873,43 +1873,43 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	font-variant-numeric: tabular-nums;
 }
 
-.anti-dian-usage-row-title {
+.antidian-usage-row-title {
 	flex: 1;
 	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 }
 
-.anti-dian-usage-row-detail,
-.anti-dian-usage-row-value {
+.antidian-usage-row-detail,
+.antidian-usage-row-value {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
 
-.anti-dian-usage-row-value {
+.antidian-usage-row-value {
 	min-width: 4ch;
 	text-align: end;
 	color: var(--text-normal);
 }
 
-.anti-dian-usage-bar {
-	height: var(--anti-dian-popup-bar-size);
-	border-radius: calc(var(--anti-dian-popup-bar-size) / 2);
+.antidian-usage-bar {
+	height: var(--antidian-popup-bar-size);
+	border-radius: calc(var(--antidian-popup-bar-size) / 2);
 	overflow: hidden;
-	background: var(--anti-dian-popup-bar-color);
+	background: var(--antidian-popup-bar-color);
 }
 
-.anti-dian-usage-bar-fill {
-	width: var(--anti-dian-usage-pct, 0%);
+.antidian-usage-bar-fill {
+	width: var(--antidian-usage-pct, 0%);
 	height: 100%;
 	border-radius: inherit;
 	background: var(--interactive-accent);
 }
 
-.anti-dian-usage-bar.is-warning .anti-dian-usage-bar-fill {
+.antidian-usage-bar.is-warning .antidian-usage-bar-fill {
 	background: var(--color-yellow);
 }
 
-.anti-dian-usage-bar.is-error .anti-dian-usage-bar-fill {
+.antidian-usage-bar.is-error .antidian-usage-bar-fill {
 	background: var(--color-red);
 }
 
@@ -1917,7 +1917,7 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 /* Chat Messages & Cards                                         */
 /* ------------------------------------------------------------- */
 
-.anti-dian-message {
+.antidian-message {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-1);
@@ -1929,18 +1929,18 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
  * (buttons, headers, the copy/time row) stay unselectable so clicks and drags
  * on them don't start a text selection.
  */
-.anti-dian-messages {
+.antidian-messages {
 	user-select: text;
 	-webkit-user-select: text;
 	cursor: auto;
 }
 
-.anti-dian-messages :is(button, [role="button"], .anti-dian-message-meta, .anti-dian-thinking-header-btn) {
+.antidian-messages :is(button, [role="button"], .antidian-message-meta, .antidian-thinking-header-btn) {
 	user-select: none;
 	-webkit-user-select: none;
 }
 
-.anti-dian-message-user {
+.antidian-message-user {
 	align-self: flex-end;
 	background: var(--background-modifier-active-hover);
 	padding: 8px 12px;
@@ -1950,12 +1950,12 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	box-shadow: none;
 }
 
-.anti-dian-message-user p {
+.antidian-message-user p {
 	margin: 0;
 	font-size: var(--font-ui-small);
 }
 
-.anti-dian-message-agent {
+.antidian-message-agent {
 	align-self: flex-start;
 	background: transparent;
 	border: none;
@@ -1967,19 +1967,19 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	box-shadow: none;
 }
 
-.anti-dian-answer-body {
+.antidian-answer-body {
 	font-size: var(--font-ui-small);
 	line-height: 1.55;
 }
 
-.anti-dian-answer-body p {
+.antidian-answer-body p {
 	margin: 0 0 var(--size-4-2) 0;
 	font-size: var(--font-ui-small);
 	line-height: 1.55;
 }
 
 /* Headings scaled to the compact chat body instead of note-sized h1/h2. */
-.anti-dian-answer-body :is(h1, h2, h3, h4, h5, h6) {
+.antidian-answer-body :is(h1, h2, h3, h4, h5, h6) {
 	margin: 1.1em 0 0.45em;
 	line-height: 1.35;
 	font-weight: var(--font-semibold);
@@ -1988,37 +1988,37 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	color: var(--text-normal);
 }
 
-.anti-dian-answer-body h1 {
+.antidian-answer-body h1 {
 	font-size: 1.3em;
 }
 
-.anti-dian-answer-body h2 {
+.antidian-answer-body h2 {
 	font-size: 1.2em;
 }
 
-.anti-dian-answer-body h3 {
+.antidian-answer-body h3 {
 	font-size: 1.08em;
 }
 
-.anti-dian-answer-body :is(h4, h5, h6) {
+.antidian-answer-body :is(h4, h5, h6) {
 	font-size: 1em;
 }
 
-.anti-dian-answer-body > :first-child :is(h1, h2, h3, h4, h5, h6),
-.anti-dian-answer-body > :is(h1, h2, h3, h4, h5, h6):first-child {
+.antidian-answer-body > :first-child :is(h1, h2, h3, h4, h5, h6),
+.antidian-answer-body > :is(h1, h2, h3, h4, h5, h6):first-child {
 	margin-top: 0;
 }
 
-.anti-dian-answer-body :is(ul, ol) {
+.antidian-answer-body :is(ul, ol) {
 	margin: 0.3em 0 var(--size-4-2);
 }
 
-.anti-dian-answer-body p:last-child {
+.antidian-answer-body p:last-child {
 	margin-bottom: 0;
 }
 
 /* Markdown tables inside chat answers (Obsidian's .markdown-rendered styles don't apply here). */
-.anti-dian-answer-body > .anti-dian-answer-table {
+.antidian-answer-body > .antidian-answer-table {
 	overflow-x: auto;
 	max-width: 100%;
 	margin: 8px 0 12px;
@@ -2026,7 +2026,7 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	border-radius: var(--radius-s);
 }
 
-.anti-dian-answer-body table {
+.antidian-answer-body table {
 	width: 100%;
 	border-collapse: collapse;
 	margin: 8px 0 12px;
@@ -2034,48 +2034,48 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	line-height: 1.45;
 }
 
-.anti-dian-answer-body > .anti-dian-answer-table > table {
+.antidian-answer-body > .antidian-answer-table > table {
 	margin: 0;
 }
 
-.anti-dian-answer-body :is(th, td) {
+.antidian-answer-body :is(th, td) {
 	padding: 6px 9px;
 	border: 1px solid var(--table-border-color, var(--background-modifier-border));
 	text-align: left;
 	vertical-align: top;
 }
 
-.anti-dian-answer-body > .anti-dian-answer-table > table > :first-child > tr:first-child > :is(th, td) {
+.antidian-answer-body > .antidian-answer-table > table > :first-child > tr:first-child > :is(th, td) {
 	border-top: none;
 }
 
-.anti-dian-answer-body > .anti-dian-answer-table > table > :last-child > tr:last-child > :is(th, td) {
+.antidian-answer-body > .antidian-answer-table > table > :last-child > tr:last-child > :is(th, td) {
 	border-bottom: none;
 }
 
-.anti-dian-answer-body > .anti-dian-answer-table > table tr > :is(th, td):first-child {
+.antidian-answer-body > .antidian-answer-table > table tr > :is(th, td):first-child {
 	border-left: none;
 }
 
-.anti-dian-answer-body > .anti-dian-answer-table > table tr > :is(th, td):last-child {
+.antidian-answer-body > .antidian-answer-table > table tr > :is(th, td):last-child {
 	border-right: none;
 }
 
-.anti-dian-answer-body thead th {
+.antidian-answer-body thead th {
 	background: var(--table-header-background, var(--background-secondary));
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
 
-.anti-dian-answer-body tbody tr:nth-child(even) {
+.antidian-answer-body tbody tr:nth-child(even) {
 	background: var(--table-row-alt-background, color-mix(in srgb, var(--background-secondary) 45%, transparent));
 }
 
-.anti-dian-answer-body tbody tr:hover {
+.antidian-answer-body tbody tr:hover {
 	background: var(--table-row-background-hover, var(--background-modifier-hover));
 }
 
-@keyframes anti-dian-stream-caret-in {
+@keyframes antidian-stream-caret-in {
 	from {
 		opacity: 0;
 	}
@@ -2084,7 +2084,7 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	}
 }
 
-.anti-dian-stream-caret {
+.antidian-stream-caret {
 	display: inline-block;
 	width: 2px;
 	height: 1.05em;
@@ -2093,11 +2093,11 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	border-radius: 1px;
 	background: var(--text-normal);
 	vertical-align: text-bottom;
-	animation: anti-dian-stream-caret-in 150ms ease-out both;
+	animation: antidian-stream-caret-in 150ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.anti-dian-stream-caret {
+	.antidian-stream-caret {
 		animation: none;
 	}
 }
@@ -2124,18 +2124,18 @@ input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
 	}
 }
 
-.anti-dian-thinking-state {
+.antidian-thinking-state {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
 	margin-bottom: 6px;
 }
 
-.anti-dian-thinking-header-btn,
-button.anti-dian-thinking-header-btn,
-.anti-dian-thinking-header-btn:focus,
-.anti-dian-thinking-header-btn:focus-visible,
-.anti-dian-thinking-header-btn:active {
+.antidian-thinking-header-btn,
+button.antidian-thinking-header-btn,
+.antidian-thinking-header-btn:focus,
+.antidian-thinking-header-btn:focus-visible,
+.antidian-thinking-header-btn:active {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -2151,40 +2151,40 @@ button.anti-dian-thinking-header-btn,
 	margin-left: -6px;
 }
 
-.anti-dian-thinking-state button.anti-dian-thinking-header-btn {
+.antidian-thinking-state button.antidian-thinking-header-btn {
 	border: none;
 	background: transparent;
 	box-shadow: none;
 	outline: none;
 }
 
-.anti-dian-thinking-header-btn:hover,
-button.anti-dian-thinking-header-btn:hover {
+.antidian-thinking-header-btn:hover,
+button.antidian-thinking-header-btn:hover {
 	color: var(--text-normal);
 }
 
-.anti-dian-thinking-state button.anti-dian-thinking-header-btn:hover {
+.antidian-thinking-state button.antidian-thinking-header-btn:hover {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-thinking-sparkle-icon {
+.antidian-thinking-sparkle-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 	transition: color 0.2s ease;
 }
 
-.anti-dian-thinking-sparkle-icon.is-active {
+.antidian-thinking-sparkle-icon.is-active {
 	color: var(--interactive-accent);
 }
 
 /* The logo's spin and spin-down are driven from thinking-state-view.ts (Web Animations). */
 
-.anti-dian-thinking-sparkle-icon.is-settled {
+.antidian-thinking-sparkle-icon.is-settled {
 	color: var(--text-muted);
 }
 
-.anti-dian-thinking-status-text {
+.antidian-thinking-status-text {
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
 	white-space: nowrap;
@@ -2193,7 +2193,7 @@ button.anti-dian-thinking-header-btn:hover {
 	min-width: 0;
 }
 
-.anti-dian-thinking-status-text.is-shimmer {
+.antidian-thinking-status-text.is-shimmer {
 	background: linear-gradient(90deg, var(--text-muted) 30%, var(--interactive-accent) 50%, var(--text-muted) 70%);
 	background-size: 200% 100%;
 	-webkit-background-clip: text;
@@ -2201,28 +2201,28 @@ button.anti-dian-thinking-header-btn:hover {
 	animation: shimmer-text 1.6s linear infinite;
 }
 
-.anti-dian-thinking-status-text.is-settled {
+.antidian-thinking-status-text.is-settled {
 	color: var(--text-muted);
 }
 
-.anti-dian-thinking-chevron-icon {
+.antidian-thinking-chevron-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 }
 
-.anti-dian-thinking-trace-wrapper {
+.antidian-thinking-trace-wrapper {
 	display: none;
 	width: 100%;
 	overflow: hidden;
 }
 
-.anti-dian-thinking-trace-wrapper.is-open {
+.antidian-thinking-trace-wrapper.is-open {
 	display: block;
 	animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-thinking-trace-content {
+.antidian-thinking-trace-content {
 	position: relative;
 	margin-top: 4px;
 	margin-left: 7px;
@@ -2231,7 +2231,7 @@ button.anti-dian-thinking-header-btn:hover {
 	font-size: var(--font-ui-smaller);
 }
 
-.anti-dian-thinking-guideline {
+.antidian-thinking-guideline {
 	position: absolute;
 	left: 0;
 	top: 2px;
@@ -2240,14 +2240,14 @@ button.anti-dian-thinking-header-btn:hover {
 	background: var(--background-modifier-border);
 }
 
-.anti-dian-thinking-rows-container {
+.antidian-thinking-rows-container {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
 	padding: 2px 0;
 }
 
-.anti-dian-thinking-model-text {
+.antidian-thinking-model-text {
 	position: relative;
 	padding: 2px 6px;
 	color: var(--text-muted);
@@ -2257,49 +2257,49 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* Plain text while streaming: keep the model's line breaks. */
-.anti-dian-thinking-model-text.is-streaming {
+.antidian-thinking-model-text.is-streaming {
 	white-space: pre-wrap;
 }
 
-.anti-dian-thinking-model-text.is-clamped {
+.antidian-thinking-model-text.is-clamped {
 	cursor: pointer;
 	-webkit-mask-image: linear-gradient(to bottom, black 60%, transparent);
 	mask-image: linear-gradient(to bottom, black 60%, transparent);
 }
 
-.anti-dian-thinking-model-text.is-expanded {
+.antidian-thinking-model-text.is-expanded {
 	max-height: none;
 	cursor: pointer;
 }
 
 /* Rendered Markdown inherits the muted trace style instead of body text. */
-.anti-dian-thinking-model-text :is(p, li, strong, em, code) {
+.antidian-thinking-model-text :is(p, li, strong, em, code) {
 	color: inherit;
 	font-size: inherit;
 }
 
 /* Models put file and tool names in backticks: same look as file names in rows. */
-.anti-dian-thinking-model-text :not(pre) > code {
+.antidian-thinking-model-text :not(pre) > code {
 	padding: 0;
 	background: none;
 	font-family: inherit;
 	color: var(--text-normal);
 }
 
-.anti-dian-thinking-model-text p {
+.antidian-thinking-model-text p {
 	margin: 3px 0;
 }
 
-.anti-dian-thinking-model-text > :first-child {
+.antidian-thinking-model-text > :first-child {
 	margin-top: 0;
 }
 
-.anti-dian-thinking-model-text > :last-child {
+.antidian-thinking-model-text > :last-child {
 	margin-bottom: 0;
 }
 
 /* Source rows for searches (nested under tool row) */
-.anti-dian-thinking-source-row {
+.antidian-thinking-source-row {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -2315,12 +2315,12 @@ button.anti-dian-thinking-header-btn:hover {
 	animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-thinking-source-row:hover {
+.antidian-thinking-source-row:hover {
 	background: var(--background-modifier-hover);
 }
 
 /* Grey source icon for search results */
-.anti-dian-thinking-source-icon {
+.antidian-thinking-source-icon {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2330,14 +2330,14 @@ button.anti-dian-thinking-header-btn:hover {
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-source-icon svg {
+.antidian-thinking-source-icon svg {
 	width: 12px;
 	height: 12px;
 	color: var(--text-muted);
 	stroke: var(--text-muted);
 }
 
-.anti-dian-thinking-source-title {
+.antidian-thinking-source-title {
 	color: var(--text-normal);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2346,11 +2346,11 @@ button.anti-dian-thinking-header-btn:hover {
 	transition: border-color 0.15s ease;
 }
 
-.anti-dian-thinking-source-row:hover .anti-dian-thinking-source-title {
+.antidian-thinking-source-row:hover .antidian-thinking-source-title {
 	border-bottom-color: var(--text-accent);
 }
 
-.anti-dian-thinking-source-subtitle {
+.antidian-thinking-source-subtitle {
 	color: var(--text-muted);
 	margin-left: auto;
 	flex-shrink: 0;
@@ -2360,13 +2360,13 @@ button.anti-dian-thinking-header-btn:hover {
 	max-width: 140px;
 }
 
-.anti-dian-thinking-more-count {
+.antidian-thinking-more-count {
 	color: var(--text-muted);
 	padding-left: 28px;
 	margin-top: 1px;
 }
 
-.anti-dian-thinking-row {
+.antidian-thinking-row {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -2382,21 +2382,21 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* Only rows with a detail panel react to hover/click. */
-.anti-dian-thinking-row.is-expandable {
+.antidian-thinking-row.is-expandable {
 	cursor: pointer;
 }
 
-.anti-dian-thinking-row.is-expandable:hover,
-.anti-dian-thinking-row.is-selected {
+.antidian-thinking-row.is-expandable:hover,
+.antidian-thinking-row.is-selected {
 	background: var(--background-modifier-hover);
 }
 
-.anti-dian-thinking-row-chevron {
+.antidian-thinking-row-chevron {
 	margin-left: auto;
 	color: var(--text-faint);
 }
 
-.anti-dian-thinking-row-spinner {
+.antidian-thinking-row-spinner {
 	width: 11px;
 	height: 11px;
 	border: 1.5px solid var(--background-modifier-border);
@@ -2406,42 +2406,42 @@ button.anti-dian-thinking-header-btn:hover {
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-row-check {
+.antidian-thinking-row-check {
 	display: flex;
 	align-items: center;
 	color: var(--color-green);
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-row-err {
+.antidian-thinking-row-err {
 	display: flex;
 	align-items: center;
 	color: var(--color-red);
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-row-cancelled {
+.antidian-thinking-row-cancelled {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
 	flex-shrink: 0;
 }
 
-.anti-dian-stopped-text {
+.antidian-stopped-text {
 	margin: 4px 0 0 0;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	font-style: italic;
 }
 
-.anti-dian-thinking-row-primary {
+.antidian-thinking-row-primary {
 	font-weight: var(--font-medium);
 	color: var(--text-normal);
 	white-space: nowrap;
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-row-secondary {
+.antidian-thinking-row-secondary {
 	color: var(--text-muted);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2451,54 +2451,54 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* Note names in tool rows open the note (hover + mod key previews it). */
-.anti-dian-thinking-row-secondary.is-link {
+.antidian-thinking-row-secondary.is-link {
 	color: var(--text-normal);
 	cursor: pointer;
 	text-decoration: none;
 }
 
-.anti-dian-thinking-row-secondary.is-link:hover {
+.antidian-thinking-row-secondary.is-link:hover {
 	color: var(--text-accent);
 	text-decoration: underline;
 }
 
-.anti-dian-thinking-row-icon {
+.antidian-thinking-row-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-faint);
 }
 
-.anti-dian-thinking-row-icon svg {
+.antidian-thinking-row-icon svg {
 	width: 13px;
 	height: 13px;
 }
 
-.anti-dian-thinking-row-tag {
+.antidian-thinking-row-tag {
 	flex-shrink: 0;
 	color: var(--text-faint);
 }
 
-.anti-dian-thinking-status-file {
+.antidian-thinking-status-file {
 	font-weight: var(--font-normal);
 	color: var(--text-normal);
 }
 
-.anti-dian-thinking-row-diff {
+.antidian-thinking-row-diff {
 	font-family: var(--font-monospace);
 	font-size: 11px;
 	margin-left: auto;
 	flex-shrink: 0;
 }
 
-.anti-dian-thinking-row-diff .diff-add {
+.antidian-thinking-row-diff .diff-add {
 	color: var(--color-green);
 }
 
-.anti-dian-thinking-row-diff .diff-del {
+.antidian-thinking-row-diff .diff-del {
 	color: var(--color-red);
 }
 
-.anti-dian-thinking-step-detail {
+.antidian-thinking-step-detail {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -2511,20 +2511,20 @@ button.anti-dian-thinking-header-btn:hover {
 	animation: pop-in 150ms ease both;
 }
 
-.anti-dian-tool-detail-meta {
+.antidian-tool-detail-meta {
 	color: var(--text-muted);
 }
 
-.anti-dian-tool-detail-error {
+.antidian-tool-detail-error {
 	color: var(--text-error);
 	white-space: pre-wrap;
 }
 
-.anti-dian-tool-detail-context {
+.antidian-tool-detail-context {
 	color: var(--text-faint);
 }
 
-.anti-dian-thinking-step-detail del {
+.antidian-thinking-step-detail del {
 	color: var(--color-red);
 	background: rgba(var(--color-red-rgb), 0.12);
 	text-decoration: line-through;
@@ -2532,7 +2532,7 @@ button.anti-dian-thinking-header-btn:hover {
 	padding: 0 1px;
 }
 
-.anti-dian-thinking-step-detail ins {
+.antidian-thinking-step-detail ins {
 	color: var(--color-green);
 	background: rgba(var(--color-green-rgb), 0.12);
 	text-decoration: none;
@@ -2540,47 +2540,47 @@ button.anti-dian-thinking-header-btn:hover {
 	padding: 0 1px;
 }
 
-.anti-dian-tool-detail-props {
+.antidian-tool-detail-props {
 	display: grid;
 	grid-template-columns: max-content 1fr;
 	gap: 2px 10px;
 }
 
-.anti-dian-tool-detail-prop-key {
+.antidian-tool-detail-prop-key {
 	font-family: var(--font-monospace);
 	color: var(--text-normal);
 }
 
-.anti-dian-tool-detail-skill {
+.antidian-tool-detail-skill {
 	display: flex;
 	gap: 8px;
 	align-items: baseline;
 }
 
-.anti-dian-tool-detail-list {
+.antidian-tool-detail-list {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px 10px;
 }
 
-.anti-dian-tool-detail-note {
+.antidian-tool-detail-note {
 	color: var(--text-accent);
 	cursor: pointer;
 }
 
-.anti-dian-tool-detail-note:hover {
+.antidian-tool-detail-note:hover {
 	text-decoration: underline;
 }
 
-.anti-dian-tool-detail-outline-item {
-	padding-left: calc(var(--anti-dian-outline-level, 0) * 12px);
+.antidian-tool-detail-outline-item {
+	padding-left: calc(var(--antidian-outline-level, 0) * 12px);
 	color: var(--text-normal);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.anti-dian-tool-detail-raw {
+.antidian-tool-detail-raw {
 	margin: 2px 0 0;
 	padding: 6px;
 	max-height: 16em;
@@ -2595,14 +2595,14 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* Briefly highlight the change card when "View in changes" scrolls to it. */
-@keyframes anti-dian-flash {
+@keyframes antidian-flash {
 	from {
 		box-shadow: 0 0 0 2px var(--interactive-accent);
 	}
 	to {
 		box-shadow: 0 0 0 2px transparent;
 	}
-}.anti-dian-diff-stat-add {
+}.antidian-diff-stat-add {
 	color: var(--color-green);
 	font-family: var(--font-monospace);
 	font-size: 12.5px;
@@ -2610,14 +2610,14 @@ button.anti-dian-thinking-header-btn:hover {
 	margin-left: 2px;
 }
 
-.anti-dian-diff-stat-del {
+.antidian-diff-stat-del {
 	color: var(--color-red);
 	font-family: var(--font-monospace);
 	font-size: 12.5px;
 	font-weight: 600;
 }
 
-.anti-dian-diff-inline-box {
+.antidian-diff-inline-box {
 	margin: 3px 0 5px 12px;
 	background: transparent;
 	border-radius: 4px;
@@ -2628,7 +2628,7 @@ button.anti-dian-thinking-header-btn:hover {
 	border-left: 2px solid var(--interactive-accent);
 }
 
-.anti-dian-diff-line {
+.antidian-diff-line {
 	padding: 1px 4px;
 	border-radius: 2px;
 	white-space: pre-wrap;
@@ -2659,7 +2659,7 @@ button.anti-dian-thinking-header-btn:hover {
 /* Turn Usage Footer                                             */
 /* ------------------------------------------------------------- */
 
-.anti-dian-turn-usage-footer {
+.antidian-turn-usage-footer {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -2671,22 +2671,22 @@ button.anti-dian-thinking-header-btn:hover {
 	color: var(--text-muted);
 }
 
-.anti-dian-usage-item {
+.antidian-usage-item {
 	display: flex;
 	align-items: center;
 	gap: 2px;
 }
 
-.anti-dian-usage-ctx {
+.antidian-usage-ctx {
 	color: var(--text-accent);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-usage-cached {
+.antidian-usage-cached {
 	color: var(--color-green);
 }
 
-.anti-dian-usage-thought {
+.antidian-usage-thought {
 	color: var(--text-faint);
 }
 
@@ -2694,14 +2694,14 @@ button.anti-dian-thinking-header-btn:hover {
 /* Media Attachment Tray & Preview                               */
 /* ------------------------------------------------------------- */
 
-.anti-dian-user-media-row {
+.antidian-user-media-row {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
 	margin-bottom: 6px;
 }
 
-.anti-dian-user-media-img {
+.antidian-user-media-img {
 	max-width: 180px;
 	max-height: 120px;
 	border-radius: 6px;
@@ -2710,7 +2710,7 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* Doubled class: must outrank the display of the element it hides. */
-.anti-dian-hidden.anti-dian-hidden {
+.antidian-hidden.antidian-hidden {
 	display: none;
 }
 
@@ -2718,36 +2718,36 @@ button.anti-dian-thinking-header-btn:hover {
 /* Per-call write approval (human-in-the-loop on the tool row)   */
 /* ------------------------------------------------------------- */
 
-.anti-dian-thinking-step-detail .anti-dian-diff-inline-box {
+.antidian-thinking-step-detail .antidian-diff-inline-box {
 	margin: 0;
 }
 
-.anti-dian-thinking-row-await {
+.antidian-thinking-row-await {
 	display: flex;
 	align-items: center;
 	color: var(--text-accent);
 }
 
-.anti-dian-thinking-row-await svg {
+.antidian-thinking-row-await svg {
 	width: 13px;
 	height: 13px;
 }
 
-.anti-dian-thinking-row-tag.is-pending {
+.antidian-thinking-row-tag.is-pending {
 	color: var(--text-accent);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-thinking-row-tag.is-applied {
+.antidian-thinking-row-tag.is-applied {
 	color: var(--color-green);
 }
 
-.anti-dian-thinking-row-tag.is-rejected,
-.anti-dian-thinking-row-tag.is-undone {
+.antidian-thinking-row-tag.is-rejected,
+.antidian-thinking-row-tag.is-undone {
 	color: var(--text-faint);
 }
 
-.anti-dian-approval-bar {
+.antidian-approval-bar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -2755,38 +2755,38 @@ button.anti-dian-thinking-header-btn:hover {
 	padding-top: 4px;
 }
 
-.anti-dian-approval-bar.is-pending {
+.antidian-approval-bar.is-pending {
 	padding: 6px 0 2px;
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-.anti-dian-approval-label {
+.antidian-approval-label {
 	color: var(--text-normal);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-approval-actions {
+.antidian-approval-actions {
 	display: flex;
 	gap: 6px;
 	margin-left: auto;
 }
 
-.anti-dian-approval-status {
+.antidian-approval-status {
 	color: var(--text-faint);
 }
 
-.anti-dian-approval-status.is-applied {
+.antidian-approval-status.is-applied {
 	color: var(--color-green);
 }
 
 /* ── Inline Editor Diff Review (CodeMirror 6) ─────────────────────────────── */
 
-.cm-line.anti-dian-cm-diff-removed {
+.cm-line.antidian-cm-diff-removed {
 	background-color: rgba(var(--color-red-rgb), 0.14);
 	text-decoration: line-through;
 }
 
-.anti-dian-cm-diff-widget {
+.antidian-cm-diff-widget {
 	margin: 4px 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
@@ -2795,7 +2795,7 @@ button.anti-dian-thinking-header-btn:hover {
 	font-family: var(--font-text);
 }
 
-.anti-dian-cm-diff-bar {
+.antidian-cm-diff-bar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -2806,18 +2806,18 @@ button.anti-dian-thinking-header-btn:hover {
 	font-size: var(--font-ui-smaller);
 }
 
-.anti-dian-cm-diff-badge {
+.antidian-cm-diff-badge {
 	color: var(--text-muted);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-cm-diff-actions {
+.antidian-cm-diff-actions {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 }
 
-.anti-dian-cm-diff-btn {
+.antidian-cm-diff-btn {
 	padding: 2px 10px;
 	border-radius: var(--radius-s);
 	font-size: var(--font-ui-smaller);
@@ -2828,34 +2828,34 @@ button.anti-dian-thinking-header-btn:hover {
 	color: var(--text-normal);
 }
 
-.anti-dian-cm-diff-btn.is-accept {
+.antidian-cm-diff-btn.is-accept {
 	background: rgba(var(--color-green-rgb), 0.18);
 	border-color: rgba(var(--color-green-rgb), 0.45);
 	color: var(--color-green);
 }
 
-.anti-dian-cm-diff-btn.is-accept:hover {
+.antidian-cm-diff-btn.is-accept:hover {
 	background: rgba(var(--color-green-rgb), 0.28);
 }
 
-.anti-dian-cm-diff-btn.is-reject {
+.antidian-cm-diff-btn.is-reject {
 	background: rgba(var(--color-red-rgb), 0.12);
 	border-color: rgba(var(--color-red-rgb), 0.35);
 	color: var(--color-red);
 }
 
-.anti-dian-cm-diff-btn.is-reject:hover {
+.antidian-cm-diff-btn.is-reject:hover {
 	background: rgba(var(--color-red-rgb), 0.22);
 }
 
-.anti-dian-cm-diff-added {
+.antidian-cm-diff-added {
 	background: rgba(var(--color-green-rgb), 0.1);
 	padding: 4px 0;
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-small);
 }
 
-.anti-dian-cm-diff-added-line {
+.antidian-cm-diff-added-line {
 	display: flex;
 	gap: 8px;
 	padding: 0 8px;
@@ -2863,19 +2863,19 @@ button.anti-dian-thinking-header-btn:hover {
 	word-break: break-word;
 }
 
-.anti-dian-cm-diff-gutter {
+.antidian-cm-diff-gutter {
 	color: var(--color-green);
 	user-select: none;
 	flex-shrink: 0;
 }
 
-.anti-dian-cm-diff-text {
+.antidian-cm-diff-text {
 	color: var(--text-normal);
 }
 
 /* ── Message Copy & Undo Actions ──────────────────────────────────────────── */
 
-.anti-dian-message-user-group {
+.antidian-message-user-group {
 	align-self: flex-end;
 	display: flex;
 	flex-direction: column;
@@ -2883,11 +2883,11 @@ button.anti-dian-thinking-header-btn:hover {
 	max-width: 88%;
 }
 
-.anti-dian-message-user-group .anti-dian-message-user {
+.antidian-message-user-group .antidian-message-user {
 	max-width: 100%;
 }
 
-.anti-dian-message-meta {
+.antidian-message-meta {
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -2897,16 +2897,16 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 /* User turn: "2h ago  [copy] [undo]" right-aligned under the bubble. */
-.anti-dian-message-meta.is-user {
+.antidian-message-meta.is-user {
 	justify-content: flex-end;
 }
 
-.anti-dian-message-meta.is-user .anti-dian-message-time {
+.antidian-message-meta.is-user .antidian-message-time {
 	margin-right: 6px;
 }
 
 /* Agent turn: "[copy]  2h ago" under the answer, usage on the right. */
-.anti-dian-message-meta.is-agent {
+.antidian-message-meta.is-agent {
 	justify-content: space-between;
 	flex-wrap: wrap;
 	margin-top: 10px;
@@ -2914,32 +2914,32 @@ button.anti-dian-thinking-header-btn:hover {
 	margin-left: -4px;
 }
 
-.anti-dian-message-meta-left {
+.antidian-message-meta-left {
 	display: flex;
 	align-items: center;
 	gap: 4px;
 }
 
-.anti-dian-message-meta.is-agent .anti-dian-message-time {
+.antidian-message-meta.is-agent .antidian-message-time {
 	margin-left: 6px;
 }
 
-.anti-dian-message-meta.is-agent .anti-dian-turn-usage-footer {
+.antidian-message-meta.is-agent .antidian-turn-usage-footer {
 	margin-top: 0;
 	padding-top: 0;
 	border-top: none;
 	margin-left: auto;
 }
 
-.anti-dian-message-time {
+.antidian-message-time {
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 	user-select: none;
 }
 
-.anti-dian-msg-action-btn,
-button.anti-dian-msg-action-btn {
+.antidian-msg-action-btn,
+button.antidian-msg-action-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -2955,23 +2955,23 @@ button.anti-dian-msg-action-btn {
 	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.anti-dian-msg-action-btn:hover,
-button.anti-dian-msg-action-btn:hover {
+.antidian-msg-action-btn:hover,
+button.antidian-msg-action-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-msg-action-btn.is-copied,
-button.anti-dian-msg-action-btn.is-copied {
+.antidian-msg-action-btn.is-copied,
+button.antidian-msg-action-btn.is-copied {
 	color: var(--color-green);
 }
 
-.anti-dian-msg-action-btn svg {
+.antidian-msg-action-btn svg {
 	width: 14px;
 	height: 14px;
 }
 
-.anti-dian-fork-divider {
+.antidian-fork-divider {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2982,32 +2982,32 @@ button.anti-dian-msg-action-btn.is-copied {
 	color: var(--text-muted);
 }
 
-.anti-dian-fork-divider::before,
-.anti-dian-fork-divider::after {
+.antidian-fork-divider::before,
+.antidian-fork-divider::after {
 	content: '';
 	flex: 1;
 	height: 1px;
 	background: var(--background-modifier-border);
 }
 
-.anti-dian-fork-divider-icon {
+.antidian-fork-divider-icon {
 	display: inline-flex;
 	align-items: center;
 }
 
-.anti-dian-fork-divider-icon svg {
+.antidian-fork-divider-icon svg {
 	width: 12px;
 	height: 12px;
 }
 
 /* ── Session Fork Tree (Parent / Child) ───────────────────────────────────── */
 
-.anti-dian-session-item.is-child {
+.antidian-session-item.is-child {
 	/* Forks sit one step (16px) right of their parent's title per level. */
-	padding-left: calc(30px + var(--anti-dian-session-depth, 1) * 16px);
+	padding-left: calc(30px + var(--antidian-session-depth, 1) * 16px);
 }
 
-.anti-dian-session-item-main {
+.antidian-session-item-main {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
@@ -3015,14 +3015,14 @@ button.anti-dian-msg-action-btn.is-copied {
 	flex: 1;
 }
 
-.anti-dian-session-item-main .anti-dian-session-item-title {
+.antidian-session-item-main .antidian-session-item-title {
 	flex: 0 1 auto;
 	min-width: 0;
 }
 
 /* Expand/collapse forks: a bare muted chevron right after the parent's title.
    The extra specificity beats Obsidian's `button:not(.clickable-icon)` chrome. */
-.anti-dian-session-list button.anti-dian-session-chevron {
+.antidian-session-list button.antidian-session-chevron {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -3040,41 +3040,41 @@ button.anti-dian-msg-action-btn.is-copied {
 	transition: color 0.15s ease;
 }
 
-.anti-dian-session-list button.anti-dian-session-chevron:hover {
+.antidian-session-list button.antidian-session-chevron:hover {
 	background: transparent;
 	color: var(--text-normal);
 }
 
-.anti-dian-session-list button.anti-dian-session-chevron:focus-visible {
+.antidian-session-list button.antidian-session-chevron:focus-visible {
 	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
 }
 
-.anti-dian-session-list button.anti-dian-session-chevron svg {
+.antidian-session-list button.antidian-session-chevron svg {
 	width: 14px;
 	height: 14px;
 }
 
 /* ── Session Row Actions (Rename / Delete) ────────────────────────────────── */
 
-.anti-dian-session-actions {
+.antidian-session-actions {
 	display: none;
 	align-items: center;
 	gap: 2px;
 	flex-shrink: 0;
 }
 
-.anti-dian-session-actions.is-visible,
-.anti-dian-session-item:hover .anti-dian-session-actions,
-.anti-dian-session-item.is-highlighted .anti-dian-session-actions {
+.antidian-session-actions.is-visible,
+.antidian-session-item:hover .antidian-session-actions,
+.antidian-session-item.is-highlighted .antidian-session-actions {
 	display: inline-flex;
 }
 
-.anti-dian-session-item:hover .anti-dian-session-item-time,
-.anti-dian-session-item.is-highlighted .anti-dian-session-item-time {
+.antidian-session-item:hover .antidian-session-item-time,
+.antidian-session-item.is-highlighted .antidian-session-item-time {
 	display: none;
 }
 
-.anti-dian-session-list button.anti-dian-session-action-btn {
+.antidian-session-list button.antidian-session-action-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -3090,22 +3090,22 @@ button.anti-dian-msg-action-btn.is-copied {
 	transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-.anti-dian-session-list button.anti-dian-session-action-btn:hover {
+.antidian-session-list button.antidian-session-action-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.anti-dian-session-list button.anti-dian-session-action-btn.is-danger,
-.anti-dian-session-list button.anti-dian-session-action-btn.is-danger-hover:hover {
+.antidian-session-list button.antidian-session-action-btn.is-danger,
+.antidian-session-list button.antidian-session-action-btn.is-danger-hover:hover {
 	color: var(--text-error);
 }
 
-.anti-dian-session-list button.anti-dian-session-action-btn svg {
+.antidian-session-list button.antidian-session-action-btn svg {
 	width: 13px;
 	height: 13px;
 }
 
-.anti-dian-session-rename-input {
+.antidian-session-rename-input {
 	width: 100%;
 	height: 24px;
 	padding: 2px 6px;
@@ -3119,18 +3119,18 @@ button.anti-dian-msg-action-btn.is-copied {
 
 /* ── Staged Markdown Selection Chip ───────────────────────────────────────── */
 
-.anti-dian-promptbar-selection-chip {
+.antidian-promptbar-selection-chip {
 	border-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
 	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
 }
 
-.anti-dian-promptbar-selection-chip .anti-dian-promptbar-chip-icon {
+.antidian-promptbar-selection-chip .antidian-promptbar-chip-icon {
 	color: var(--text-accent);
 }
 
 /* ── Pinned conversations ───────────────────────────────────────────────── */
 
-.anti-dian-session-group-label {
+.antidian-session-group-label {
 	padding: 5px 8px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
@@ -3138,11 +3138,11 @@ button.anti-dian-msg-action-btn.is-copied {
 }
 
 /* The pin icon sits in the same 30px gutter the other rows indent by. */
-.anti-dian-session-item.is-pinned {
+.antidian-session-item.is-pinned {
 	padding-left: 8px;
 }
 
-.anti-dian-session-pin-icon {
+.antidian-session-pin-icon {
 	display: flex;
 	flex-shrink: 0;
 	width: 14px;
@@ -3150,24 +3150,24 @@ button.anti-dian-msg-action-btn.is-copied {
 	--icon-size: 13px;
 }
 
-.anti-dian-session-pin-icon svg {
+.antidian-session-pin-icon svg {
 	transform: rotate(45deg);
 }
 
 /* ── Selection chips in a sent user message ────────────────────────────────── */
 
-.anti-dian-user-chip-row {
+.antidian-user-chip-row {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px;
 	margin-bottom: 6px;
 }
 
-.anti-dian-user-chip-row:last-child {
+.antidian-user-chip-row:last-child {
 	margin-bottom: 0;
 }
 
-.anti-dian-user-selection-chip {
+.antidian-user-selection-chip {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
@@ -3183,48 +3183,48 @@ button.anti-dian-msg-action-btn.is-copied {
 	user-select: none;
 }
 
-.anti-dian-user-selection-chip.is-link {
+.antidian-user-selection-chip.is-link {
 	cursor: pointer;
 	transition: background-color 120ms ease;
 }
 
-.anti-dian-user-selection-chip.is-link:hover {
+.antidian-user-selection-chip.is-link:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 }
 
-.anti-dian-user-selection-chip-icon {
+.antidian-user-selection-chip-icon {
 	display: flex;
 	flex-shrink: 0;
 	color: var(--text-accent);
 	--icon-size: 13px;
 }
 
-.anti-dian-user-selection-chip-name {
+.antidian-user-selection-chip-name {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.anti-dian-message-user .anti-dian-prompt-chip.is-link {
+.antidian-message-user .antidian-prompt-chip.is-link {
 	cursor: pointer;
 }
 
-.anti-dian-message-user .anti-dian-prompt-chip.is-link:hover {
+.antidian-message-user .antidian-prompt-chip.is-link:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
 }
 
 /* ── Interactive Question / Poll Card (ACP Elicitation) ───────────────────── */
 
-.anti-dian-elicitation-slot {
+.antidian-elicitation-slot {
 	width: 100%;
 }
 
-.anti-dian-elicitation-slot:empty {
+.antidian-elicitation-slot:empty {
 	display: none;
 }
 
-.anti-dian-question-card {
+.antidian-question-card {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
@@ -3240,21 +3240,21 @@ button.anti-dian-msg-action-btn.is-copied {
 	animation: pop-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-question-header {
+.antidian-question-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
 }
 
-.anti-dian-question-header-left {
+.antidian-question-header-left {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
 }
 
-.anti-dian-question-icon {
+.antidian-question-icon {
 	display: inline-flex;
 	align-items: center;
 	color: var(--text-accent);
@@ -3262,21 +3262,21 @@ button.anti-dian-msg-action-btn.is-copied {
 	flex-shrink: 0;
 }
 
-.anti-dian-question-title {
+.antidian-question-title {
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 	letter-spacing: 0.01em;
 }
 
-.anti-dian-question-tabs {
+.antidian-question-tabs {
 	display: flex;
 	align-items: center;
 	gap: 4px;
 	flex-wrap: wrap;
 }
 
-button.anti-dian-question-tab {
+button.antidian-question-tab {
 	display: inline-flex;
 	align-items: center;
 	gap: 3px;
@@ -3293,48 +3293,48 @@ button.anti-dian-question-tab {
 	transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-button.anti-dian-question-tab:hover {
+button.antidian-question-tab:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-button.anti-dian-question-tab.is-active {
+button.antidian-question-tab.is-active {
 	border-color: var(--interactive-accent);
 	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
 	color: var(--text-normal);
 }
 
-button.anti-dian-question-tab.is-answered:not(.is-active) {
+button.antidian-question-tab.is-answered:not(.is-active) {
 	border-color: rgba(var(--color-green-rgb), 0.45);
 	color: var(--color-green);
 }
 
-.anti-dian-question-tab-check {
+.antidian-question-tab-check {
 	display: inline-flex;
 	align-items: center;
 	--icon-size: 11px;
 }
 
-.anti-dian-question-body {
+.antidian-question-body {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
 
-.anti-dian-question-prompt {
+.antidian-question-prompt {
 	font-size: var(--font-ui-medium);
 	font-weight: var(--font-medium);
 	line-height: 1.4;
 	color: var(--text-normal);
 }
 
-.anti-dian-question-hint {
+.antidian-question-hint {
 	margin-top: -4px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
 
-.anti-dian-question-options {
+.antidian-question-options {
 	display: flex;
 	flex-direction: column;
 	gap: 5px;
@@ -3342,7 +3342,7 @@ button.anti-dian-question-tab.is-answered:not(.is-active) {
 	overflow-y: auto;
 }
 
-button.anti-dian-question-option {
+button.antidian-question-option {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -3363,22 +3363,22 @@ button.anti-dian-question-option {
 	transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
-button.anti-dian-question-option:hover {
+button.antidian-question-option:hover {
 	background: var(--background-modifier-hover);
 	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
-button.anti-dian-question-option:focus-visible {
+button.antidian-question-option:focus-visible {
 	outline: none;
 	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
 }
 
-button.anti-dian-question-option.is-selected {
+button.antidian-question-option.is-selected {
 	border-color: var(--interactive-accent);
 	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
 }
 
-.anti-dian-question-option-num {
+.antidian-question-option-num {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -3392,12 +3392,12 @@ button.anti-dian-question-option.is-selected {
 	font-size: 11px;
 }
 
-button.anti-dian-question-option.is-selected .anti-dian-question-option-num {
+button.antidian-question-option.is-selected .antidian-question-option-num {
 	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
 	color: var(--text-accent);
 }
 
-.anti-dian-question-indicator {
+.antidian-question-indicator {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -3410,26 +3410,26 @@ button.anti-dian-question-option.is-selected .anti-dian-question-option-num {
 	--icon-size: 11px;
 }
 
-.anti-dian-question-indicator.is-radio {
+.antidian-question-indicator.is-radio {
 	border-radius: 50%;
 }
 
-.anti-dian-question-indicator.is-checkbox {
+.antidian-question-indicator.is-checkbox {
 	border-radius: 4px;
 }
 
-button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-radio {
+button.antidian-question-option.is-selected .antidian-question-indicator.is-radio {
 	border-color: var(--interactive-accent);
 	background: radial-gradient(circle, var(--interactive-accent) 44%, transparent 48%);
 }
 
-button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-checkbox {
+button.antidian-question-option.is-selected .antidian-question-indicator.is-checkbox {
 	border-color: var(--interactive-accent);
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 }
 
-.anti-dian-question-option-label {
+.antidian-question-option-label {
 	display: inline-flex;
 	align-items: center;
 	flex-wrap: wrap;
@@ -3438,7 +3438,7 @@ button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-ch
 	flex: 1;
 }
 
-.anti-dian-question-recommended {
+.antidian-question-recommended {
 	display: inline-flex;
 	align-items: center;
 	padding: 1px 6px;
@@ -3449,14 +3449,14 @@ button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-ch
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-question-other-wrap {
+.antidian-question-other-wrap {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
 }
 
-.anti-dian-question-other-input,
-.anti-dian-question-text-input {
+.antidian-question-other-input,
+.antidian-question-text-input {
 	width: 100%;
 	height: 32px;
 	padding: 4px 10px;
@@ -3468,13 +3468,13 @@ button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-ch
 	font-size: var(--font-ui-small);
 }
 
-.anti-dian-question-other-input:focus,
-.anti-dian-question-text-input:focus {
+.antidian-question-other-input:focus,
+.antidian-question-text-input:focus {
 	border-color: var(--interactive-accent);
 	outline: none;
 }
 
-.anti-dian-question-footer {
+.antidian-question-footer {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -3483,19 +3483,19 @@ button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-ch
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-.anti-dian-question-footer-left,
-.anti-dian-question-footer-right {
+.antidian-question-footer-left,
+.antidian-question-footer-right {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 }
 
-.anti-dian-question-status {
+.antidian-question-status {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
 
-button.anti-dian-question-btn {
+button.antidian-question-btn {
 	height: 28px;
 	padding: 0 11px;
 	border-radius: 7px;
@@ -3504,7 +3504,7 @@ button.anti-dian-question-btn {
 	cursor: pointer;
 }
 
-button.anti-dian-question-btn.is-ghost {
+button.antidian-question-btn.is-ghost {
 	border: none;
 	background: transparent;
 	box-shadow: none;
@@ -3512,41 +3512,41 @@ button.anti-dian-question-btn.is-ghost {
 	padding: 0 8px;
 }
 
-button.anti-dian-question-btn.is-ghost:hover {
+button.antidian-question-btn.is-ghost:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-button.anti-dian-question-btn:disabled {
+button.antidian-question-btn:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
 
 /* Q&A summary inside the expanded ask_question trace row */
-.anti-dian-question-summary-list {
+.antidian-question-summary-list {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
 }
 
-.anti-dian-question-summary-row {
+.antidian-question-summary-row {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
 }
 
-.anti-dian-question-summary-q {
+.antidian-question-summary-q {
 	color: var(--text-muted);
 }
 
-.anti-dian-question-summary-a {
+.antidian-question-summary-a {
 	color: var(--text-normal);
 	font-weight: var(--font-medium);
 }
 
 /* ── Live Step Checklist & Focus Timer (Planning & Tracking) ──────────────── */
 
-.anti-dian-plan-card {
+.antidian-plan-card {
 	display: flex;
 	flex-direction: column;
 	gap: 7px;
@@ -3558,7 +3558,7 @@ button.anti-dian-question-btn:disabled {
 	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.anti-dian-plan-item {
+.antidian-plan-item {
 	display: flex;
 	align-items: center;
 	gap: 9px;
@@ -3567,7 +3567,7 @@ button.anti-dian-question-btn:disabled {
 	min-width: 0;
 }
 
-.anti-dian-plan-icon {
+.antidian-plan-icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -3577,49 +3577,49 @@ button.anti-dian-question-btn:disabled {
 	--icon-size: 14px;
 }
 
-.anti-dian-plan-title {
+.antidian-plan-title {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.anti-dian-plan-item.is-done .anti-dian-plan-icon {
+.antidian-plan-item.is-done .antidian-plan-icon {
 	color: var(--text-muted);
 }
 
-.anti-dian-plan-item.is-done .anti-dian-plan-title {
+.antidian-plan-item.is-done .antidian-plan-title {
 	color: var(--text-muted);
 }
 
-.anti-dian-plan-item.is-in_progress .anti-dian-plan-title {
+.antidian-plan-item.is-in_progress .antidian-plan-title {
 	color: var(--text-normal);
 	font-weight: var(--font-medium);
 }
 
-.anti-dian-plan-item.is-pending .anti-dian-plan-icon {
+.antidian-plan-item.is-pending .antidian-plan-icon {
 	color: var(--text-faint);
 }
 
-.anti-dian-plan-item.is-pending .anti-dian-plan-title {
+.antidian-plan-item.is-pending .antidian-plan-title {
 	color: var(--text-normal);
 }
 
-.anti-dian-plan-item.is-skipped .anti-dian-plan-icon,
-.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+.antidian-plan-item.is-skipped .antidian-plan-icon,
+.antidian-plan-item.is-skipped .antidian-plan-title {
 	color: var(--text-faint);
 }
 
-.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+.antidian-plan-item.is-skipped .antidian-plan-title {
 	text-decoration: line-through;
 }
 
-.anti-dian-plan-item.is-failed .anti-dian-plan-icon,
-.anti-dian-plan-item.is-failed .anti-dian-plan-title {
+.antidian-plan-item.is-failed .antidian-plan-icon,
+.antidian-plan-item.is-failed .antidian-plan-title {
 	color: var(--text-error);
 }
 
 /* 2x2 pulsing dot loader matching Antigravity's in-progress step indicator */
-.anti-dian-plan-dots {
+.antidian-plan-dots {
 	display: grid;
 	grid-template-columns: repeat(2, 4px);
 	grid-template-rows: repeat(2, 4px);
@@ -3631,27 +3631,27 @@ button.anti-dian-question-btn:disabled {
 	flex-shrink: 0;
 }
 
-.anti-dian-plan-dot {
+.antidian-plan-dot {
 	width: 4px;
 	height: 4px;
 	border-radius: 50%;
 	background: var(--text-muted);
-	animation: anti-dian-dot-pulse 1.2s ease-in-out infinite;
+	animation: antidian-dot-pulse 1.2s ease-in-out infinite;
 }
 
-.anti-dian-plan-dot:nth-child(2) {
+.antidian-plan-dot:nth-child(2) {
 	animation-delay: 0.2s;
 }
 
-.anti-dian-plan-dot:nth-child(4) {
+.antidian-plan-dot:nth-child(4) {
 	animation-delay: 0.4s;
 }
 
-.anti-dian-plan-dot:nth-child(3) {
+.antidian-plan-dot:nth-child(3) {
 	animation-delay: 0.6s;
 }
 
-@keyframes anti-dian-dot-pulse {
+@keyframes antidian-dot-pulse {
 	0%, 100% {
 		opacity: 0.35;
 		transform: scale(0.85);
@@ -3664,13 +3664,13 @@ button.anti-dian-question-btn:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.anti-dian-plan-dot {
+	.antidian-plan-dot {
 		animation: none;
 		opacity: 0.85;
 	}
 }
 
-.anti-dian-thinking-elapsed {
+.antidian-thinking-elapsed {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;

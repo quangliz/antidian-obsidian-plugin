@@ -8,15 +8,15 @@ type MenuWithDom = Menu & { dom?: HTMLElement };
  * the same animation as the `@` and `/` autocomplete menu.
  *
  * The glider is an absolutely positioned child of `container`, so rows must
- * sit above it (`.anti-dian-glide-host` styles handle that).
+ * sit above it (`.antidian-glide-host` styles handle that).
  */
 export class MenuGlider {
 	private el: HTMLElement;
 	private current: HTMLElement | null = null;
 
 	constructor(private container: HTMLElement) {
-		container.addClass('anti-dian-glide-host');
-		this.el = container.createSpan({ cls: 'anti-dian-glider', attr: { 'aria-hidden': 'true' } });
+		container.addClass('antidian-glide-host');
+		this.el = container.createSpan({ cls: 'antidian-glider', attr: { 'aria-hidden': 'true' } });
 	}
 
 	/** Slide to `row`; jumps without animation when coming from hidden. */
@@ -71,14 +71,14 @@ export class MenuGlider {
 export function attachNativeMenuGlider(menu: Menu): void {
 	const dom = (menu as MenuWithDom).dom;
 	if (!dom) return;
-	dom.addClass('anti-dian-glide-menu');
+	dom.addClass('antidian-glide-menu');
 	const glider = new MenuGlider(dom);
 	// Obsidian also marks label rows ("Model", "Permission") as selected; skip them.
 	// The effort bar shows its own selected state.
 	const sync = () =>
 		glider.moveTo(
 			dom.querySelector<HTMLElement>(
-				'.menu-item.selected:not(.is-label, .is-disabled, :has(.anti-dian-effort))',
+				'.menu-item.selected:not(.is-label, .is-disabled, :has(.antidian-effort))',
 			),
 		);
 	// Ignore the glider's own class changes, or syncing would retrigger itself.

@@ -9,7 +9,7 @@ import { AntigravityAcpClient } from '../src/core/models/antigravity-acp.ts';
 
 /** A fake `agy` that dies on the prompt "die" and can only resume while `gone` is absent. */
 async function withClient(run, options) {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-reconnect-'));
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'antidian-reconnect-'));
 	const bin = path.join(dir, 'fake-agy.mjs');
 	const log = path.join(dir, 'log.jsonl');
 	const gone = path.join(dir, 'gone');

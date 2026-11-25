@@ -7,7 +7,8 @@ import {
 	stripCompiledContext,
 	type ForkedTurn,
 } from '../context/compiler';
-import { ANTI_DIAN_APP_DATA_DIR } from '../models/antigravity-acp';
+import { LEGACY_PLUGIN_ID, stripMcpPrefix } from '../legacy-names';
+import { resolveAppDataDir } from '../models/app-data-dir';
 import { computeLineDiff, groupDiffHunks } from '../transactions/diff';
 import type { ChangeOperationType, FileDiff } from '../types/changes';
 import type { MediaInput } from '../types/model';
@@ -20,7 +21,6 @@ import type {
 import { compactTraceValue } from './trace';
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
-const MCP_TOOL_PREFIX = 'mcp_anti-dian-vault_';
 
 interface TranscriptToolCall {
 	name?: unknown;
@@ -60,8 +60,10 @@ function parseTimestampMs(raw: unknown): number | undefined {
 }
 
 /** How the CLI marks the context resource inside the text of a user request. */
-const CONTEXT_MENTION_PATTERN =
-	/@\[[^\]\n]*anti-dian[\\/]obsidian-context\.md(?: \(editor contents\))?\]/g;
+const CONTEXT_MENTION_PATTERN = new RegExp(
+	`@\\[[^\\]\\n]*(?:antidian|${LEGACY_PLUGIN_ID})[\\\\/]obsidian-context\\.md(?: \\(editor contents\\))?\\]`,
+	'g',
+);
 
 function extractRawUserPrompt(rawContent: string): string {
 	const tagMatch = rawContent.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
@@ -80,12 +82,6 @@ function parseTranscriptMedia(raw: unknown): MediaInput[] {
 		out.push({ type: 'image', mimeType, uri });
 	}
 	return out;
-}
-
-function stripMcpPrefix(name: string): string {
-	return name.startsWith(MCP_TOOL_PREFIX)
-		? name.slice(MCP_TOOL_PREFIX.length)
-		: name;
 }
 
 function parseTranscriptToolArgs(rawArgs: unknown): Record<string, unknown> {
@@ -466,7 +462,7 @@ export function parseAgyTranscriptJsonl(
  */
 export function getAgyTranscriptPaths(
 	sessionId: string,
-	appDataDir: string = ANTI_DIAN_APP_DATA_DIR,
+	appDataDir: string = resolveAppDataDir(),
 	homeDir: string = os.homedir(),
 ): string[] {
 	if (!SESSION_ID_PATTERN.test(sessionId)) return [];
@@ -553,7 +549,7 @@ async function loadTurnMedia(
  */
 export async function loadAgyTranscriptTurns(
 	sessionId: string,
-	appDataDir: string = ANTI_DIAN_APP_DATA_DIR,
+	appDataDir: string = resolveAppDataDir(),
 	homeDir: string = os.homedir(),
 ): Promise<StoredTurnTrace[]> {
 	const paths = getAgyTranscriptPaths(sessionId, appDataDir, homeDir);
@@ -598,7 +594,7 @@ export function forkedTurnsToReplayedMessages(
  */
 export async function deleteAgySessionData(
 	sessionId: string,
-	appDataDir: string = ANTI_DIAN_APP_DATA_DIR,
+	appDataDir: string = resolveAppDataDir(),
 	homeDir: string = os.homedir(),
 ): Promise<void> {
 	if (!SESSION_ID_PATTERN.test(sessionId)) return;
