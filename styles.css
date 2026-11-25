@@ -1805,6 +1805,64 @@ button.anti-dian-promptbar-menu-row {
 	margin-bottom: 0;
 }
 
+/* Markdown tables inside chat answers (Obsidian's .markdown-rendered styles don't apply here). */
+.anti-dian-answer-body > div:has(> table) {
+	overflow-x: auto;
+	max-width: 100%;
+	margin: 8px 0 12px;
+	border: 1px solid var(--table-border-color, var(--background-modifier-border));
+	border-radius: var(--radius-s);
+}
+
+.anti-dian-answer-body table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 8px 0 12px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+}
+
+.anti-dian-answer-body > div:has(> table) > table {
+	margin: 0;
+}
+
+.anti-dian-answer-body :is(th, td) {
+	padding: 6px 9px;
+	border: 1px solid var(--table-border-color, var(--background-modifier-border));
+	text-align: left;
+	vertical-align: top;
+}
+
+.anti-dian-answer-body > div:has(> table) > table > :first-child > tr:first-child > :is(th, td) {
+	border-top: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table > :last-child > tr:last-child > :is(th, td) {
+	border-bottom: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table tr > :is(th, td):first-child {
+	border-left: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table tr > :is(th, td):last-child {
+	border-right: none;
+}
+
+.anti-dian-answer-body thead th {
+	background: var(--table-header-background, var(--background-secondary));
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-answer-body tbody tr:nth-child(even) {
+	background: var(--table-row-alt-background, color-mix(in srgb, var(--background-secondary) 45%, transparent));
+}
+
+.anti-dian-answer-body tbody tr:hover {
+	background: var(--table-row-background-hover, var(--background-modifier-hover));
+}
+
 @keyframes anti-dian-stream-caret-in {
 	from {
 		opacity: 0;
