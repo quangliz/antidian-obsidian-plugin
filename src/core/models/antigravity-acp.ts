@@ -338,6 +338,8 @@ export class AntigravityAcpClient {
 	private pending = new Map<number, PendingRpc>();
 	private initialized = false;
 	private sessionId: string | null = null;
+	/** The session that holds the open conversation; outlives the CLI process. */
+	private conversationId: string | null = null;
 	/** The `model` value last sent to, or reported by, the current session. */
 	private appliedModel: string | null = null;
 	private modelConfigTask: Promise<void> = Promise.resolve();
@@ -726,8 +728,9 @@ export class AntigravityAcpClient {
 		return this.modelConfig;
 	}
 
+	/** The open conversation, also while the CLI process is down. */
 	getSessionId(): string | null {
-		return this.sessionId;
+		return this.sessionId ?? this.conversationId;
 	}
 
 	getSessionTitle(): string | null {
@@ -790,6 +793,7 @@ export class AntigravityAcpClient {
 					sessionId,
 				})) as Partial<AcpSessionNewResult> | null;
 				replayed = this.replayBuffer;
+				this.conversationId = sessionId;
 				await this.applySessionResult(sessionId, res ?? {});
 			} finally {
 				this.replayBuffer = null;
@@ -805,8 +809,9 @@ export class AntigravityAcpClient {
 	}
 
 	async resetSession(): Promise<void> {
-		const hadSession = this.sessionId !== null || this.sessionTitle !== null;
+		const hadSession = this.getSessionId() !== null || this.sessionTitle !== null;
 		this.sessionTitle = null;
+		this.conversationId = null;
 		if (hadSession) this.emitSessionInfo();
 		if (this.sessionId && this.proc && !this.proc.killed) {
 			const oldId = this.sessionId;
@@ -924,6 +929,7 @@ export class AntigravityAcpClient {
 				}
 			}
 
+			this.conversationId = this.sessionId;
 			const result = (await this.sendRequest(
 				'session/prompt',
 				{
@@ -1077,12 +1083,37 @@ export class AntigravityAcpClient {
 	private async startAndCreateSession(): Promise<void> {
 		await this.ensureInitialized();
 
-		if (!this.sessionId) {
+		if (!this.sessionId && !(await this.reconnectConversation())) {
 			const sess = (await this.sendRequest(
 				'session/new',
 				await this.buildSessionParams(),
 			)) as AcpSessionNewResult;
 			await this.applySessionResult(sess.sessionId, sess);
+		}
+	}
+
+	/**
+	 * Picks the open conversation up again after the CLI process went away. Fails
+	 * rather than go on in a new session, where the agent would have forgotten it.
+	 */
+	private async reconnectConversation(): Promise<boolean> {
+		const id = this.conversationId;
+		if (!id) return false;
+		try {
+			const sess = (await this.sendRequest('session/resume', {
+				...(await this.buildSessionParams()),
+				sessionId: id,
+			})) as Partial<AcpSessionNewResult> | null;
+			// The user may have started a new session meanwhile.
+			if (this.conversationId !== id) return false;
+			await this.applySessionResult(id, sess ?? {});
+			return true;
+		} catch (err) {
+			if (this.conversationId !== id) return false;
+			const reason = err instanceof Error ? err.message : String(err);
+			throw new Error(
+				`Could not reconnect to this conversation: ${reason}. Try again, or start a new session.`,
+			);
 		}
 	}
 
@@ -1279,8 +1310,9 @@ export class AntigravityAcpClient {
 				stderrTail: tail,
 			});
 
-			this.rejectAllPending(new Error(message));
+			// A process stopped on purpose may exit after its successor has started.
 			if (this.proc === proc) {
+				this.rejectAllPending(new Error(message));
 				this.proc = null;
 				this.rl = null;
 				this.initialized = false;

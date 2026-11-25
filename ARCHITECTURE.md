@@ -117,6 +117,7 @@ Applied operations retain before-state snapshots in memory so they can be revert
 
 - **Isolated ACP data dir**: `agy acp` is spawned with `--app-data-dir antigravity-anti-dian` (`~/.gemini/antigravity-anti-dian/`). Vault conversations stay separate from terminal `agy` CLI `/resume` history while sharing Google authentication.
 - **Session discovery & replay**: The session drawer lists vault-scoped sessions via ACP `session/list` and resumes them via `session/load`. Both a chosen model and thinking level are re-applied after a load.
+- **Reconnecting**: When the CLI process goes away (crash, changed binary path or certificates, stuck cancel), the next request picks the open conversation up with `session/resume`, which has no replay. If that fails the user gets an error; the client never goes on in a new session, where the agent would have forgotten the conversation. `session/load` stays for opening stored sessions, because an interrupted answer is missing from the CLI's transcript.
 - **Local trace enrichment**: Because the CLI does not persist reasoning text, MCP tool outputs, durations, or per-turn usage, `TurnTraceRecorder` saves compacted per-turn traces locally and merges them on replay.
 - **Forking & organization**: Forked sessions preserve prior conversation context and store parent–child metadata, custom titles, pinned order, deleted IDs, and drawer width in plugin settings.
 
