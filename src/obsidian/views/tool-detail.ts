@@ -1,5 +1,6 @@
 import { App, HoverParent } from 'obsidian';
 import { FileDiff } from '../../core/types/changes';
+import { parseAskQuestionOutcome } from '../../core/models/elicitation';
 import { renderFileDiff } from './diff-lines';
 import { bindNoteLink } from './note-link';
 
@@ -193,7 +194,7 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 			const skills = Array.isArray(output) ? output.filter(isRecord) : [];
 			return (el) => {
 				if (!skills.length) {
-					meta(el, 'No skills in .anti-dian/skills/');
+					meta(el, 'No skills');
 					return;
 				}
 				for (const skill of skills.slice(0, MAX_LIST_ITEMS)) {
@@ -210,6 +211,31 @@ function resultDetail(input: ToolDetailInput, opts: ToolDetailOptions): Renderer
 			if (!isRecord(output) || output.error) return null;
 			const description = str(output.description);
 			return description ? (el) => meta(el, truncate(description, PREVIEW_CHARS * 2)) : null;
+		}
+		case 'ask_question': {
+			const outcome = parseAskQuestionOutcome(input.args, output);
+			if (!outcome) return null;
+			if (outcome.action === 'decline') {
+				return (el) => meta(el, 'Skipped by user');
+			}
+			if (outcome.action === 'cancel') {
+				return (el) => meta(el, 'Cancelled');
+			}
+			if (outcome.answers.length === 0) return null;
+			return (el) => {
+				const list = el.createDiv({ cls: 'anti-dian-question-summary-list' });
+				for (const item of outcome.answers) {
+					const row = list.createDiv({ cls: 'anti-dian-question-summary-row' });
+					row.createDiv({
+						cls: 'anti-dian-question-summary-q',
+						text: item.question,
+					});
+					row.createDiv({
+						cls: 'anti-dian-question-summary-a',
+						text: item.answer,
+					});
+				}
+			};
 		}
 		default:
 			return null;
@@ -240,6 +266,7 @@ const KNOWN_TOOLS = new Set([
 	'search_web',
 	'list_skills',
 	'load_skill',
+	'ask_question',
 ]);
 
 /**

@@ -1,8 +1,10 @@
 /**
  * Session history contracts: what a stored conversation replays as, and the
- * per-turn trace Anti-dian keeps itself (the CLI does not persist reasoning
- * text, MCP tool results, durations, or per-turn token usage).
+ * per-turn trace Anti-dian overlays on it (the CLI's replay carries no MCP tool
+ * results, durations, per-turn token usage, or attached images).
  */
+
+import type { MediaInput } from './model';
 
 /** Reasoning or a tool call inside an agent turn, in original order. */
 export type ReplayedAgentEvent =
@@ -35,6 +37,8 @@ export interface ReplayedMessage {
 	text: string;
 	/** ISO timestamp when this message was created, when known. */
 	timestamp?: string;
+	/** User turns only: attached images; `data` is unset when the file is gone. */
+	media?: MediaInput[];
 	/** Agent turns only: reasoning and tool calls that preceded the answer. */
 	events?: ReplayedAgentEvent[];
 	/** Agent turns only, from Anti-dian's own trace when one was saved. */
@@ -46,6 +50,8 @@ export interface ReplayedMessage {
 export interface StoredTurnTrace {
 	/** The text the user typed (without injected context); used to align with the replay. */
 	userText: string;
+	/** Attached images. A turn may have media and no `userText`. */
+	media?: MediaInput[];
 	/** Assistant response text captured from the transcript, when available. */
 	agentText?: string;
 	/** Parent turns injected into the first prompt of a forked conversation. */

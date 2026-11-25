@@ -11,7 +11,6 @@ import {
 import type { SelectionSnippet } from './obsidian/views/prompt-bar-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
-import { ObsidianSkillAdapter } from './obsidian/adapters/skills';
 import { AntigravityProvider } from './core/models/antigravity-provider';
 import { McpToolServer } from './core/models/mcp-tool-server';
 import {
@@ -35,8 +34,7 @@ import {
 	createReplaceBlockTool,
 	createAppendNoteTool,
 	createUpdateFrontmatterTool,
-	createListSkillsTool,
-	createLoadSkillTool,
+	createUpdateFocusTool,
 } from './core/tools';
 import { Agent, DEFAULT_AGENT_SYSTEM_PROMPT } from './core/agent';
 import { registerCommands } from './obsidian/commands';
@@ -48,7 +46,6 @@ export default class AntiDianPlugin extends Plugin {
 	settings!: AntiDianSettings;
 	workspaceAdapter!: ObsidianWorkspaceAdapter;
 	vaultAdapter!: ObsidianVaultAdapter;
-	skillAdapter!: ObsidianSkillAdapter;
 	stagingManager!: ChangeStagingManager;
 	vaultOverlay!: StagedVaultOverlay;
 	contextCompiler!: ContextCompiler;
@@ -66,7 +63,6 @@ export default class AntiDianPlugin extends Plugin {
 
 		this.workspaceAdapter = new ObsidianWorkspaceAdapter(this.app);
 		this.vaultAdapter = new ObsidianVaultAdapter(this.app);
-		this.skillAdapter = new ObsidianSkillAdapter(this.app);
 		this.stagingManager = new ChangeStagingManager();
 		this.vaultOverlay = new StagedVaultOverlay(
 			this.vaultAdapter,
@@ -74,7 +70,6 @@ export default class AntiDianPlugin extends Plugin {
 		);
 		this.contextCompiler = new ContextCompiler({
 			vaultService: this.vaultAdapter,
-			skillService: this.skillAdapter,
 		});
 		this.validator = new ChangeSetValidator(this.vaultAdapter);
 		this.diffGenerator = new ChangeSetDiffGenerator(this.vaultAdapter);
@@ -100,8 +95,7 @@ export default class AntiDianPlugin extends Plugin {
 			createUpdateFrontmatterTool(this.stagingManager),
 		);
 		this.toolRegistry.register(createEditNoteTool(this.stagingManager));
-		this.toolRegistry.register(createListSkillsTool(this.skillAdapter));
-		this.toolRegistry.register(createLoadSkillTool(this.skillAdapter));
+		this.toolRegistry.register(createUpdateFocusTool());
 
 		this.mcpToolServer = new McpToolServer(this.toolRegistry);
 
@@ -114,6 +108,7 @@ export default class AntiDianPlugin extends Plugin {
 			caCertificates: this.settings.caCertificates,
 			cwd: vaultBasePath,
 			model: this.settings.model || undefined,
+			thoughtLevel: this.settings.thoughtLevel,
 			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
 			mcpToolServer: this.mcpToolServer,
 			initialCache: this.settings.cachedMetadata,
@@ -210,6 +205,9 @@ export default class AntiDianPlugin extends Plugin {
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
 			}
+			if (this.settings.thoughtLevel) {
+				this.antigravityProvider.setThoughtLevel(this.settings.thoughtLevel);
+			}
 		}
 	}
 
@@ -222,6 +220,9 @@ export default class AntiDianPlugin extends Plugin {
 			);
 			if (this.settings.model) {
 				this.antigravityProvider.setModel(this.settings.model);
+			}
+			if (this.settings.thoughtLevel) {
+				this.antigravityProvider.setThoughtLevel(this.settings.thoughtLevel);
 			}
 		}
 	}

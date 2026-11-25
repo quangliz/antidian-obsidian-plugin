@@ -1415,10 +1415,13 @@ body .menu.anti-dian-glide-menu .menu-item.is-label {
 	flex-direction: column;
 	position: relative;
 	z-index: 2;
+	max-height: 264px;
+	overflow-y: auto;
 }
 
 .anti-dian-promptbar-menu-row,
 button.anti-dian-promptbar-menu-row {
+	flex-shrink: 0;
 	position: relative;
 	z-index: 2;
 	display: flex;
@@ -1496,36 +1499,7 @@ button.anti-dian-promptbar-menu-row {
 /* Model Menu Popup & Usage Submenu                             */
 /* ------------------------------------------------------------- */
 
-/* Extra text inside native Menu item titles (model + permission menus). */
-.anti-dian-menu-item-effort {
-	margin-left: 6px;
-	color: var(--text-muted);
-}
-
-.anti-dian-menu-item-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 3px;
-	margin-left: 8px;
-	padding: 0 6px;
-	line-height: 18px;
-	font-size: var(--font-ui-smaller);
-	border-radius: var(--radius-s);
-	background: var(--background-modifier-hover);
-	color: var(--text-muted);
-	vertical-align: 1px;
-}
-
-.anti-dian-menu-item-badge-info {
-	display: inline-flex;
-	opacity: 0.8;
-}
-
-.anti-dian-menu-item-badge-info svg {
-	width: 11px;
-	height: 11px;
-}
-
+/* Extra text inside native Menu item titles. */
 .anti-dian-menu-item-chevron {
 	display: inline-flex;
 	margin-left: auto;
@@ -1577,6 +1551,139 @@ button.anti-dian-promptbar-menu-row {
 	margin: 6px -6px;
 }
 
+.anti-dian-model-row {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.anti-dian-model-row-check {
+	display: none;
+	color: var(--text-muted);
+	--icon-size: var(--icon-s);
+	--icon-stroke: var(--icon-s-stroke-width);
+}
+
+.anti-dian-model-row.is-current .anti-dian-model-row-check {
+	display: flex;
+}
+
+/* Effort bar: one column per thinking level, stops at the column centers. */
+.menu.anti-dian-model-menu .menu-item:has(.anti-dian-effort) {
+	padding: 0;
+}
+
+.anti-dian-effort {
+	flex: 1;
+	min-width: 0;
+	cursor: default;
+}
+
+.anti-dian-effort-heading {
+	padding: 2px 10px 6px;
+	color: var(--text-faint);
+}
+
+.anti-dian-effort-bar {
+	position: relative;
+	display: grid;
+	grid-template-columns: repeat(var(--anti-dian-effort-count), 1fr);
+}
+
+.anti-dian-effort-bar,
+.anti-dian-effort-none {
+	min-height: calc(26px + 1.3 * var(--font-ui-smaller));
+}
+
+.anti-dian-effort-none {
+	padding: 4px 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.anti-dian-effort-track {
+	position: absolute;
+	top: 7px;
+	right: calc(50% / var(--anti-dian-effort-count));
+	left: calc(50% / var(--anti-dian-effort-count));
+	height: 2px;
+	background: var(--background-modifier-border-hover);
+}
+
+.anti-dian-effort-track::after {
+	content: '';
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: calc(100% * var(--anti-dian-effort-index) / (var(--anti-dian-effort-count) - 1));
+	background: var(--interactive-accent);
+	transition: width 150ms ease-out;
+}
+
+.anti-dian-effort-stop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0 6px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+	color: var(--text-muted);
+}
+
+.anti-dian-effort-stop::before {
+	content: '';
+	position: relative;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--background-modifier-border-hover);
+}
+
+.anti-dian-effort-stop.is-filled::before {
+	background: var(--interactive-accent);
+}
+
+.anti-dian-effort-stop.is-current {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-effort-thumb {
+	position: absolute;
+	top: 0;
+	left: calc(100% * (var(--anti-dian-effort-index) + 0.5) / var(--anti-dian-effort-count));
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--interactive-accent);
+	border-radius: 50%;
+	background: var(--background-secondary);
+	transform: translateX(-50%);
+	transition:
+		left 150ms ease-out,
+		box-shadow 150ms ease-out;
+}
+
+.menu-item.selected .anti-dian-effort-thumb {
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+/* Invisible: a thumb as wide as a column makes the whole column pick its stop. */
+input[type='range'].anti-dian-effort-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+input[type='range'].anti-dian-effort-input::-webkit-slider-thumb {
+	width: calc(100% / var(--anti-dian-effort-count));
+	height: 100%;
+}
+
 .anti-dian-menu-item-desc {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
@@ -1599,9 +1706,9 @@ button.anti-dian-promptbar-menu-row {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 12px;
 	box-shadow: var(--shadow-l);
-	padding: 12px;
-	min-width: 270px;
-	max-height: min(440px, calc(100vh - 30px));
+	padding: 16px;
+	min-width: 360px;
+	max-height: min(560px, calc(100vh - 30px));
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
@@ -1611,7 +1718,7 @@ button.anti-dian-promptbar-menu-row {
 .anti-dian-usage-section {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 12px;
 }
 
 .anti-dian-usage-account-section {
@@ -1625,7 +1732,7 @@ button.anti-dian-promptbar-menu-row {
 }
 
 .anti-dian-usage-tier-badge {
-	font-size: var(--font-ui-smaller);
+	font-size: var(--font-ui-medium);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
@@ -1642,59 +1749,63 @@ button.anti-dian-promptbar-menu-row {
 }
 
 .anti-dian-usage-sec-title {
-	font-size: calc(var(--font-ui-smaller) * 0.9);
+	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 }
 
-.anti-dian-usage-limit-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.anti-dian-usage-text-col {
+.anti-dian-usage-row {
 	display: flex;
 	flex-direction: column;
-}
-
-.anti-dian-usage-limit-title {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-normal);
-	font-weight: var(--font-medium);
-}
-
-.anti-dian-usage-limit-subtext {
-	font-size: calc(var(--font-ui-smaller) * 0.85);
-	color: var(--text-muted);
-}
-
-.anti-dian-usage-right-col {
-	display: flex;
-	align-items: center;
 	gap: 6px;
 }
 
-.anti-dian-usage-pct {
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-medium);
+.anti-dian-usage-row-label {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.anti-dian-usage-row-title {
+	flex: 1;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 }
 
-.anti-dian-usage-ring {
-	width: 12px;
-	height: 12px;
-	border-radius: 50%;
-	border: 2px solid transparent;
+.anti-dian-usage-row-detail,
+.anti-dian-usage-row-value {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
 }
 
-.anti-dian-usage-ring.ring-success {
-	border-color: var(--color-green);
+.anti-dian-usage-row-value {
+	min-width: 4ch;
+	text-align: end;
+	color: var(--text-normal);
 }
 
-.anti-dian-usage-ring.ring-warning {
-	border-color: var(--color-yellow);
+.anti-dian-usage-bar {
+	height: 6px;
+	border-radius: 3px;
+	overflow: hidden;
+	background: var(--background-modifier-border);
+}
+
+.anti-dian-usage-bar-fill {
+	width: var(--anti-dian-usage-pct, 0%);
+	height: 100%;
+	border-radius: inherit;
+	background: var(--interactive-accent);
+}
+
+.anti-dian-usage-bar.is-warning .anti-dian-usage-bar-fill {
+	background: var(--color-yellow);
+}
+
+.anti-dian-usage-bar.is-error .anti-dian-usage-bar-fill {
+	background: var(--color-red);
 }
 
 /* ------------------------------------------------------------- */
@@ -1801,6 +1912,64 @@ button.anti-dian-promptbar-menu-row {
 	margin-bottom: 0;
 }
 
+/* Markdown tables inside chat answers (Obsidian's .markdown-rendered styles don't apply here). */
+.anti-dian-answer-body > div:has(> table) {
+	overflow-x: auto;
+	max-width: 100%;
+	margin: 8px 0 12px;
+	border: 1px solid var(--table-border-color, var(--background-modifier-border));
+	border-radius: var(--radius-s);
+}
+
+.anti-dian-answer-body table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 8px 0 12px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+}
+
+.anti-dian-answer-body > div:has(> table) > table {
+	margin: 0;
+}
+
+.anti-dian-answer-body :is(th, td) {
+	padding: 6px 9px;
+	border: 1px solid var(--table-border-color, var(--background-modifier-border));
+	text-align: left;
+	vertical-align: top;
+}
+
+.anti-dian-answer-body > div:has(> table) > table > :first-child > tr:first-child > :is(th, td) {
+	border-top: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table > :last-child > tr:last-child > :is(th, td) {
+	border-bottom: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table tr > :is(th, td):first-child {
+	border-left: none;
+}
+
+.anti-dian-answer-body > div:has(> table) > table tr > :is(th, td):last-child {
+	border-right: none;
+}
+
+.anti-dian-answer-body thead th {
+	background: var(--table-header-background, var(--background-secondary));
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.anti-dian-answer-body tbody tr:nth-child(even) {
+	background: var(--table-row-alt-background, color-mix(in srgb, var(--background-secondary) 45%, transparent));
+}
+
+.anti-dian-answer-body tbody tr:hover {
+	background: var(--table-row-background-hover, var(--background-modifier-hover));
+}
+
 @keyframes anti-dian-stream-caret-in {
 	from {
 		opacity: 0;
@@ -1878,6 +2047,7 @@ button.anti-dian-thinking-header-btn,
 	font-size: var(--font-ui-small);
 	font-family: inherit;
 	width: fit-content;
+	max-width: 100%;
 	transition: background-color 0.15s ease, color 0.15s ease;
 	margin-left: -6px;
 }
@@ -1910,9 +2080,12 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-status-text {
-	font-size: 12.5px;
+	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
 }
 
 .anti-dian-thinking-status-text.is-shimmer {
@@ -1949,6 +2122,8 @@ button.anti-dian-thinking-header-btn:hover {
 	margin-top: 4px;
 	margin-left: 7px;
 	padding-left: 14px;
+	/* One size for the whole trace: rows, file names, sources and thoughts inherit it. */
+	font-size: var(--font-ui-smaller);
 }
 
 .anti-dian-thinking-guideline {
@@ -1971,7 +2146,6 @@ button.anti-dian-thinking-header-btn:hover {
 	position: relative;
 	padding: 2px 6px;
 	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
 	line-height: 1.5;
 	max-height: 9em;
 	overflow: hidden;
@@ -1997,6 +2171,14 @@ button.anti-dian-thinking-header-btn:hover {
 .anti-dian-thinking-model-text :is(p, li, strong, em, code) {
 	color: inherit;
 	font-size: inherit;
+}
+
+/* Models put file and tool names in backticks: same look as file names in rows. */
+.anti-dian-thinking-model-text :not(pre) > code {
+	padding: 0;
+	background: none;
+	font-family: inherit;
+	color: var(--text-normal);
 }
 
 .anti-dian-thinking-model-text p {
@@ -2051,8 +2233,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-source-title {
-	font-size: 12.5px;
-	font-weight: var(--font-medium);
 	color: var(--text-normal);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2067,7 +2247,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-source-subtitle {
-	font-size: 11.5px;
 	color: var(--text-muted);
 	margin-left: auto;
 	flex-shrink: 0;
@@ -2078,7 +2257,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-more-count {
-	font-size: 11.5px;
 	color: var(--text-muted);
 	padding-left: 28px;
 	margin-top: 1px;
@@ -2095,7 +2273,6 @@ button.anti-dian-thinking-header-btn:hover {
 	border: none;
 	cursor: default;
 	transition: background-color 0.12s ease;
-	font-size: 12px;
 	width: 100%;
 	box-sizing: border-box;
 }
@@ -2162,16 +2339,11 @@ button.anti-dian-thinking-header-btn:hover {
 
 .anti-dian-thinking-row-secondary {
 	color: var(--text-muted);
-	font-size: 11.5px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	min-width: 0;
 	flex: 0 1 auto;
-}
-
-.anti-dian-thinking-row-secondary.is-mono {
-	font-family: var(--font-monospace);
 }
 
 /* Note names in tool rows open the note (hover + mod key previews it). */
@@ -2199,12 +2371,11 @@ button.anti-dian-thinking-header-btn:hover {
 
 .anti-dian-thinking-row-tag {
 	flex-shrink: 0;
-	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
 
 .anti-dian-thinking-status-file {
-	font-family: var(--font-monospace);
+	font-weight: var(--font-normal);
 	color: var(--text-normal);
 }
 
@@ -2941,4 +3112,468 @@ button.anti-dian-msg-action-btn.is-copied {
 
 .anti-dian-message-user .anti-dian-prompt-chip.is-link:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+/* ── Interactive Question / Poll Card (ACP Elicitation) ───────────────────── */
+
+.anti-dian-elicitation-slot {
+	width: 100%;
+}
+
+.anti-dian-elicitation-slot:empty {
+	display: none;
+}
+
+.anti-dian-question-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 12px;
+	box-sizing: border-box;
+	background: var(--background-secondary);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 42%, var(--background-modifier-border));
+	border-radius: 14px;
+	box-shadow: var(--shadow-s);
+	outline: none;
+	animation: pop-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-question-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.anti-dian-question-header-left {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.anti-dian-question-icon {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-accent);
+	--icon-size: 15px;
+	flex-shrink: 0;
+}
+
+.anti-dian-question-title {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+	letter-spacing: 0.01em;
+}
+
+.anti-dian-question-tabs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+button.anti-dian-question-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	height: 22px;
+	padding: 0 7px;
+	border-radius: 999px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: var(--font-medium);
+	cursor: pointer;
+	transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+button.anti-dian-question-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+button.anti-dian-question-tab.is-active {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+	color: var(--text-normal);
+}
+
+button.anti-dian-question-tab.is-answered:not(.is-active) {
+	border-color: rgba(var(--color-green-rgb), 0.45);
+	color: var(--color-green);
+}
+
+.anti-dian-question-tab-check {
+	display: inline-flex;
+	align-items: center;
+	--icon-size: 11px;
+}
+
+.anti-dian-question-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.anti-dian-question-prompt {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+	line-height: 1.4;
+	color: var(--text-normal);
+}
+
+.anti-dian-question-hint {
+	margin-top: -4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+.anti-dian-question-options {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	max-height: 240px;
+	overflow-y: auto;
+}
+
+button.anti-dian-question-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: auto;
+	min-height: 32px;
+	padding: 6px 9px;
+	text-align: left;
+	white-space: normal;
+	border-radius: 9px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	line-height: 1.35;
+	cursor: pointer;
+	transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+button.anti-dian-question-option:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+button.anti-dian-question-option:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+button.anti-dian-question-option.is-selected {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+}
+
+.anti-dian-question-option-num {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+	border-radius: 5px;
+	background: var(--background-secondary);
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+	font-size: 11px;
+}
+
+button.anti-dian-question-option.is-selected .anti-dian-question-option-num {
+	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+	color: var(--text-accent);
+}
+
+.anti-dian-question-indicator {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+	border: 1.5px solid var(--text-faint);
+	box-sizing: border-box;
+	transition: border-color 0.12s ease, background-color 0.12s ease;
+	--icon-size: 11px;
+}
+
+.anti-dian-question-indicator.is-radio {
+	border-radius: 50%;
+}
+
+.anti-dian-question-indicator.is-checkbox {
+	border-radius: 4px;
+}
+
+button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-radio {
+	border-color: var(--interactive-accent);
+	background: radial-gradient(circle, var(--interactive-accent) 44%, transparent 48%);
+}
+
+button.anti-dian-question-option.is-selected .anti-dian-question-indicator.is-checkbox {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.anti-dian-question-option-label {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+}
+
+.anti-dian-question-recommended {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+	color: var(--text-accent);
+	font-size: 11px;
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-question-other-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.anti-dian-question-other-input,
+.anti-dian-question-text-input {
+	width: 100%;
+	height: 32px;
+	padding: 4px 10px;
+	box-sizing: border-box;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.anti-dian-question-other-input:focus,
+.anti-dian-question-text-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.anti-dian-question-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.anti-dian-question-footer-left,
+.anti-dian-question-footer-right {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.anti-dian-question-status {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+button.anti-dian-question-btn {
+	height: 28px;
+	padding: 0 11px;
+	border-radius: 7px;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	cursor: pointer;
+}
+
+button.anti-dian-question-btn.is-ghost {
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	padding: 0 8px;
+}
+
+button.anti-dian-question-btn.is-ghost:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+button.anti-dian-question-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* Q&A summary inside the expanded ask_question trace row */
+.anti-dian-question-summary-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.anti-dian-question-summary-row {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.anti-dian-question-summary-q {
+	color: var(--text-muted);
+}
+
+.anti-dian-question-summary-a {
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+}
+
+/* ── Live Step Checklist & Focus Timer (Planning & Tracking) ──────────────── */
+
+.anti-dian-plan-card {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	margin: 8px 0 4px 0;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
+	animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.anti-dian-plan-item {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	min-width: 0;
+}
+
+.anti-dian-plan-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+	--icon-size: 14px;
+}
+
+.anti-dian-plan-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.anti-dian-plan-item.is-done .anti-dian-plan-icon {
+	color: var(--text-muted);
+}
+
+.anti-dian-plan-item.is-done .anti-dian-plan-title {
+	color: var(--text-muted);
+}
+
+.anti-dian-plan-item.is-in_progress .anti-dian-plan-title {
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+}
+
+.anti-dian-plan-item.is-pending .anti-dian-plan-icon {
+	color: var(--text-faint);
+}
+
+.anti-dian-plan-item.is-pending .anti-dian-plan-title {
+	color: var(--text-normal);
+}
+
+.anti-dian-plan-item.is-skipped .anti-dian-plan-icon,
+.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+	color: var(--text-faint);
+}
+
+.anti-dian-plan-item.is-skipped .anti-dian-plan-title {
+	text-decoration: line-through;
+}
+
+.anti-dian-plan-item.is-failed .anti-dian-plan-icon,
+.anti-dian-plan-item.is-failed .anti-dian-plan-title {
+	color: var(--text-error);
+}
+
+/* 2x2 pulsing dot loader matching Antigravity's in-progress step indicator */
+.anti-dian-plan-dots {
+	display: grid;
+	grid-template-columns: repeat(2, 4px);
+	grid-template-rows: repeat(2, 4px);
+	gap: 2.5px;
+	width: 15px;
+	height: 15px;
+	align-content: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.anti-dian-plan-dot {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	animation: anti-dian-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.anti-dian-plan-dot:nth-child(2) {
+	animation-delay: 0.2s;
+}
+
+.anti-dian-plan-dot:nth-child(4) {
+	animation-delay: 0.4s;
+}
+
+.anti-dian-plan-dot:nth-child(3) {
+	animation-delay: 0.6s;
+}
+
+@keyframes anti-dian-dot-pulse {
+	0%, 100% {
+		opacity: 0.35;
+		transform: scale(0.85);
+	}
+	50% {
+		opacity: 1;
+		background: var(--interactive-accent);
+		transform: scale(1.1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.anti-dian-plan-dot {
+		animation: none;
+		opacity: 0.85;
+	}
+}
+
+.anti-dian-thinking-elapsed {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+	margin-left: 2px;
+	white-space: nowrap;
 }

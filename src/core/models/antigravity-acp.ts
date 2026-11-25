@@ -9,6 +9,18 @@ import {
 	clearTimeout as nodeClearTimeout,
 } from 'timers';
 import type { MediaInput, TokenUsage } from '../types/model';
+import type {
+	ElicitationHandler,
+	ElicitationResponse,
+} from '../types/elicitation';
+import type { PlanStep } from '../types/plan';
+import {
+	COMPACTED_REPLY,
+	CONTEXT_RESOURCE_URI,
+	isCompactCommand,
+} from '../context/compiler';
+import { parseElicitationRequest } from './elicitation';
+import { parseFocusText, parsePlanSteps } from './plan';
 import {
 	type BinaryDownloadProgress,
 	type EnsureAgyBinaryResult,
@@ -26,31 +38,21 @@ import {
 } from './agy-diagnostics';
 import type { McpToolServer } from './mcp-tool-server';
 
-export interface AvailableModel {
-	id: string;
-	displayName: string;
-	maxTokens?: number;
-	maxOutputTokens?: number;
-	supportsThinking?: boolean;
+export interface ModelOption {
+	value: string;
+	name: string;
 }
 
-export interface ModelVariant {
-	id: string;
-	thinkingEffort: string;
-	displayName: string;
+export interface ModelSelect {
+	current: string;
+	options: ModelOption[];
 }
 
-export interface ModelGroup {
-	baseName: string;
-	maxTokens?: number;
-	supportsThinking?: boolean;
-	variants: ModelVariant[];
-}
-
-export interface AvailableModelsResponse {
-	models: AvailableModel[];
-	groups: ModelGroup[];
-	defaultModelId?: string;
+/** Model choices as `agy` reports them; thinking levels are the current model's. */
+export interface ModelConfig {
+	model: ModelSelect;
+	/** Unset for models without a choice of thinking level. */
+	thoughtLevel?: ModelSelect;
 }
 
 export interface AccountTierInfo {
@@ -85,8 +87,9 @@ export interface ContextWindowUsage {
 }
 
 export interface CachedProviderMetadata {
-	models?: AvailableModel[];
-	defaultModelId?: string;
+	modelConfig?: ModelConfig;
+	/** Last reported thinking levels, by model. */
+	thoughtLevels?: Record<string, ModelSelect>;
 	accountTier?: AccountTierInfo | null;
 	quota?: {
 		groups: QuotaGroupInfo[];
@@ -100,6 +103,13 @@ export interface CachedQuotaSnapshot {
 	isStale: boolean;
 }
 
+/** A slash command or skill the agent advertises for the current session. */
+export interface AvailableCommand {
+	/** Without the leading "/". */
+	name: string;
+	description: string;
+}
+
 export interface AcpStreamCallbacks {
 	onThoughtDelta?: (text: string) => void;
 	onAnswerDelta?: (text: string) => void;
@@ -109,6 +119,12 @@ export interface AcpStreamCallbacks {
 		callId?: string,
 	) => void;
 	onToolEnd?: (toolName: string, toolOutput: unknown, callId?: string) => void;
+	/** Handles interactive ACP `elicitation/create` form prompts (e.g. `ask_question`). */
+	onElicitation?: ElicitationHandler;
+	/** Called when the agent publishes or updates its live step checklist. */
+	onPlanUpdate?: (steps: PlanStep[]) => void;
+	/** Called when the agent publishes a high-level focus status phrase. */
+	onFocusUpdate?: (focus: string) => void;
 }
 
 export interface AcpPromptResult {
@@ -121,7 +137,10 @@ export interface AntigravityAcpOptions {
 	cliPath?: string;
 	caCertificates?: string;
 	cwd?: string;
+	/** Wanted model: a `model` option, or a model ID that includes its thinking level. */
 	model?: string;
+	/** Wanted thinking level, used when the model offers it. */
+	thoughtLevel?: string;
 	systemPrompt?: string;
 	mcpToolServer?: McpToolServer;
 	/**
@@ -165,6 +184,22 @@ const AUTO_RECOVER_BACKOFF_MS = [1_000, 3_000, 9_000];
 /** Dedicated agy data dir that keeps Anti-dian sessions out of the CLI history. */
 export const ANTI_DIAN_APP_DATA_DIR = 'antigravity-anti-dian';
 
+/**
+ * Built-in agy commands left out of the slash menu: they spawn subagents, run
+ * on timers outside a reviewed turn, or write files directly (`plan` also
+ * clashes with Anti-dian's own Plan permission mode).
+ */
+const HIDDEN_COMMANDS = new Set([
+	'boost',
+	'browser',
+	'learn',
+	'plan',
+	'run-workflow',
+	'schedule',
+	'swarm',
+	'teamwork',
+]);
+
 const MCP_SERVER_NAME = 'anti-dian-vault';
 const MCP_TOOL_PREFIX = `mcp_${MCP_SERVER_NAME}_`;
 
@@ -172,79 +207,23 @@ const SAFE_BUILTIN_TOOLS = new Set([
 	'search_web',
 	'web_search',
 	'google_search',
+	'ask_question',
+	'update_steps',
+	'update_focus',
 ]);
+
+/** Built-in progress/tracking tools rendered as live plan/focus UI rather than trace rows. */
+const PROGRESS_BUILTIN_TOOLS = new Set(['update_steps', 'update_focus']);
 
 export function formatTokens(tokens?: number): string {
 	if (!tokens) return '';
 	if (tokens >= 1_000_000) {
-		return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
+		return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 	}
 	if (tokens >= 1000) {
 		return `${Math.round(tokens / 1000)}k`;
 	}
 	return `${tokens}`;
-}
-
-export function groupModels(models: AvailableModel[]): ModelGroup[] {
-	const groups = new Map<string, ModelGroup>();
-
-	for (const m of models) {
-		let baseName = m.displayName;
-		let effort = 'Default';
-
-		const match = m.displayName.match(
-			/^(.*?)\s*\((High|Low|Off|Medium|XHigh|Max|Thinking)\)$/i,
-		);
-		if (match && match[1] && match[2]) {
-			baseName = match[1].trim();
-			const rawEffort = match[2].toLowerCase();
-			effort =
-				rawEffort === 'xhigh'
-					? 'XHigh'
-					: rawEffort.charAt(0).toUpperCase() + rawEffort.slice(1);
-		} else if (m.id.endsWith('-xhigh')) {
-			baseName = m.displayName.replace(/\s*\(XHigh\)/i, '').trim();
-			effort = 'XHigh';
-		} else if (m.id.endsWith('-high')) {
-			baseName = m.displayName.replace(/\s*\(High\)/i, '').trim();
-			effort = 'High';
-		} else if (m.id.endsWith('-medium')) {
-			baseName = m.displayName.replace(/\s*\(Medium\)/i, '').trim();
-			effort = 'Medium';
-		} else if (m.id.endsWith('-low')) {
-			baseName = m.displayName.replace(/\s*\(Low\)/i, '').trim();
-			effort = 'Low';
-		} else if (m.id.endsWith('-off')) {
-			baseName = m.displayName.replace(/\s*\(Off\)/i, '').trim();
-			effort = 'Off';
-		} else if (m.supportsThinking) {
-			effort = 'Thinking';
-		}
-
-		let group = groups.get(baseName);
-		if (!group) {
-			group = {
-				baseName,
-				maxTokens: m.maxTokens,
-				supportsThinking: m.supportsThinking,
-				variants: [],
-			};
-			groups.set(baseName, group);
-		}
-		if (m.maxTokens && !group.maxTokens) {
-			group.maxTokens = m.maxTokens;
-		}
-		if (m.supportsThinking) {
-			group.supportsThinking = true;
-		}
-		group.variants.push({
-			id: m.id,
-			thinkingEffort: effort,
-			displayName: m.displayName,
-		});
-	}
-
-	return Array.from(groups.values());
 }
 
 export function resolveAgyBinary(customPath?: string): string {
@@ -311,10 +290,7 @@ interface PendingRpc {
 
 interface AcpSessionNewResult {
 	sessionId: string;
-	models?: {
-		availableModels?: { modelId: string; name?: string }[];
-		currentModelId?: string;
-	};
+	configOptions?: unknown;
 	_meta?: {
 		antigravity?: {
 			tier?: {
@@ -347,6 +323,7 @@ export class AntigravityAcpClient {
 	private caCertificates?: string;
 	private cwd: string;
 	private model?: string;
+	private thoughtLevel?: string;
 	private systemPrompt?: string;
 	private mcpToolServer?: McpToolServer;
 	private appDataDir: string;
@@ -363,9 +340,14 @@ export class AntigravityAcpClient {
 	private pending = new Map<number, PendingRpc>();
 	private initialized = false;
 	private sessionId: string | null = null;
-	private activeModelId: string | null = null;
+	/** The session that holds the open conversation; outlives the CLI process. */
+	private conversationId: string | null = null;
+	/** The `model` value last sent to, or reported by, the current session. */
+	private appliedModel: string | null = null;
+	private modelConfigTask: Promise<void> = Promise.resolve();
 
-	private cachedModels: AvailableModelsResponse | null = null;
+	private modelConfig: ModelConfig | null = null;
+	private thoughtLevels: Record<string, ModelSelect> = {};
 	private cachedTier: AccountTierInfo | null = null;
 	private cachedQuota: { data: UserQuotaResponse; fetchedAt: number } | null =
 		null;
@@ -373,9 +355,12 @@ export class AntigravityAcpClient {
 	private onCacheUpdate?: (cache: CachedProviderMetadata) => void;
 	private quotaFetcher?: () => Promise<UserQuotaResponse | null>;
 	private contextUsage: ContextWindowUsage | null = null;
+	private availableCommands: AvailableCommand[] = [];
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
+	private activeElicitationCancels = new Set<() => void>();
+	private elicitationOutcomes = new Map<string, Record<string, unknown>>();
 	private startPromise: Promise<void> | null = null;
 	private sessionTitle: string | null = null;
 	private sessionInfoListeners = new Set<() => void>();
@@ -388,9 +373,11 @@ export class AntigravityAcpClient {
 
 	constructor(options: AntigravityAcpOptions = {}) {
 		this.cliPath = options.cliPath;
-		this.caCertificates = options.caCertificates;
+		// As in setCaCertificates, or the first save of unchanged settings restarts the CLI.
+		this.caCertificates = options.caCertificates?.trim() || undefined;
 		this.cwd = options.cwd ?? process.cwd();
 		this.model = options.model;
+		this.thoughtLevel = options.thoughtLevel;
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
 		this.appDataDir = options.appDataDir ?? ANTI_DIAN_APP_DATA_DIR;
@@ -410,12 +397,10 @@ export class AntigravityAcpClient {
 	}
 
 	private hydrateCache(cache: CachedProviderMetadata): void {
-		if (Array.isArray(cache.models) && cache.models.length > 0) {
-			this.cachedModels = {
-				models: cache.models,
-				groups: groupModels(cache.models),
-				defaultModelId: cache.defaultModelId,
-			};
+		if (Array.isArray(cache.modelConfig?.model?.options)) {
+			this.thoughtLevels = { ...cache.thoughtLevels };
+			this.storeModelConfig(cache.modelConfig);
+			this.previewModelConfig();
 		}
 		if (cache.accountTier) {
 			this.cachedTier = cache.accountTier;
@@ -438,8 +423,8 @@ export class AntigravityAcpClient {
 	private emitCacheUpdate(): void {
 		if (!this.onCacheUpdate) return;
 		const snapshot: CachedProviderMetadata = {
-			models: this.cachedModels?.models,
-			defaultModelId: this.cachedModels?.defaultModelId,
+			modelConfig: this.modelConfig ?? undefined,
+			thoughtLevels: this.thoughtLevels,
 			accountTier: this.cachedTier,
 			quota: this.cachedQuota
 				? {
@@ -463,16 +448,17 @@ export class AntigravityAcpClient {
 	}
 
 	setModel(model: string): void {
+		if (this.model === model) return;
 		this.model = model;
-		if (this.sessionId && this.activeModelId !== model) {
-			void this.applyModel(model).catch(() => {
-				// Will retry on next prompt
-			});
-		}
+		this.previewModelConfig();
+		this.applyModelConfigInBackground();
 	}
 
-	getModel(): string {
-		return this.model ?? this.activeModelId ?? 'gemini-3.8-flash-high';
+	setThoughtLevel(level: string): void {
+		if (this.thoughtLevel === level) return;
+		this.thoughtLevel = level;
+		this.previewModelConfig();
+		this.applyModelConfigInBackground();
 	}
 
 	getAccountTier(): AccountTierInfo | null {
@@ -483,8 +469,13 @@ export class AntigravityAcpClient {
 		return this.contextUsage;
 	}
 
-	getCachedAvailableModels(): AvailableModelsResponse | null {
-		return this.cachedModels;
+	/** Slash commands and skills usable in the current session. */
+	getAvailableCommands(): AvailableCommand[] {
+		return this.availableCommands;
+	}
+
+	getModelConfig(): ModelConfig | null {
+		return this.modelConfig;
 	}
 
 	getCachedUserQuota(): CachedQuotaSnapshot | null {
@@ -736,16 +727,14 @@ export class AntigravityAcpClient {
 		});
 	}
 
-	async fetchAvailableModels(): Promise<AvailableModelsResponse> {
+	async fetchModelConfig(): Promise<ModelConfig | null> {
 		await this.ensureSession();
-		if (this.cachedModels) {
-			return this.cachedModels;
-		}
-		return { models: [], groups: [] };
+		return this.modelConfig;
 	}
 
+	/** The open conversation, also while the CLI process is down. */
 	getSessionId(): string | null {
-		return this.sessionId;
+		return this.sessionId ?? this.conversationId;
 	}
 
 	getSessionTitle(): string | null {
@@ -802,6 +791,7 @@ export class AntigravityAcpClient {
 		const loading = (async () => {
 			await this.ensureInitialized();
 			this.replayBuffer = [];
+			this.conversationId = sessionId;
 			try {
 				const res = (await this.sendRequest('session/load', {
 					...(await this.buildSessionParams()),
@@ -809,6 +799,9 @@ export class AntigravityAcpClient {
 				})) as Partial<AcpSessionNewResult> | null;
 				replayed = this.replayBuffer;
 				await this.applySessionResult(sessionId, res ?? {});
+			} catch (err) {
+				this.conversationId = null;
+				throw err;
 			} finally {
 				this.replayBuffer = null;
 			}
@@ -823,13 +816,14 @@ export class AntigravityAcpClient {
 	}
 
 	async resetSession(): Promise<void> {
-		const hadSession = this.sessionId !== null || this.sessionTitle !== null;
+		const hadSession = this.getSessionId() !== null || this.sessionTitle !== null;
 		this.sessionTitle = null;
+		this.conversationId = null;
 		if (hadSession) this.emitSessionInfo();
 		if (this.sessionId && this.proc && !this.proc.killed) {
 			const oldId = this.sessionId;
 			this.sessionId = null;
-			this.activeModelId = null;
+			this.appliedModel = null;
 			this.contextUsage = null;
 			try {
 				await this.sendRequest('session/close', { sessionId: oldId });
@@ -838,7 +832,7 @@ export class AntigravityAcpClient {
 			}
 		} else {
 			this.sessionId = null;
-			this.activeModelId = null;
+			this.appliedModel = null;
 			this.contextUsage = null;
 		}
 	}
@@ -848,6 +842,7 @@ export class AntigravityAcpClient {
 			return;
 		}
 		this.turnCancelled = true;
+		this.cancelActiveElicitations();
 		if (this.sessionId && this.proc?.stdin && !this.proc.killed) {
 			this.sendNotification('session/cancel', {
 				sessionId: this.sessionId,
@@ -877,6 +872,7 @@ export class AntigravityAcpClient {
 		media?: MediaInput[],
 		callbacks?: AcpStreamCallbacks,
 		signal?: AbortSignal,
+		context?: string,
 	): Promise<AcpPromptResult> {
 		if (signal?.aborted) {
 			return { answer: '', stopReason: 'cancelled' };
@@ -888,6 +884,7 @@ export class AntigravityAcpClient {
 		this.activeCallbacks = callbacks ?? null;
 		this.activeAnswerChunks = [];
 		this.activeToolNames.clear();
+		this.elicitationOutcomes.clear();
 
 		const onAbort = () => this.cancel();
 		signal?.addEventListener('abort', onAbort, { once: true });
@@ -899,15 +896,23 @@ export class AntigravityAcpClient {
 				return { answer: '', stopReason: 'cancelled' };
 			}
 
-			if (this.model && this.activeModelId !== this.model) {
-				await this.applyModel(this.model);
-			}
+			await this.applyModelConfig();
 
 			if (this.turnCancelled || signal?.aborted) {
 				return { answer: '', stopReason: 'cancelled' };
 			}
 
 			const promptBlocks: Record<string, unknown>[] = [];
+			if (context) {
+				promptBlocks.push({
+					type: 'resource',
+					resource: {
+						uri: CONTEXT_RESOURCE_URI,
+						mimeType: 'text/markdown',
+						text: context,
+					},
+				});
+			}
 			if (text) {
 				promptBlocks.push({ type: 'text', text });
 			}
@@ -931,6 +936,7 @@ export class AntigravityAcpClient {
 				}
 			}
 
+			this.conversationId = this.sessionId;
 			const result = (await this.sendRequest(
 				'session/prompt',
 				{
@@ -966,7 +972,10 @@ export class AntigravityAcpClient {
 			return {
 				answer: cancelled
 					? partial
-					: partial || '(No response text generated)',
+					: partial ||
+						(isCompactCommand(text)
+							? COMPACTED_REPLY
+							: '(No response text generated)'),
 				stopReason: cancelled ? 'cancelled' : result?.stopReason,
 				usage,
 			};
@@ -990,6 +999,8 @@ export class AntigravityAcpClient {
 			this.activeCallbacks = null;
 			this.activeAnswerChunks = [];
 			this.activeToolNames.clear();
+			this.elicitationOutcomes.clear();
+			this.cancelActiveElicitations();
 		}
 	}
 
@@ -1027,7 +1038,11 @@ export class AntigravityAcpClient {
 		if (!this.initialized) {
 			await this.sendRequest('initialize', {
 				protocolVersion: 1,
-				clientCapabilities: {},
+				clientCapabilities: {
+					elicitation: {
+						form: {},
+					},
+				},
 				clientInfo: {
 					name: 'anti-dian',
 					version: '1.0.0',
@@ -1075,7 +1090,7 @@ export class AntigravityAcpClient {
 	private async startAndCreateSession(): Promise<void> {
 		await this.ensureInitialized();
 
-		if (!this.sessionId) {
+		if (!this.sessionId && !(await this.reconnectConversation())) {
 			const sess = (await this.sendRequest(
 				'session/new',
 				await this.buildSessionParams(),
@@ -1084,26 +1099,39 @@ export class AntigravityAcpClient {
 		}
 	}
 
+	/**
+	 * Picks the open conversation up again after the CLI process went away. Fails
+	 * rather than go on in a new session, where the agent would have forgotten it.
+	 */
+	private async reconnectConversation(): Promise<boolean> {
+		const id = this.conversationId;
+		if (!id) return false;
+		try {
+			const sess = (await this.sendRequest('session/resume', {
+				...(await this.buildSessionParams()),
+				sessionId: id,
+			})) as Partial<AcpSessionNewResult> | null;
+			// The user may have started a new session meanwhile.
+			if (this.conversationId !== id) return false;
+			await this.applySessionResult(id, sess ?? {});
+			return true;
+		} catch (err) {
+			if (this.conversationId !== id) return false;
+			const reason = err instanceof Error ? err.message : String(err);
+			throw new Error(
+				`Could not reconnect to this conversation: ${reason}. Try again, or start a new session.`,
+			);
+		}
+	}
+
 	private async applySessionResult(
 		sessionId: string,
 		sess: Partial<AcpSessionNewResult>,
 	): Promise<void> {
 		this.sessionId = sessionId;
-		this.activeModelId = sess.models?.currentModelId ?? null;
-
-		const rawModels = sess.models?.availableModels ?? [];
-		if (rawModels.length > 0 || !this.cachedModels) {
-			const models: AvailableModel[] = rawModels.map((m) => ({
-				id: m.modelId,
-				displayName: m.name || m.modelId,
-			}));
-
-			this.cachedModels = {
-				models,
-				groups: groupModels(models),
-				defaultModelId: sess.models?.currentModelId,
-			};
-		}
+		const config = parseModelConfig(sess.configOptions);
+		if (config) this.storeModelConfig(config);
+		this.appliedModel = config?.model.current ?? null;
 
 		const tier = sess._meta?.antigravity?.tier;
 		if (tier) {
@@ -1114,13 +1142,11 @@ export class AntigravityAcpClient {
 			};
 		}
 
-		if (this.model && this.activeModelId !== this.model) {
-			try {
-				await this.applyModel(this.model);
-			} catch {
-				// If saved model is no longer available, keep session default
-				this.model = this.activeModelId ?? undefined;
-			}
+		try {
+			await this.applyModelConfig();
+		} catch {
+			// If saved model is no longer available, keep session default
+			this.model = undefined;
 		}
 		this.emitCacheUpdate();
 		this.prefetchQuota();
@@ -1137,13 +1163,74 @@ export class AntigravityAcpClient {
 		}
 	}
 
-	private async applyModel(modelId: string): Promise<void> {
-		if (!this.sessionId) return;
-		await this.sendRequest('session/set_model', {
-			sessionId: this.sessionId,
-			modelId,
+	/** Brings the session to the wanted model and thinking level, one call at a time. */
+	private applyModelConfig(): Promise<void> {
+		const task = this.modelConfigTask.then(async () => {
+			if (!this.sessionId) return;
+			const { model } = this;
+			if (model && this.appliedModel !== model) {
+				await this.setConfigOption('model', model);
+				this.appliedModel = model;
+			}
+			const level = this.thoughtLevel;
+			const offered = this.modelConfig?.thoughtLevel;
+			if (
+				level &&
+				offered &&
+				offered.current !== level &&
+				offered.options.some((o) => o.value === level)
+			) {
+				await this.setConfigOption('thought_level', level);
+			}
 		});
-		this.activeModelId = modelId;
+		this.modelConfigTask = task.catch(() => undefined);
+		return task;
+	}
+
+	/** Starts a session if there is none: only a session reports the model's levels. */
+	private applyModelConfigInBackground(): void {
+		void this.ensureSession()
+			.then(() => this.applyModelConfig())
+			.catch(() => {
+				// Will retry on next prompt
+			});
+	}
+
+	private async setConfigOption(configId: string, value: string): Promise<void> {
+		const res = (await this.sendRequest('session/set_config_option', {
+			sessionId: this.sessionId,
+			configId,
+			value,
+		})) as { configOptions?: unknown } | null;
+		this.updateModelConfig(res?.configOptions);
+	}
+
+	private updateModelConfig(raw: unknown): void {
+		const config = parseModelConfig(raw);
+		if (!config) return;
+		this.storeModelConfig(config);
+		this.emitCacheUpdate();
+		this.emitSessionInfo();
+	}
+
+	private storeModelConfig(config: ModelConfig): void {
+		this.modelConfig = config;
+		const model = config.model.current;
+		if (config.thoughtLevel) this.thoughtLevels[model] = config.thoughtLevel;
+		else delete this.thoughtLevels[model];
+	}
+
+	/** Without a session, shows the wanted choices with the levels known from before. */
+	private previewModelConfig(): void {
+		if (this.sessionId || !this.modelConfig) return;
+		const { current, options } = this.modelConfig.model;
+		const model = options.find((o) => o.value === this.model)?.value ?? current;
+		const known = this.thoughtLevels[model];
+		const level = known?.options.find((o) => o.value === this.thoughtLevel)?.value;
+		this.modelConfig = {
+			model: { current: model, options },
+			thoughtLevel: known && { ...known, current: level ?? known.current },
+		};
 	}
 
 	private appDataDirArgs(): string[] {
@@ -1250,13 +1337,14 @@ export class AntigravityAcpClient {
 				stderrTail: tail,
 			});
 
-			this.rejectAllPending(new Error(message));
+			// A process stopped on purpose may exit after its successor has started.
 			if (this.proc === proc) {
+				this.rejectAllPending(new Error(message));
 				this.proc = null;
 				this.rl = null;
 				this.initialized = false;
 				this.sessionId = null;
-				this.activeModelId = null;
+				this.appliedModel = null;
 			}
 
 			if (!wasIntentional && !isNonRetriableFailure(category)) {
@@ -1274,6 +1362,7 @@ export class AntigravityAcpClient {
 
 	private destroyProcess(): void {
 		this.intentionalStop = true;
+		this.cancelActiveElicitations();
 		if (this.recoveryTimer) {
 			nodeClearTimeout(this.recoveryTimer);
 			this.recoveryTimer = null;
@@ -1288,7 +1377,7 @@ export class AntigravityAcpClient {
 		this.proc = null;
 		this.initialized = false;
 		this.sessionId = null;
-		this.activeModelId = null;
+		this.appliedModel = null;
 		this.rejectAllPending(new Error('Antigravity ACP client closed'));
 	}
 
@@ -1347,6 +1436,24 @@ export class AntigravityAcpClient {
 		);
 	}
 
+	private sendError(id: number | string, code: number, message: string): void {
+		if (!this.proc?.stdin || this.proc.killed) return;
+		this.proc.stdin.write(
+			`${JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })}\n`,
+		);
+	}
+
+	private cancelActiveElicitations(): void {
+		for (const cancel of this.activeElicitationCancels) {
+			try {
+				cancel();
+			} catch {
+				// Ignore listener errors during cancellation
+			}
+		}
+		this.activeElicitationCancels.clear();
+	}
+
 	private handleLine(line: string): void {
 		const trimmed = line.trim();
 		if (!trimmed) return;
@@ -1392,9 +1499,77 @@ export class AntigravityAcpClient {
 			return;
 		}
 
+		// Agent->client interactive form elicitation (e.g. ask_question)
+		if (msg.method === 'elicitation/create' && msg.id !== undefined) {
+			void this.handleElicitationRequest(msg.id, msg.params ?? {});
+			return;
+		}
+
 		// Agent->client streaming update notification
 		if (msg.method === 'session/update' && msg.params) {
 			this.handleSessionUpdate(msg.params);
+		}
+	}
+
+	private async handleElicitationRequest(
+		id: number | string,
+		params: Record<string, unknown>,
+	): Promise<void> {
+		if (this.turnCancelled) {
+			this.sendResponse(id, { action: 'cancel' });
+			return;
+		}
+
+		const parsed = parseElicitationRequest(params);
+		if (parsed.unsupportedMode) {
+			this.sendError(
+				id,
+				-32602,
+				`Unsupported elicitation mode: ${parsed.unsupportedMode}`,
+			);
+			return;
+		}
+
+		const request = parsed.request;
+		const handler = this.activeCallbacks?.onElicitation;
+		if (!request || !handler) {
+			this.sendResponse(id, { action: 'decline' });
+			return;
+		}
+
+		let cancelPending: (() => void) | null = null;
+		const cancelPromise = new Promise<ElicitationResponse>((resolve) => {
+			cancelPending = () => resolve({ action: 'cancel' });
+		});
+		const cancelFn = () => cancelPending?.();
+		this.activeElicitationCancels.add(cancelFn);
+
+		try {
+			const response = await Promise.race([
+				handler(request).catch(
+					(): ElicitationResponse => ({ action: 'decline' }),
+				),
+				cancelPromise,
+			]);
+
+			const finalAction = this.turnCancelled ? 'cancel' : response.action;
+			if (request.toolCallId) {
+				this.elicitationOutcomes.set(request.toolCallId, {
+					action: finalAction,
+					answers: finalAction === 'accept' ? (response.summary ?? []) : [],
+				});
+			}
+
+			if (finalAction === 'accept') {
+				this.sendResponse(id, {
+					action: 'accept',
+					content: response.content ?? {},
+				});
+			} else {
+				this.sendResponse(id, { action: finalAction });
+			}
+		} finally {
+			this.activeElicitationCancels.delete(cancelFn);
 		}
 	}
 
@@ -1455,6 +1630,9 @@ export class AntigravityAcpClient {
 					used?: number;
 					size?: number;
 					title?: unknown;
+					entries?: unknown;
+					availableCommands?: unknown;
+					configOptions?: unknown;
 			  }
 			| undefined;
 
@@ -1468,8 +1646,13 @@ export class AntigravityAcpClient {
 			return;
 		}
 
-		if (this.replayBuffer) {
-			applyReplayUpdate(this.replayBuffer, update);
+		if (update.sessionUpdate === 'available_commands_update') {
+			this.availableCommands = parseAvailableCommands(update.availableCommands);
+			return;
+		}
+
+		if (update.sessionUpdate === 'config_option_update') {
+			this.updateModelConfig(update.configOptions);
 			return;
 		}
 
@@ -1478,7 +1661,24 @@ export class AntigravityAcpClient {
 			typeof update.used === 'number' &&
 			typeof update.size === 'number'
 		) {
-			this.contextUsage = { used: update.used, size: update.size };
+			// One of a session just left may still arrive.
+			if (params.sessionId === this.getSessionId()) {
+				this.contextUsage = { used: update.used, size: update.size };
+			}
+			return;
+		}
+
+		if (this.replayBuffer) {
+			applyReplayUpdate(this.replayBuffer, update);
+			return;
+		}
+
+		if (update.sessionUpdate === 'plan') {
+			if (this.turnCancelled) return;
+			const steps = parsePlanSteps(update.entries);
+			if (steps.length > 0) {
+				this.activeCallbacks?.onPlanUpdate?.(steps);
+			}
 			return;
 		}
 
@@ -1510,12 +1710,27 @@ export class AntigravityAcpClient {
 			if (update.toolCallId) {
 				this.activeToolNames.set(update.toolCallId, displayName);
 			}
+			const toolArgs = update.args ?? update.rawInput ?? {};
+			if (displayName === 'update_steps') {
+				const steps = parsePlanSteps(toolArgs);
+				if (steps.length > 0) {
+					this.activeCallbacks?.onPlanUpdate?.(steps);
+				}
+				return;
+			}
+			if (displayName === 'update_focus') {
+				const focus = parseFocusText(toolArgs);
+				if (focus) {
+					this.activeCallbacks?.onFocusUpdate?.(focus);
+				}
+				return;
+			}
 			// MCP tools already emit precise start/end events from McpToolServer;
 			// emit for non-MCP built-in tools (like search_web) here.
 			if (!rawName.startsWith(MCP_TOOL_PREFIX)) {
 				this.activeCallbacks?.onToolStart?.(
 					displayName,
-					update.args ?? update.rawInput ?? {},
+					toolArgs,
 					update.toolCallId,
 				);
 			}
@@ -1530,10 +1745,19 @@ export class AntigravityAcpClient {
 			const displayName =
 				this.activeToolNames.get(toolCallId) ?? update.name ?? '';
 			const rawName = update.name ?? '';
+			if (PROGRESS_BUILTIN_TOOLS.has(displayName)) {
+				return;
+			}
 			if (!rawName.startsWith(MCP_TOOL_PREFIX) && displayName) {
+				const elicitationOutcome = toolCallId
+					? this.elicitationOutcomes.get(toolCallId)
+					: undefined;
+				if (toolCallId && elicitationOutcome) {
+					this.elicitationOutcomes.delete(toolCallId);
+				}
 				this.activeCallbacks?.onToolEnd?.(
 					displayName,
-					update.rawOutput ?? { status: update.status },
+					update.rawOutput ?? elicitationOutcome ?? { status: update.status },
 					toolCallId || undefined,
 				);
 			}
@@ -1553,6 +1777,50 @@ export function appendReplayChunk(
 	} else {
 		buffer.push(role === 'agent' ? { role, text, events: [] } : { role, text });
 	}
+}
+
+/** Reads the model choices from an untrusted ACP `configOptions` list. */
+export function parseModelConfig(raw: unknown): ModelConfig | null {
+	const select = (id: string): ModelSelect | undefined => {
+		const entry = Array.isArray(raw)
+			? raw.map(asRecord).find((o) => o?.id === id)
+			: undefined;
+		if (typeof entry?.currentValue !== 'string' || !Array.isArray(entry.options)) {
+			return undefined;
+		}
+		const options: ModelOption[] = [];
+		for (const option of entry.options.map(asRecord)) {
+			if (typeof option?.value !== 'string') continue;
+			options.push({
+				value: option.value,
+				name: typeof option.name === 'string' ? option.name : option.value,
+			});
+		}
+		return options.length > 0
+			? { current: entry.currentValue, options }
+			: undefined;
+	};
+	const model = select('model');
+	return model ? { model, thoughtLevel: select('thought_level') } : null;
+}
+
+/** Validates an untrusted `available_commands_update` list. */
+export function parseAvailableCommands(raw: unknown): AvailableCommand[] {
+	if (!Array.isArray(raw)) return [];
+	const out: AvailableCommand[] = [];
+	for (const entry of raw) {
+		const e = asRecord(entry);
+		if (typeof e?.name !== 'string' || !/^\w[\w:-]*$/.test(e.name)) continue;
+		if (HIDDEN_COMMANDS.has(e.name)) continue;
+		out.push({
+			name: e.name,
+			description:
+				typeof e.description === 'string'
+					? e.description.replace(/\s+/g, ' ').trim()
+					: '',
+		});
+	}
+	return out;
 }
 
 /** Validates untrusted `session/list` entries and keeps only this vault's sessions. */
@@ -1676,16 +1944,36 @@ export function applyReplayUpdate(
 		rawInput?: Record<string, unknown>;
 		rawOutput?: unknown;
 		status?: string;
+		entries?: unknown;
 	},
 ): void {
 	const kind = update.sessionUpdate;
 	const text = update.content?.text;
 	if (kind === 'user_message_chunk' && typeof text === 'string') {
+		// `/compact` has no reply to separate it from the next prompt. Text typed
+		// after the command arrives as a chunk that starts with a space.
+		const last = buffer[buffer.length - 1];
+		if (last?.role === 'user' && isCompactCommand(last.text) && !/^\s/.test(text)) {
+			buffer.push({ role: 'agent', text: COMPACTED_REPLY, events: [] });
+		}
 		appendReplayChunk(buffer, 'user', text);
 		return;
 	}
 	if (kind === 'agent_message_chunk' && typeof text === 'string') {
 		appendReplayChunk(buffer, 'agent', text);
+		return;
+	}
+	if (kind === 'plan') {
+		const steps = parsePlanSteps(update.entries);
+		if (steps.length > 0) {
+			const events = (currentAgentMessage(buffer).events ??= []);
+			events.push({
+				type: 'tool',
+				toolName: 'update_steps',
+				toolArgs: { steps },
+				status: 'completed',
+			});
+		}
 		return;
 	}
 	if (kind === 'agent_thought_chunk' && typeof text === 'string') {

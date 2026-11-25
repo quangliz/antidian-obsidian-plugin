@@ -37,6 +37,13 @@ export class TurnTraceRecorder {
 				toolArgs: step.toolArgs,
 				status: 'in_progress',
 			});
+		} else if (step.type === 'plan_update') {
+			this.events.push({
+				type: 'tool',
+				toolName: 'update_steps',
+				toolArgs: { steps: step.steps },
+				status: 'completed',
+			});
 		} else if (step.type === 'tool_end') {
 			const tools = this.events.filter((e): e is ToolEvent => e.type === 'tool');
 			const match =
@@ -109,20 +116,76 @@ export function originalTextSize(
 		: undefined;
 }
 
+/** Converts parsed transcript turns into displayable replay messages. */
+export function storedTurnsToReplayedMessages(
+	turns: StoredTurnTrace[],
+): ReplayedMessage[] {
+	const messages: ReplayedMessage[] = [];
+	for (const turn of turns) {
+		const ts = turn.savedAt || undefined;
+		if (turn.userText || turn.media?.length) {
+			messages.push({
+				role: 'user',
+				text: turn.userText,
+				timestamp: ts,
+				...(turn.media?.length ? { media: turn.media } : {}),
+			});
+		}
+		if (turn.agentText || turn.events.length > 0) {
+			messages.push({
+				role: 'agent',
+				text: turn.agentText ?? '',
+				timestamp: ts,
+				events: turn.events.length > 0 ? turn.events : undefined,
+				durationMs: turn.durationMs,
+				usage: turn.usage,
+			});
+		}
+	}
+	return messages;
+}
+
+function isMediaOnly(turn: StoredTurnTrace): boolean {
+	return !turn.userText.trim() && !!turn.media?.length;
+}
+
+/** The run of image-only turns starting at `from`. */
+function mediaOnlyRun(stored: StoredTurnTrace[], from: number): StoredTurnTrace[] {
+	let end = from;
+	while (end < stored.length && isMediaOnly(stored[end]!)) end++;
+	return stored.slice(from, end);
+}
+
 /**
  * Overlays Anti-dian's saved traces on the CLI's replay. Turns are aligned in
  * order by the typed user text; turns without a saved trace keep the replay.
+ *
+ * The CLI does not replay the user message of an image-only turn, so its answer
+ * arrives glued to the previous agent message. Those turns, and the agent
+ * messages they were glued to, are rebuilt from the saved trace instead.
  */
 export function mergeStoredTraces(
 	replayed: ReplayedMessage[],
 	stored: StoredTurnTrace[],
 ): ReplayedMessage[] {
 	const out: ReplayedMessage[] = replayed.map((m) => ({ ...m }));
+	if (out.length === 0) return out;
 	let next = 0;
+
+	const leading = mediaOnlyRun(stored, 0);
+	if (leading.length > 0) {
+		const firstUser = out.findIndex((m) => m.role === 'user');
+		const rebuilt = storedTurnsToReplayedMessages(leading);
+		out.splice(0, firstUser === -1 ? out.length : firstUser, ...rebuilt);
+		next = leading.length;
+	}
+
 	for (let i = 0; i < out.length; i++) {
 		const msg = out[i]!;
 		if (msg.role !== 'user') continue;
 		const text = msg.text.trim();
+		// Image-only turns are never in the replay; this one was rebuilt above.
+		if (!text) continue;
 		let found = -1;
 		for (let k = next; k < stored.length; k++) {
 			if (stored[k]!.userText.trim() === text) {
@@ -136,6 +199,18 @@ export function mergeStoredTraces(
 
 		if (trace.savedAt) {
 			msg.timestamp = trace.savedAt;
+		}
+		if (trace.media?.length) msg.media = trace.media;
+
+		const followers = mediaOnlyRun(stored, next);
+		if (followers.length > 0) {
+			let end = i + 1;
+			while (end < out.length && out[end]!.role === 'agent') end++;
+			const rebuilt = storedTurnsToReplayedMessages([trace, ...followers]).slice(1);
+			out.splice(i + 1, end - i - 1, ...rebuilt);
+			next += followers.length;
+			i += rebuilt.length;
+			continue;
 		}
 
 		let agent = out[i + 1];

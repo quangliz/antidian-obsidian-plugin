@@ -20,11 +20,11 @@ src/main.ts → src/obsidian/ → src/core/
 - Define service contracts in `src/core/types/` and implement them in `src/obsidian/adapters/`.
 - Keep pure core modules (`transactions/`, `skills/`, `context/`, `tools/`, `sessions/trace.ts`) free of Node I/O where practical so they remain unit-testable without Obsidian. (`src/core/models/` may use Node APIs for ACP/HTTP/binary management.)
 - Keep `src/main.ts` a thin composition root (settings, wiring adapters/services/tools, registering views/commands/icons, `onunload()` cleanup). Do not put retrieval, LLM orchestration, or mutation logic in `main.ts`.
-- In `src/obsidian/`, prefer native Obsidian APIs (`Vault`, `FileManager`, `MetadataCache`, `Workspace`, `Editor`) over raw filesystem I/O (dot-folders like `.anti-dian/skills/` are an exception via `app.vault.adapter`).
+- In `src/obsidian/`, prefer native Obsidian APIs (`Vault`, `FileManager`, `MetadataCache`, `Workspace`, `Editor`) over raw filesystem I/O (dot-folders like `.agents/` are an exception via `app.vault.adapter`).
 
 ## Safety & Runtime Invariants
 - **Untrusted model output**: Validate paths (`isPathWithinVault`, no `..`, absolute paths, or URI schemes), tool arguments, stale `baseMtime`, scopes, `permissionMode`, and unique match targets.
-- **Vault boundary**: All vault access must go through `anti-dian-vault` MCP tools; never bypass Obsidian via raw CLI filesystem/shell tools.
+- **Vault boundary**: All vault access must go through `anti-dian-vault` MCP tools (except `agy` reading skill files itself); never bypass Obsidian via raw CLI filesystem/shell tools.
 - **Permission modes**:
   - `ask` (default): Never perform silent unvalidated writes; writes must stage, diff, and wait for approval.
   - `plan`: Read-only; never bypass MCP-layer blocks on mutating tools.

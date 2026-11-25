@@ -2,32 +2,14 @@
  * Pure helpers for attaching media to a prompt (no Obsidian imports, so they are unit-testable).
  */
 
+import { mediaMimeForName } from '../../core/files';
+
+export { mediaMimeForName };
+
 export type AttachmentKind = 'image' | 'video' | 'audio';
 
 /** Upper bound for attached media files to prevent out-of-memory base64 reads. */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-
-/** File extensions that can be attached as media, with their MIME types. */
-export const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
-	png: 'image/png',
-	jpg: 'image/jpeg',
-	jpeg: 'image/jpeg',
-	gif: 'image/gif',
-	webp: 'image/webp',
-	bmp: 'image/bmp',
-	svg: 'image/svg+xml',
-	avif: 'image/avif',
-	mp4: 'video/mp4',
-	webm: 'video/webm',
-	mov: 'video/quicktime',
-	mkv: 'video/x-matroska',
-	ogv: 'video/ogg',
-	mp3: 'audio/mpeg',
-	wav: 'audio/wav',
-	m4a: 'audio/mp4',
-	ogg: 'audio/ogg',
-	flac: 'audio/flac',
-};
 
 export function isAttachableMime(mimeType: string): boolean {
 	return /^(image|video|audio)\//.test(mimeType);
@@ -35,12 +17,6 @@ export function isAttachableMime(mimeType: string): boolean {
 
 export function mediaKind(mimeType: string): AttachmentKind {
 	return mimeType.startsWith('video/') ? 'video' : mimeType.startsWith('audio/') ? 'audio' : 'image';
-}
-
-/** MIME type for a file name or path by extension, if it is attachable media. */
-export function mediaMimeForName(name: string): string | undefined {
-	const ext = /\.([^./\\]+)$/.exec(name)?.[1]?.toLowerCase();
-	return ext ? MEDIA_TYPES_BY_EXTENSION[ext] : undefined;
 }
 
 /**

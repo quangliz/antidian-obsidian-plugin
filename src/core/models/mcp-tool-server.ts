@@ -1,6 +1,6 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
-import type { ToolContext, ToolRegistry } from '../tools';
+import { FileToolResult, type ToolContext, type ToolRegistry } from '../tools';
 
 export interface McpToolServerInfo {
 	url: string;
@@ -293,6 +293,11 @@ export class McpToolServer {
 						output,
 					});
 				}
+				const fileBlocks: Record<string, unknown>[] = [];
+				if (output instanceof FileToolResult) {
+					fileBlocks.push(fileContentBlock(output.file));
+					output = output.info;
+				}
 				this.onToolEnd?.({
 					callId,
 					toolName: name,
@@ -308,6 +313,7 @@ export class McpToolServer {
 									? output
 									: JSON.stringify(withoutPrivateFields(output)),
 						},
+						...fileBlocks,
 					],
 				});
 			} catch (err) {
@@ -360,6 +366,16 @@ export class McpToolServer {
 			}),
 		);
 	}
+}
+
+function fileContentBlock(file: FileToolResult['file']): Record<string, unknown> {
+	const { path, mimeType, data } = file;
+	return mimeType.startsWith('image/')
+		? { type: 'image', mimeType, data }
+		: {
+				type: 'resource',
+				resource: { uri: `vault:///${encodeURI(path)}`, mimeType, blob: data },
+			};
 }
 
 /** Fields prefixed with `_` are for the UI only (e.g. diffs) and never sent to the model. */

@@ -1,11 +1,16 @@
 import type { ActiveContext, ContextReference } from '../types/context';
 import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
+import type { ElicitationHandler } from '../types/elicitation';
+import type { PlanStep } from '../types/plan';
+import { parseFocusText } from '../models/plan';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import {
+	COMPACTED_REPLY,
 	ContextCompiler,
 	type ForkedTurn,
+	isCompactCommand,
 	stripCompiledContext,
 } from '../context/compiler';
 import type { AntigravityProvider } from '../models/antigravity-provider';
@@ -37,6 +42,8 @@ export type AgentStepEvent =
 			callId?: string;
 	  }
 	| { type: 'tool_end'; toolName: string; toolOutput: unknown; callId?: string }
+	| { type: 'plan_update'; steps: PlanStep[] }
+	| { type: 'focus_update'; focus: string }
 	| {
 			type: 'answer';
 			text: string;
@@ -66,11 +73,17 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Anti-dian, an intelligent no
 
 Tool rules (strict):
 - ALWAYS use the \`anti-dian-vault\` MCP tools for every vault operation.
-- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary.
+- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exceptions, both with \`read_file\`: the exact file a \`read_note\` result says it was offloaded to, and a skill's \`SKILL.md\` plus the files it references.
 - Built-in web search (\`search_web\`) may be used when external information is needed.
+- Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
+
+Progress tracking (for multi-step work):
+- Whenever a request involves 3 or more distinct steps (for example: finding and reading multiple notes, comparing or synthesizing across notes, planning, or editing multiple sections/notes), call built-in \`update_steps\` IN PARALLEL with your first tool call to show a concise 3–6 step checklist (first step \`in_progress\`, remaining \`pending\`). Update it as you move between phases and mark every step \`done\` before your final answer.
+- Call \`update_focus\` in parallel with the first tool call of each phase to display a concise live status phrase (3–8 words, in the user's language) describing what you are currently doing.
+- Skip \`update_steps\` and \`update_focus\` for simple 1–2 step lookups or direct questions.
 
 Recommended vault workflow:
-1. Act directly when the target note and its relevant content are already in context or earlier turns; only call \`list_notes\` or \`search_notes\` when you need to discover unknown notes or find related notes. For long unread notes, prefer \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading in full with \`read_note\`.
+1. Act directly when the target note and its relevant content are already in context or earlier turns; only call \`list_notes\` or \`search_notes\` when you need to discover unknown notes or find related notes. For long unread notes, prefer \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading in full with \`read_note\`. \`read_note\` also opens images, PDFs, audio, video, and Office documents (docx, xlsx, pptx).
 2. Prefer structural edits over whole-file rewrites:
    - \`replace_block\` for localized exact-text edits
    - \`patch_note\` for replacing a specific heading section
@@ -78,8 +91,10 @@ Recommended vault workflow:
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
 3. Each write tool call is reviewed immediately: in Ask mode the user approves or rejects it before the tool returns. The result says whether it was applied (\`applied: true\`) or rejected (\`rejectedByUser: true\`); if rejected, don't retry the same edit — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied and staged edits.
-4. Available vault skills are already injected into session context when present. Only call \`load_skill\` if a listed skill matches the request; do not call \`list_skills\` unless the user asks to inspect or refresh skills.
+4. Use a skill only when it matches the request or the user invokes it with \`/name\`. Skills cannot run scripts or shell commands here, and their vault edits still go through the \`anti-dian-vault\` tools.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
+
+Context from Obsidian (active note, selection, mode) is attached as \`obsidian-context.md\`. It is not a vault file: never open, cite, or edit it.
 
 Formatting:
 - Cite vault notes as plain wikilinks, e.g. [[Note Name]] or [[Note Name#Heading]]. Never put wikilinks inside backticks or code formatting, or they won't be clickable.
@@ -148,14 +163,19 @@ export class Agent {
 	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
 		this.cancel();
 		const replayed = await this.provider.loadSession(sessionId);
-		this.contextCompiler.resumeSession();
-		return replayed
+		this.contextCompiler.reset();
+		const messages = replayed
 			.map((m) =>
 				m.role === 'user' ? { ...m, text: stripCompiledContext(m.text) } : m,
 			)
 			.filter(
 				(m) => m.text.trim().length > 0 || (m.events?.length ?? 0) > 0,
 			);
+		const last = messages[messages.length - 1];
+		if (last?.role === 'user' && isCompactCommand(last.text)) {
+			messages.push({ role: 'agent', text: COMPACTED_REPLY, events: [] });
+		}
+		return messages;
 	}
 
 	async run(
@@ -168,6 +188,7 @@ export class Agent {
 		permissionMode: HarnessPermissionMode = 'ask',
 		requestApproval?: ApprovalHandler,
 		signal?: AbortSignal,
+		requestElicitation?: ElicitationHandler,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -190,13 +211,12 @@ export class Agent {
 			permissionMode,
 		);
 		rawContextUsed.push(...compiled.contextRefs);
-		const fullUserPrompt = compiled.prompt;
 
 		const currentMessages: Message[] = [
 			...history,
 			{
 				role: 'user',
-				text: fullUserPrompt,
+				text: userMessage,
 				media,
 			},
 		];
@@ -243,10 +263,16 @@ export class Agent {
 			},
 			{
 				onToolStart: ({ callId, toolName, toolArgs }) => {
+					if (toolName === 'update_focus') {
+						const focus = parseFocusText(toolArgs);
+						if (focus) onStep?.({ type: 'focus_update', focus });
+						return;
+					}
 					void beforeTool?.();
 					onStep?.({ type: 'tool_start', toolName, toolArgs, callId });
 				},
 				onToolEnd: ({ callId, toolName, toolOutput }) => {
+					if (toolName === 'update_focus') return;
 					onStep?.({ type: 'tool_end', toolName, toolOutput, callId });
 				},
 			},
@@ -254,7 +280,7 @@ export class Agent {
 
 		try {
 			const result = await this.provider.runTurn(
-				fullUserPrompt,
+				userMessage,
 				media,
 				{
 					onThoughtDelta: (text) =>
@@ -278,8 +304,14 @@ export class Agent {
 							callId: callId ? `acp-${callId}` : undefined,
 						});
 					},
+					onElicitation: requestElicitation,
+					onPlanUpdate: (steps) =>
+						onStep?.({ type: 'plan_update', steps }),
+					onFocusUpdate: (focus) =>
+						onStep?.({ type: 'focus_update', focus }),
 				},
 				turnController.signal,
+				compiled.context,
 			);
 
 			const contextUsed = this.deduplicateContext(rawContextUsed);

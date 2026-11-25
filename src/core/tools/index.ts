@@ -1,15 +1,16 @@
+import { extractOfficeText, isOfficeMime } from '../office';
 import type {
 	VaultService,
 	SearchResult,
 	SearchNotesParams,
 	ReadNoteParams,
 	NoteContent,
+	BinaryContent,
 	ListNotesParams,
 	NoteListItem,
 	NoteOutline,
 } from '../types/vault';
 import type { ActiveContext, ContextReference } from '../types/context';
-import type { SkillDocument, SkillService, SkillSummary } from '../types/skills';
 import type { ChangeStagingManager, StagedVaultOverlay } from '../transactions';
 
 export type HarnessPermissionMode = 'ask' | 'plan' | 'auto';
@@ -44,6 +45,23 @@ export interface Tool<I = unknown, O = unknown> {
 	schema: Record<string, unknown>;
 	mutates?: boolean;
 	execute(input: I, ctx?: ToolContext): Promise<O>;
+}
+
+/**
+ * A tool result that carries a file. `info` is the JSON the model and the UI
+ * see; the bytes go to the model as a separate MCP content block.
+ */
+export class FileToolResult {
+	readonly info: Record<string, unknown>;
+	readonly file: Pick<BinaryContent, 'path' | 'mimeType' | 'data'>;
+
+	constructor(
+		info: Record<string, unknown>,
+		file: Pick<BinaryContent, 'path' | 'mimeType' | 'data'>,
+	) {
+		this.info = info;
+		this.file = file;
+	}
 }
 
 export interface ToolDeclaration {
@@ -185,7 +203,7 @@ export function createSearchNotesTool(
 	return {
 		name: 'search_notes',
 		description:
-			'Search vault notes and sections. Returns structured matches with path, heading, matchType (title|heading|text|property|link), and snippet to pinpoint relevant sections before reading.',
+			'Search vault notes and sections, plus other files (images, PDFs, …) by name. Returns structured matches with path, heading, matchType (title|heading|text|property|link), and snippet to pinpoint relevant sections before reading.',
 		schema: {
 			type: 'object',
 			properties: {
@@ -230,21 +248,22 @@ export function createSearchNotesTool(
 export function createReadNoteTool(
 	vaultService: VaultService,
 	overlay?: StagedVaultOverlay,
-): Tool<ReadNoteParams, NoteContent | null> {
+): Tool<ReadNoteParams, NoteContent | FileToolResult | null> {
 	return {
 		name: 'read_note',
 		description:
-			'Read the content of a note or a specific heading section in the vault. Automatically reflects any pending edits staged earlier in the current turn.',
+			'Read any vault file: a note (or one heading section of it), another text file (canvas, base, JSON, CSV, code, SVG source), an Office document (docx, xlsx, pptx), returned as its text, or another non-text file (image, PDF, audio, video), returned as the file itself. Automatically reflects any pending edits staged earlier in the current turn.',
 		schema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Vault path to the note (e.g. "llama.cpp.md")',
+					description:
+						'Vault path to the file (e.g. "llama.cpp.md", "Assets/diagram.png")',
 				},
 				heading: {
 					type: 'string',
-					description: 'Optional heading section to read',
+					description: 'Optional heading section to read (notes only)',
 				},
 			},
 			required: ['path'],
@@ -252,13 +271,45 @@ export function createReadNoteTool(
 		execute: async (
 			input: ReadNoteParams,
 			ctx?: ToolContext,
-		): Promise<NoteContent | null> => {
+		): Promise<NoteContent | FileToolResult | null> => {
 			const path = typeof input?.path === 'string' ? input.path : '';
 			const heading =
 				typeof input?.heading === 'string' ? input.heading : undefined;
+
+			const binary = await vaultService.readBinary?.(path);
+			if (binary && isOfficeMime(binary.mimeType)) {
+				ctx?.recordContext?.({ path: binary.path, reason: 'Read file' });
+				try {
+					const content = extractOfficeText(Buffer.from(binary.data, 'base64'), binary.mimeType);
+					return { path: binary.path, content, mtime: binary.mtime };
+				} catch (err) {
+					throw new Error(
+						`Could not read "${binary.path}": ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
+			if (binary) {
+				ctx?.recordContext?.({ path: binary.path, reason: 'Read file' });
+				return new FileToolResult(
+					{
+						path: binary.path,
+						mimeType: binary.mimeType,
+						size: binary.size,
+						mtime: binary.mtime,
+						message:
+							'The file follows. If it was offloaded to a file instead, open that exact file with read_file to view it.',
+					},
+					binary,
+				);
+			}
+
 			const note = overlay
 				? await overlay.readEffectiveNote({ path, heading })
 				: await vaultService.readNote({ path, heading });
+
+			if (note?.content.includes('\0')) {
+				throw new Error(`"${note.path}" is a binary file of an unsupported type.`);
+			}
 
 			if (note) {
 				if (ctx?.recordContext) {
@@ -722,60 +773,22 @@ export function createEditNoteTool(
 	};
 }
 
-export function createListSkillsTool(
-	skillService: SkillService,
-): Tool<Record<string, never>, SkillSummary[]> {
+export function createUpdateFocusTool(): Tool<{ focus: string }, string> {
 	return {
-		name: 'list_skills',
+		name: 'update_focus',
 		description:
-			'List available vault workflow skills (from .anti-dian/skills/) with their names and descriptions.',
-		schema: {
-			type: 'object',
-			properties: {},
-		},
-		execute: async (): Promise<SkillSummary[]> => {
-			return await skillService.listSkills();
-		},
-	};
-}
-
-export function createLoadSkillTool(
-	skillService: SkillService,
-): Tool<{ name: string }, SkillDocument | { error: string }> {
-	return {
-		name: 'load_skill',
-		description:
-			'Load the full markdown instructions for a specific vault skill by name when it matches the user request.',
+			'Update the live status summary shown to the user while tools are running (3-8 words describing your current phase). Call in parallel with the first tool call of a new phase so it adds no extra turn latency. Skip for simple 1-2 tool lookups.',
 		schema: {
 			type: 'object',
 			properties: {
-				name: {
+				focus: {
 					type: 'string',
-					description: 'Name of the vault skill to load',
+					description:
+						'Short phrase (3-8 words) describing the high-level activity you are doing right now, matching the user language.',
 				},
 			},
-			required: ['name'],
+			required: ['focus'],
 		},
-		execute: async (
-			input: { name: string },
-			ctx?: ToolContext,
-		): Promise<SkillDocument | { error: string }> => {
-			const name = typeof input?.name === 'string' ? input.name.trim() : '';
-			if (!name) {
-				return { error: 'Skill name is required.' };
-			}
-			const doc = await skillService.loadSkill(name);
-			if (!doc) {
-				return { error: `Skill "${name}" not found in .anti-dian/skills/.` };
-			}
-			if (ctx?.recordContext) {
-				ctx.recordContext({
-					path: doc.path,
-					reason: `Loaded skill (${doc.name})`,
-					chars: doc.body.length,
-				});
-			}
-			return doc;
-		},
+		execute: async (): Promise<string> => 'OK',
 	};
 }

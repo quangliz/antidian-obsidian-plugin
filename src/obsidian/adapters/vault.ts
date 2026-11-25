@@ -1,10 +1,11 @@
-import { App, TFile, normalizePath as obsNormalizePath } from 'obsidian';
+import { App, TFile, arrayBufferToBase64, normalizePath as obsNormalizePath } from 'obsidian';
 import {
 	VaultService,
 	SearchNotesParams,
 	ReadNoteParams,
 	SearchResult,
 	NoteContent,
+	BinaryContent,
 	ListNotesParams,
 	NoteListItem,
 	NoteOutline,
@@ -18,6 +19,7 @@ import {
 	MutationService,
 	RollbackResult,
 } from '../../core/types/changes';
+import { MAX_BINARY_READ_BYTES, binaryMimeForPath } from '../../core/files';
 import { applyOperationToContent } from '../../core/transactions/overlay';
 import { ObsidianMetadataAdapter } from './metadata';
 
@@ -107,7 +109,7 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 
 		const terms = query.split(/\s+/).filter(Boolean);
 		const limit = params.limit ?? 10;
-		const files = this.app.vault.getMarkdownFiles();
+		const files = this.app.vault.getFiles();
 		const allResults: SearchResult[] = [];
 
 		for (const file of files) {
@@ -251,7 +253,8 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 				}
 			}
 
-			// 5. Body text search
+			// 5. Body text search (other file types are found by name only)
+			if (file.extension !== 'md') continue;
 			const content = await this.app.vault.cachedRead(file);
 			const contentLower = content.toLowerCase();
 
@@ -361,6 +364,30 @@ export class ObsidianVaultAdapter implements VaultService, MutationService {
 			heading: params.heading,
 			content,
 			mtime,
+		};
+	}
+
+	async readBinary(path: string): Promise<BinaryContent | null> {
+		const targetPath = path.trim();
+		if (!targetPath) return null;
+		let file = this.app.vault.getAbstractFileByPath(targetPath);
+		if (!(file instanceof TFile)) {
+			file = this.metadataAdapter.getFirstLinkpathDest(targetPath, '');
+		}
+		if (!(file instanceof TFile)) return null;
+		const mimeType = binaryMimeForPath(file.path);
+		if (!mimeType) return null;
+		if (file.stat.size > MAX_BINARY_READ_BYTES) {
+			throw new Error(
+				`"${file.path}" is too large to read (limit ${MAX_BINARY_READ_BYTES / 1024 / 1024} MB).`,
+			);
+		}
+		return {
+			path: file.path,
+			mimeType,
+			data: arrayBufferToBase64(await this.app.vault.readBinary(file)),
+			size: file.stat.size,
+			mtime: file.stat.mtime,
 		};
 	}
 

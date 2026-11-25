@@ -10,7 +10,6 @@ import {
 	applyFrontmatterUpdate,
 	parseSimpleFrontmatter,
 } from '../src/core/transactions/markdown.ts';
-import { parseSkillMarkdown } from '../src/core/skills/index.ts';
 
 test('extractMarkdownHeadings ignores frontmatter and fenced code blocks', () => {
 	const md = [
@@ -112,28 +111,4 @@ test('applyFrontmatterUpdate creates, updates, and removes YAML keys cleanly', (
 	assert.equal(parsed?.rating, 5);
 	assert.equal(parsed?.tags, undefined);
 	assert.match(updated, /Body text/);
-});
-
-test('parseSkillMarkdown extracts frontmatter metadata and body', () => {
-	const raw = [
-		'---',
-		'name: literature-review',
-		'description: Synthesize research papers into structured notes.',
-		'---',
-		'',
-		'# Instructions',
-		'1. Search related notes first.',
-	].join('\n');
-
-	const doc = parseSkillMarkdown(
-		raw,
-		'.anti-dian/skills/literature-review/SKILL.md',
-		'fallback',
-	);
-	assert.equal(doc.name, 'literature-review');
-	assert.equal(
-		doc.description,
-		'Synthesize research papers into structured notes.',
-	);
-	assert.match(doc.body, /# Instructions/);
 });

@@ -8,9 +8,8 @@ import {
 } from 'obsidian';
 import type AntiDianPlugin from './main';
 import {
-	type AvailableModel,
+	type ModelConfig,
 	type CachedProviderMetadata,
-	formatTokens,
 	isAgyBinaryAvailable,
 	resolveAgyBinary,
 } from './core/models/antigravity-acp';
@@ -24,6 +23,8 @@ export type PermissionMode = 'ask' | 'plan' | 'auto';
 
 export interface AntiDianSettings {
 	model?: string;
+	/** Thinking level to use with models that offer it. */
+	thoughtLevel?: string;
 	permissionMode?: PermissionMode;
 	cliPath?: string;
 	/** Optional PEM-encoded CA certificate path for corporate TLS/VPN proxies. */
@@ -126,17 +127,12 @@ export class AntiDianSettingTab extends PluginSettingTab {
 			.setDesc('Select the default model for reasoning and tool use.');
 
 		let modelDropdown: DropdownComponent | null = null;
-		const populateModelDropdown = (
-			models: AvailableModel[],
-			defaultModelId?: string,
-		): void => {
-			if (models.length === 0) return;
+		const populateModelDropdown = (config: ModelConfig): void => {
 			if (!modelDropdown) {
 				modelSetting.addDropdown((dropdown) => {
 					modelDropdown = dropdown;
 					dropdown.onChange(async (val) => {
 						this.plugin.settings.model = val;
-						this.plugin.antigravityProvider.setModel(val);
 						await this.plugin.saveSettings();
 					});
 				});
@@ -144,22 +140,16 @@ export class AntiDianSettingTab extends PluginSettingTab {
 			const dd = modelDropdown;
 			if (!dd) return;
 			dd.selectEl.empty();
-			for (const m of models) {
-				const ctxLabel = m.maxTokens ? ` (${formatTokens(m.maxTokens)} ctx)` : '';
-				dd.addOption(m.id, `${m.displayName}${ctxLabel}`);
+			for (const option of config.model.options) {
+				dd.addOption(option.value, option.name);
 			}
-			const currentModel =
-				this.plugin.settings.model || defaultModelId || models[0]?.id || '';
-			if (currentModel) {
-				dd.setValue(currentModel);
-			}
+			dd.setValue(config.model.current);
 		};
 
 		// Hydrate immediately from persisted/in-memory cache (0 ms)
-		const cachedModels =
-			this.plugin.antigravityProvider.getCachedAvailableModels();
-		if (cachedModels && cachedModels.models.length > 0) {
-			populateModelDropdown(cachedModels.models, cachedModels.defaultModelId);
+		const cachedConfig = this.plugin.antigravityProvider.getModelConfig();
+		if (cachedConfig) {
+			populateModelDropdown(cachedConfig);
 		} else if (cliFound) {
 			modelSetting.setDesc('Loading available models...');
 		} else if (hasCustomPath) {
@@ -204,30 +194,15 @@ export class AntiDianSettingTab extends PluginSettingTab {
 
 		const skillsSetting = new Setting(containerEl)
 			.setName('Vault skills')
-			.setDesc('Checking .anti-dian/skills/...');
-
-		void this.plugin.skillAdapter
-			.listSkills()
-			.then((skills) => {
-				if (skills.length === 0) {
-					skillsSetting.setDesc(
-						'No skills configured. Add Markdown skill files to .anti-dian/skills/ to extend workflows.',
-					);
-				} else {
-					const names = skills
-						.slice(0, 5)
-						.map((s) => s.name)
-						.join(', ');
-					const more =
-						skills.length > 5 ? ` (+${skills.length - 5} more)` : '';
-					skillsSetting.setDesc(
-						`${skills.length} skill${skills.length === 1 ? '' : 's'} loaded from .anti-dian/skills/: ${names}${more}`,
-					);
-				}
-			})
-			.catch(() => {
-				skillsSetting.setDesc('Could not read .anti-dian/skills/.');
-			});
+			.setDesc(
+				'Add a folder with a SKILL.md file to .agents/skills/ to teach your own workflows. Type / in the prompt to run one.',
+			);
+		void this.app.vault.adapter.exists('.anti-dian/skills').then((legacy) => {
+			if (!legacy) return;
+			skillsSetting.setDesc(
+				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
+			);
+		});
 
 		/* ── Backend ──────────────────────────────────────────────────────── */
 		new Setting(containerEl).setName('Backend').setHeading();
@@ -391,12 +366,12 @@ export class AntiDianSettingTab extends PluginSettingTab {
 							authButton.removeCta();
 						}
 
-						const { models, defaultModelId } =
-							await this.plugin.antigravityProvider.fetchAvailableModels();
+						const config =
+							await this.plugin.antigravityProvider.fetchModelConfig();
 						modelSetting.setDesc(
 							'Select the default model for reasoning and tool use.',
 						);
-						populateModelDropdown(models, defaultModelId);
+						if (config) populateModelDropdown(config);
 					} else {
 						authSetting.setDesc(
 							`Not signed in (${status.error ?? 'click Sign in with Google'})`,

@@ -1,22 +1,28 @@
 import { Menu, MenuItem, setIcon } from 'obsidian';
 import {
 	AccountTierInfo,
-	AvailableModel,
 	CachedQuotaSnapshot,
 	ContextWindowUsage,
-	ModelGroup,
-	ModelVariant,
+	ModelConfig,
+	ModelSelect,
 	UserQuotaResponse,
 	formatTokens,
-	groupModels,
 } from '../../core/models/antigravity-acp';
+import { EffortSlider } from './effort-slider';
 import { attachNativeMenuGlider } from './menu-glider';
 
+interface UsageRow {
+	title: string;
+	detail?: string;
+	value: string;
+	/** Omitted for plain counts that have no limit to measure against. */
+	bar?: { pct: number; status: 'normal' | 'warning' | 'error' };
+}
+
 export interface ModelMenuContext {
-	getCurrentModelId: () => string;
-	onSelectModel: (modelId: string) => void;
-	getAvailableModels: () => AvailableModel[];
-	getModelGroups: () => ModelGroup[];
+	getModelConfig: () => ModelConfig | null;
+	onSelectModel: (model: string) => void;
+	onSelectThoughtLevel: (level: string) => void;
 	getAccountTier: () => AccountTierInfo | null;
 	getCachedUserQuota: () => CachedQuotaSnapshot | null;
 	fetchUserQuota: () => Promise<UserQuotaResponse | null>;
@@ -30,21 +36,22 @@ export interface ModelMenuContext {
 	};
 }
 
-/** `MenuItem.setSubmenu` exists at runtime but is not in the public typings. */
-type MenuItemWithSubmenu = MenuItem & { setSubmenu?: () => Menu };
-
 /** `Menu.dom` / `MenuItem.dom` exist at runtime but are not in the public typings. */
 type MenuWithDom = Menu & { dom?: HTMLElement };
 type MenuItemWithDom = MenuItem & { dom?: HTMLElement };
 
-const SUPPORTS_SUBMENU =
-	typeof (MenuItem.prototype as MenuItemWithSubmenu).setSubmenu === 'function';
-
-const DEFAULT_MODEL_ID = 'gemini-3.7-flash-high';
+/** Name of the selected option; the raw value when it is not listed. */
+function selectedName(select: ModelSelect): string {
+	return (
+		select.options.find((o) => o.value === select.current)?.name ?? select.current
+	);
+}
 
 export class ModelMenuController {
 	private ctx: ModelMenuContext;
 	private menu: Menu | null = null;
+	private modelRows = new Map<string, HTMLElement>();
+	private effortSlider: EffortSlider | null = null;
 	private menuAnchorEl: HTMLElement | null = null;
 	private menuHiddenAt = 0;
 	private usagePanelEl: HTMLElement | null = null;
@@ -60,57 +67,13 @@ export class ModelMenuController {
 		return this.usagePanelEl !== null;
 	}
 
-	formatModelLabel(modelId?: string): string {
-		const currentId = modelId || this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
-		const groups = this.ctx.getModelGroups();
-
-		const group = groups.find((g) =>
-			g.variants.some((v) => v.id === currentId),
-		);
-
-		if (group) {
-			const variant = group.variants.find((v) => v.id === currentId);
-			const effort = variant?.thinkingEffort;
-			if (effort && effort !== 'Default') {
-				return `${group.baseName} ${effort}`;
-			}
-			return group.baseName;
-		}
-
-		if (currentId.startsWith('gemini-3.7-flash')) {
-			const effort = currentId.includes('high')
-				? 'High'
-				: currentId.includes('low')
-					? 'Low'
-					: 'Medium';
-			return `Gemini 3.7 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.6-flash')) {
-			const effort = currentId.includes('high')
-				? 'High'
-				: currentId.includes('low')
-					? 'Low'
-					: 'Medium';
-			return `Gemini 3.6 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.5-flash')) {
-			const effort = currentId.includes('low') ? 'Low' : 'Medium';
-			return `Gemini 3.5 Flash ${effort}`;
-		}
-		if (currentId.startsWith('gemini-3.1-pro')) {
-			return 'Gemini 3.1 Pro Low';
-		}
-		if (currentId.includes('claude-sonnet')) {
-			return 'Claude Sonnet 4.6';
-		}
-		if (currentId.includes('claude-opus')) {
-			return 'Claude Opus 4.6';
-		}
-		if (currentId.includes('gpt-oss')) {
-			return 'GPT-OSS 120B';
-		}
-
-		return currentId;
+	formatModelLabel(): { name: string; effort?: string } {
+		const config = this.ctx.getModelConfig();
+		if (!config) return { name: 'Model' };
+		return {
+			name: selectedName(config.model),
+			effort: config.thoughtLevel && selectedName(config.thoughtLevel),
+		};
 	}
 
 	toggleMenu(anchorEl: HTMLElement): void {
@@ -129,60 +92,28 @@ export class ModelMenuController {
 	openMenu(anchorEl: HTMLElement): void {
 		this.closeMenu();
 
-		const currentModelId = this.ctx.getCurrentModelId() || DEFAULT_MODEL_ID;
-		const groups =
-			this.ctx.getModelGroups().length > 0
-				? this.ctx.getModelGroups()
-				: groupModels(this.ctx.getAvailableModels());
-
-		const menu = new Menu();
+		const config = this.ctx.getModelConfig();
+		// The effort bar needs a DOM menu (macOS uses native menus by default).
+		const menu = new Menu().setUseNativeMenu(false);
 		(menu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
 		attachNativeMenuGlider(menu);
-		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
-
-		for (const group of groups) {
-			const activeVariant = group.variants.find((v) => v.id === currentModelId);
-			const title = this.groupTitle(group, activeVariant);
-
-			if (group.variants.length > 1 && SUPPORTS_SUBMENU) {
-				menu.addItem((item) => {
-					item.setTitle(title).setChecked(activeVariant !== undefined);
-					const submenu = (item as MenuItemWithSubmenu).setSubmenu?.();
-					if (!submenu) return;
-					(submenu as MenuWithDom).dom?.addClass('anti-dian-model-menu');
-					attachNativeMenuGlider(submenu);
-					submenu.addItem((sub) => sub.setTitle('Thinking effort').setIsLabel(true));
-					for (const variant of group.variants) {
-						submenu.addItem((sub) =>
-							sub
-								.setTitle(variant.thinkingEffort)
-								.setChecked(variant.id === currentModelId)
-								.onClick(() => this.ctx.onSelectModel(variant.id)),
-						);
-					}
-				});
-			} else if (group.variants.length > 1) {
-				// No submenu support: list each effort as its own item.
-				for (const variant of group.variants) {
-					menu.addItem((item) =>
-						item
-							.setTitle(`${group.baseName} · ${variant.thinkingEffort}`)
-							.setChecked(variant.id === currentModelId)
-							.onClick(() => this.ctx.onSelectModel(variant.id)),
-					);
-				}
-			} else {
-				const variant = group.variants[0];
-				menu.addItem((item) =>
-					item
-						.setTitle(title)
-						.setChecked(activeVariant !== undefined)
-						.setDisabled(!variant)
-						.onClick(() => {
-							if (variant) this.ctx.onSelectModel(variant.id);
-						}),
-				);
-			}
+		let releaseKeys: (() => void) | undefined;
+		this.modelRows.clear();
+		this.effortSlider = null;
+		if (config) {
+			this.addModels(menu, config.model);
+			menu.addSeparator();
+			const slider = new EffortSlider(
+				config.thoughtLevel,
+				this.ctx.onSelectThoughtLevel,
+			);
+			const title = createFragment();
+			title.append(slider.el);
+			menu.addItem((item) => item.setTitle(title));
+			this.effortSlider = slider;
+			releaseKeys = this.bindSliderKeys(slider, anchorEl.win);
+		} else {
+			menu.addItem((item) => item.setTitle('Loading models...').setIsLabel(true));
 		}
 
 		menu.addSeparator();
@@ -197,9 +128,22 @@ export class ModelMenuController {
 			usageItemEl = (item as MenuItemWithDom).dom;
 		});
 
+		const menuEl = (menu as MenuWithDom).dom;
+		// Keep the menu open after a click on a model, to set its effort next.
+		menuEl?.addEventListener(
+			'click',
+			(evt) => {
+				const itemEl = (evt.target as HTMLElement | null)?.closest('.menu-item');
+				for (const [model, row] of this.modelRows) {
+					if (!itemEl?.contains(row)) continue;
+					evt.stopPropagation();
+					this.ctx.onSelectModel(model);
+				}
+			},
+			true,
+		);
 		// Hovering "View Usage" shows the usage panel beside the menu, like a submenu;
 		// hovering any other item closes it again.
-		const menuEl = (menu as MenuWithDom).dom;
 		menuEl?.addEventListener('mouseover', (evt) => {
 			const target = evt.target as HTMLElement | null;
 			const itemEl = target?.closest('.menu-item');
@@ -212,6 +156,7 @@ export class ModelMenuController {
 		});
 
 		menu.onHide(() => {
+			releaseKeys?.();
 			if (this.menu === menu) this.menu = null;
 			this.menuHiddenAt = Date.now();
 			// Keep a hover panel only while the pointer is on it (e.g. clicking inside it).
@@ -229,31 +174,49 @@ export class ModelMenuController {
 		);
 	}
 
-	private groupTitle(group: ModelGroup, activeVariant?: ModelVariant): DocumentFragment {
-		const frag = createFragment();
-		frag.appendText(group.baseName);
-		const effort =
-			activeVariant && activeVariant.thinkingEffort !== 'Default'
-				? activeVariant.thinkingEffort
-				: group.variants.length <= 1 && group.supportsThinking
-					? 'Thinking'
-					: null;
-		if (effort) {
-			frag.createSpan({ cls: 'anti-dian-menu-item-effort', text: effort });
+	/** Shows the current choices in the open menu. */
+	refresh(): void {
+		const config = this.ctx.getModelConfig();
+		if (!this.menu || !config) return;
+		for (const [model, row] of this.modelRows) {
+			row.toggleClass('is-current', model === config.model.current);
 		}
-		if (group.baseName.includes('3.6') || group.baseName.includes('3.5')) {
-			this.appendBadge(frag, 'Fast', 'Faster, lighter model');
-		}
-		return frag;
+		this.effortSlider?.update(config.thoughtLevel);
 	}
 
-	/** Pill badge after a model name; a tooltip adds a trailing info icon. */
-	private appendBadge(frag: DocumentFragment, text: string, tooltip?: string): void {
-		const badge = frag.createSpan({ cls: 'anti-dian-menu-item-badge', text });
-		if (!tooltip) return;
-		badge.setAttribute('aria-label', tooltip);
-		const info = badge.createSpan({ cls: 'anti-dian-menu-item-badge-info' });
-		setIcon(info, 'info');
+	private addModels(menu: Menu, models: ModelSelect): void {
+		menu.addItem((item) => item.setTitle('Model').setIsLabel(true));
+		for (const option of models.options) {
+			const title = createFragment();
+			const row = title.createSpan({
+				cls: 'anti-dian-model-row',
+				text: option.name,
+			});
+			row.toggleClass('is-current', option.value === models.current);
+			// Not `setChecked`: Obsidian does not bring a removed check mark back.
+			setIcon(row.createSpan({ cls: 'anti-dian-model-row-check' }), 'check');
+			this.modelRows.set(option.value, row);
+			// Enter closes the menu; a click does not reach this (see openMenu).
+			menu.addItem((item) =>
+				item
+					.setTitle(title)
+					.onClick(() => this.ctx.onSelectModel(option.value)),
+			);
+		}
+	}
+
+	/**
+	 * ←/→ move the effort bar while its row is selected. The menu's key scope swallows
+	 * the keys before they reach the range input, so listen next to it on the window.
+	 */
+	private bindSliderKeys(slider: EffortSlider, win: Window): () => void {
+		const onKeydown = (evt: KeyboardEvent): void => {
+			if (evt.key !== 'ArrowLeft' && evt.key !== 'ArrowRight') return;
+			if (!slider.el.closest('.menu-item.selected')) return;
+			slider.step(evt.key === 'ArrowRight' ? 1 : -1);
+		};
+		win.addEventListener('keydown', onKeydown, true);
+		return () => win.removeEventListener('keydown', onKeydown, true);
 	}
 
 	private viewUsageTitle(): DocumentFragment {
@@ -319,9 +282,9 @@ export class ModelMenuController {
 			text: tier?.tierName || 'Antigravity CLI (ACP)',
 			cls: 'anti-dian-usage-tier-badge',
 		});
-		if (tier?.tierId) {
+		if (tier?.tierId === 'free-tier') {
 			tierRow.createSpan({
-				text: tier.tierId === 'free-tier' ? 'Free' : tier.tierId,
+				text: 'Free',
 				cls: 'anti-dian-usage-tier-tag',
 			});
 		}
@@ -334,7 +297,7 @@ export class ModelMenuController {
 			});
 			loadingSec.createDiv({
 				text: 'Loading quota limits...',
-				cls: 'anti-dian-usage-limit-subtext',
+				cls: 'anti-dian-usage-row-detail',
 			});
 		}
 
@@ -350,27 +313,22 @@ export class ModelMenuController {
 			});
 
 			for (const bucket of group.buckets) {
-				const pct = `${Math.round(bucket.remainingFraction * 100)}%`;
-				const status: 'success' | 'warning' | 'error' =
-					bucket.remainingFraction < 0.15
-						? 'error'
-						: bucket.remainingFraction < 0.3
-							? 'warning'
-							: 'success';
-
-				const subtext = this.formatResetSubtext(
-					bucket.resetTime,
-					bucket.window,
-					bucket.remainingFraction,
-				);
-
-				this.renderUsageLimitRow(
-					groupSec,
-					bucket.name,
-					pct,
-					subtext,
-					status,
-				);
+				const remainingPct = bucket.remainingFraction * 100;
+				this.renderUsageRow(groupSec, {
+					// The value already says "left", so drop the suffix the CLI puts in the name.
+					title: bucket.name.replace(/\s+remaining$/i, ''),
+					detail: this.formatResetDetail(bucket.resetTime, bucket.remainingFraction),
+					value: `${Math.round(remainingPct)}% left`,
+					bar: {
+						pct: remainingPct,
+						status:
+							bucket.remainingFraction < 0.15
+								? 'error'
+								: bucket.remainingFraction < 0.3
+									? 'warning'
+									: 'normal',
+					},
+				});
 			}
 		}
 
@@ -385,108 +343,75 @@ export class ModelMenuController {
 		});
 
 		const stats = this.ctx.getSessionStats();
-		this.renderUsageLimitRow(
-			sessionSec,
-			'Session Tokens Processed',
-			stats.totalTokens.toLocaleString(),
-			`${stats.promptTokens.toLocaleString()} in / ${stats.candidateTokens.toLocaleString()} out`,
-			'success',
-		);
+		this.renderUsageRow(sessionSec, {
+			title: 'Tokens processed',
+			detail:
+				stats.totalTokens > 0
+					? `${stats.promptTokens.toLocaleString()} in / ${stats.candidateTokens.toLocaleString()} out`
+					: undefined,
+			value: stats.totalTokens.toLocaleString(),
+		});
 
 		if (stats.cachedReadTokens > 0 && stats.promptTokens > 0) {
-			const cachedPct = Math.round((stats.cachedReadTokens / stats.promptTokens) * 100);
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Cached Input',
-				`${cachedPct}%`,
-				`${stats.cachedReadTokens.toLocaleString()} of ${stats.promptTokens.toLocaleString()} input tokens from cache`,
-				'success',
-			);
+			const cachedPct = (stats.cachedReadTokens / stats.promptTokens) * 100;
+			this.renderUsageRow(sessionSec, {
+				title: 'Cached input',
+				detail: `${formatTokens(stats.cachedReadTokens)} / ${formatTokens(stats.promptTokens)}`,
+				value: `${Math.round(cachedPct)}%`,
+				bar: { pct: cachedPct, status: 'normal' },
+			});
 		}
 		if (stats.thoughtTokens > 0) {
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Thinking Tokens',
-				formatTokens(stats.thoughtTokens),
-				`${stats.thoughtTokens.toLocaleString()} reasoning tokens this session`,
-				'success',
-			);
+			this.renderUsageRow(sessionSec, {
+				title: 'Thinking tokens',
+				value: stats.thoughtTokens.toLocaleString(),
+			});
 		}
 
 		const ctxUsage = this.ctx.getContextUsage();
 		if (ctxUsage && ctxUsage.size > 0) {
-			const usedPct = Math.min(
-				100,
-				Math.round((ctxUsage.used / ctxUsage.size) * 100),
-			);
-			const ctxStatus: 'success' | 'warning' | 'error' =
-				usedPct > 85 ? 'error' : usedPct > 65 ? 'warning' : 'success';
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Context Window',
-				`${usedPct}%`,
-				`${formatTokens(ctxUsage.used)} / ${formatTokens(ctxUsage.size)}`,
-				ctxStatus,
-			);
-		}
-	}
-
-	private formatResetSubtext(
-		resetTime?: string,
-		windowType?: string,
-		remainingFraction?: number,
-	): string | undefined {
-		if (remainingFraction !== undefined && remainingFraction >= 0.999) {
-			return windowType === '5h'
-				? 'Full 5-hour window available'
-				: 'Full weekly window available';
-		}
-		if (!resetTime) return undefined;
-		const diffMs = new Date(resetTime).getTime() - Date.now();
-		if (!Number.isFinite(diffMs) || diffMs <= 0) {
-			return 'Refreshing soon';
-		}
-		const totalMins = Math.round(diffMs / 60_000);
-		const days = Math.floor(totalMins / (60 * 24));
-		const hours = Math.floor((totalMins % (60 * 24)) / 60);
-		const mins = totalMins % 60;
-		if (days > 0) {
-			return `Resets in ${days}d ${hours}h`;
-		}
-		if (hours > 0) {
-			return `Resets in ${hours}h ${mins}m`;
-		}
-		return `Resets in ${mins}m`;
-	}
-
-	private renderUsageLimitRow(
-		parent: HTMLElement,
-		title: string,
-		percentage: string,
-		subtext?: string,
-		status: 'success' | 'warning' | 'error' = 'success',
-	): void {
-		const row = parent.createDiv({ cls: 'anti-dian-usage-limit-row' });
-		const textCol = row.createDiv({ cls: 'anti-dian-usage-text-col' });
-		textCol.createDiv({
-			text: title,
-			cls: 'anti-dian-usage-limit-title',
-		});
-		if (subtext) {
-			textCol.createDiv({
-				text: subtext,
-				cls: 'anti-dian-usage-limit-subtext',
+			const usedPct = Math.min(100, (ctxUsage.used / ctxUsage.size) * 100);
+			this.renderUsageRow(sessionSec, {
+				title: 'Context window',
+				detail: `${formatTokens(ctxUsage.used) || '0'} / ${formatTokens(ctxUsage.size)}`,
+				value: `${Math.round(usedPct)}%`,
+				bar: {
+					pct: usedPct,
+					status: usedPct > 85 ? 'error' : usedPct > 65 ? 'warning' : 'normal',
+				},
 			});
 		}
+	}
 
-		const rightCol = row.createDiv({ cls: 'anti-dian-usage-right-col' });
-		rightCol.createSpan({
-			text: percentage,
-			cls: 'anti-dian-usage-pct',
-		});
-		rightCol.createSpan({
-			cls: `anti-dian-usage-ring ring-${status}`,
-		});
+	/** "Resets at 4:10 PM" today, "Resets Sun 8:00 PM" on another day; nothing for an unused window. */
+	private formatResetDetail(
+		resetTime: string | undefined,
+		remainingFraction: number,
+	): string | undefined {
+		if (!resetTime || remainingFraction >= 0.999) return undefined;
+		const reset = new Date(resetTime);
+		const now = new Date();
+		if (!(reset.getTime() > now.getTime())) return 'Refreshing soon';
+		const time = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		if (reset.toDateString() === now.toDateString()) return `Resets at ${time}`;
+		return `Resets ${reset.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+	}
+
+	private renderUsageRow(parent: HTMLElement, opts: UsageRow): void {
+		const row = parent.createDiv({ cls: 'anti-dian-usage-row' });
+		const label = row.createDiv({ cls: 'anti-dian-usage-row-label' });
+		label.createSpan({ text: opts.title, cls: 'anti-dian-usage-row-title' });
+		if (opts.detail) {
+			label.createSpan({ text: opts.detail, cls: 'anti-dian-usage-row-detail' });
+		}
+		label.createSpan({ text: opts.value, cls: 'anti-dian-usage-row-value' });
+
+		if (opts.bar) {
+			const bar = row.createDiv({ cls: `anti-dian-usage-bar is-${opts.bar.status}` });
+			bar.createDiv({ cls: 'anti-dian-usage-bar-fill' }).setCssProps({
+				'--anti-dian-usage-pct': `${opts.bar.pct}%`,
+			});
+		}
 	}
 
 	closeUsagePanel(): void {

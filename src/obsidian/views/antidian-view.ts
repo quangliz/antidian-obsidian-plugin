@@ -19,8 +19,6 @@ import { ChangeSetValidator } from '../../core/transactions';
 import {
 	formatTokens,
 	AcpSessionSummary,
-	AvailableModel,
-	ModelGroup,
 	ReplayedAgentEvent,
 	ReplayedMessage,
 } from '../../core/models/antigravity-acp';
@@ -36,15 +34,18 @@ import {
 import { segmentPrompt, type PromptChip } from './prompt-chips';
 import logoUrl from '../../../assets/logo-hero.png';
 import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
-import { mergeStoredTraces } from '../../core/sessions/trace';
+import {
+	mergeStoredTraces,
+	storedTurnsToReplayedMessages,
+} from '../../core/sessions/trace';
 import {
 	deleteAgySessionData,
 	forkedTurnsToReplayedMessages,
 	loadAgyTranscriptTurns,
-	storedTurnsToReplayedMessages,
 } from '../../core/sessions/transcript';
 import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
+import { ElicitationCardView } from './elicitation-card-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
 import { ANTI_DIAN_ICON } from '../icon';
@@ -76,6 +77,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	/** Title of a resumed session, kept until the CLI reports one of its own. */
 	private resumedTitle: string | null = null;
 	private promptBar!: PromptBarView;
+	/** Docked interactive question/poll card shown above the prompt bar. */
+	private elicitationCard: ElicitationCardView | null = null;
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
 	private renderedTurns: RenderedTurn[] = [];
@@ -92,8 +95,6 @@ export class AntiDianView extends ItemView implements HoverParent {
 	private centerContainerEl: HTMLElement | null = null;
 	private messagesEl: HTMLElement | null = null;
 
-	private availableModels: AvailableModel[] = [];
-	private modelGroups: ModelGroup[] = [];
 	private history: Message[] = [];
 	private isRunning = false;
 	private turnToken = 0;
@@ -114,12 +115,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.validator = plugin.validator;
 
 		this.modelMenuController = new ModelMenuController({
-			getCurrentModelId: () =>
-				this.plugin.settings.model ||
-				this.plugin.antigravityProvider.getModel(),
-			onSelectModel: (modelId) => this.selectModel(modelId),
-			getAvailableModels: () => this.availableModels,
-			getModelGroups: () => this.modelGroups,
+			getModelConfig: () =>
+				this.plugin.antigravityProvider.getModelConfig(),
+			onSelectModel: (model) => this.selectModel(model),
+			onSelectThoughtLevel: (level) => this.selectThoughtLevel(level),
 			getAccountTier: () =>
 				this.plugin.antigravityProvider.getAccountTier(),
 			getCachedUserQuota: () =>
@@ -168,6 +167,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			this.plugin.antigravityProvider.onSessionInfoChange(() => {
 				this.recordPendingForkIfReady();
 				this.updateSessionTitle();
+				this.updateModelChoice();
 			});
 
 		this.unsubscribeContext = this.contextService.onContextChange(
@@ -210,6 +210,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	async onClose(): Promise<void> {
 		// Cancel any active run and pending write approvals so nothing hangs after close.
 		this.turnToken++;
+		this.elicitationCard?.cancel();
 		this.handleCancel();
 		if (this.unsubscribeContext) {
 			this.unsubscribeContext();
@@ -371,6 +372,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			return;
 		}
 		const myToken = ++this.turnToken;
+		this.elicitationCard?.cancel();
 		this.activeThinking?.cancelPendingApprovals();
 		this.activeThinking = null;
 		this.loadingSession = session;
@@ -506,7 +508,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const userMsg = turn.userGroupEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-user is-replayed',
 				});
-				this.renderUserMessageBody(userMsg, message.text);
+				this.renderUserMedia(userMsg, message.media ?? []);
+				if (message.text) {
+					this.renderUserMessageBody(userMsg, message.text);
+				}
 				this.renderUserMetaRow(turn.userGroupEl, {
 					text: message.text,
 					timestamp: message.timestamp,
@@ -643,6 +648,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.heroTitleEl = heroEl.createDiv({ cls: 'anti-dian-empty-title' });
 		this.refreshGreeting();
 
+		const elicitationSlotEl = this.centerContainerEl.createDiv({
+			cls: 'anti-dian-elicitation-slot',
+		});
+		this.elicitationCard = new ElicitationCardView(elicitationSlotEl);
+
 		this.promptBar = new PromptBarView(
 			this.centerContainerEl,
 			this.app,
@@ -664,18 +674,33 @@ export class AntiDianView extends ItemView implements HoverParent {
 		);
 	}
 
-	private selectModel(modelId: string): void {
-		this.plugin.settings.model = modelId;
-		this.plugin.antigravityProvider.setModel(modelId);
-		void this.plugin.saveSettings();
+	private selectModel(model: string): void {
+		const provider = this.plugin.antigravityProvider;
+		this.plugin.settings.model = model;
+		// A saved model ID may have carried the level until now: keep it.
+		this.plugin.settings.thoughtLevel ??=
+			provider.getModelConfig()?.thoughtLevel?.current;
+		this.saveModelChoice();
+	}
 
-		this.promptBar?.updateModelLabel(
-			this.modelMenuController.formatModelLabel(modelId),
-		);
+	private selectThoughtLevel(level: string): void {
+		this.plugin.settings.thoughtLevel = level;
+		this.saveModelChoice();
+	}
+
+	/** Saving also passes the choice on to the backend. */
+	private saveModelChoice(): void {
+		void this.plugin.saveSettings().then(() => this.updateModelChoice());
 		this.promptBar?.playRainbowSweep();
 	}
 
+	private updateModelChoice(): void {
+		this.promptBar?.updateModelLabel();
+		this.modelMenuController.refresh();
+	}
+
 	private handleCancel(): void {
+		this.elicitationCard?.cancel();
 		if (!this.isRunning) return;
 		this.activeThinking?.cancelPendingApprovals();
 		this.agent.cancel();
@@ -704,29 +729,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private async loadModels(): Promise<void> {
-		const cached = this.plugin.antigravityProvider.getCachedAvailableModels();
-		if (cached && cached.models.length > 0) {
-			this.availableModels = cached.models;
-			this.modelGroups = cached.groups;
-			if (!this.plugin.settings.model && cached.defaultModelId) {
-				this.plugin.settings.model = cached.defaultModelId;
-				this.plugin.antigravityProvider.setModel(cached.defaultModelId);
-			}
-			this.promptBar?.updateModelLabel();
-		}
-
 		try {
-			const { models, defaultModelId, groups } =
-				await this.plugin.antigravityProvider.fetchAvailableModels();
-			this.availableModels = models;
-			this.modelGroups = groups;
-			if (!this.plugin.settings.model && defaultModelId) {
-				this.plugin.settings.model = defaultModelId;
-				this.plugin.antigravityProvider.setModel(defaultModelId);
-			}
+			await this.plugin.antigravityProvider.fetchModelConfig();
 			this.promptBar?.updateModelLabel();
 		} catch {
-			// Keep cached or fallback defaults
+			// Keep the cached models
 		}
 	}
 
@@ -763,19 +770,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-message anti-dian-message-user',
 		});
 
-		if (mediaToSend.length > 0) {
-			const mediaRow = userMsg.createDiv({
-				cls: 'anti-dian-user-media-row',
-			});
-			for (const m of mediaToSend) {
-				if (m.type === 'image' && m.data) {
-					mediaRow.createEl('img', {
-						cls: 'anti-dian-user-media-img',
-						attr: { src: m.data },
-					});
-				}
-			}
-		}
+		this.renderUserMedia(userMsg, mediaToSend);
 
 		if (text) {
 			this.renderUserMessageBody(userMsg, text, chips);
@@ -950,6 +945,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 							request.callId,
 						);
 					}
+				},
+				undefined,
+				async (request) => {
+					if (myToken !== this.turnToken || !this.elicitationCard) {
+						return { action: 'cancel' };
+					}
+					this.scrollToBottom();
+					return await this.elicitationCard.show(request);
 				},
 			);
 
@@ -1186,6 +1189,23 @@ export class AntiDianView extends ItemView implements HoverParent {
 				open();
 			}
 		});
+	}
+
+	/** Attached images above a user message's text. */
+	private renderUserMedia(userMsg: HTMLElement, media: MediaInput[]): void {
+		const images = media.filter((m) => m.type === 'image');
+		if (images.length === 0) return;
+		const row = userMsg.createDiv({ cls: 'anti-dian-user-media-row' });
+		for (const image of images) {
+			if (image.data) {
+				row.createEl('img', {
+					cls: 'anti-dian-user-media-img',
+					attr: { src: image.data, alt: 'Attached image' },
+				});
+			} else {
+				row.createSpan({ text: 'Image unavailable' });
+			}
+		}
 	}
 
 	private renderUserMetaRow(

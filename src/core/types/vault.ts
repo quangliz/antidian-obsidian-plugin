@@ -31,6 +31,16 @@ export interface NoteContent {
 	isStaged?: boolean;
 }
 
+/** A non-text vault file (image, PDF, audio, video, Office document). */
+export interface BinaryContent {
+	path: string;
+	mimeType: string;
+	/** Base64-encoded bytes. */
+	data: string;
+	size: number;
+	mtime: number;
+}
+
 export interface ListNotesParams {
 	folder?: string;
 	tag?: string;
@@ -81,6 +91,8 @@ export interface VaultService
 		VaultMutationService {
 	searchNotes(params: SearchNotesParams): Promise<SearchResult[]>;
 	readNote(params: ReadNoteParams): Promise<NoteContent | null>;
+	/** Reads a non-text file; null when the path is missing or a text file. */
+	readBinary?(path: string): Promise<BinaryContent | null>;
 	listNotes?(params?: ListNotesParams): Promise<NoteListItem[]>;
 	getNoteOutline?(path: string): Promise<NoteOutline | null>;
 }

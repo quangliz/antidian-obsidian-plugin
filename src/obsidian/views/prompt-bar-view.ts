@@ -49,7 +49,7 @@ export interface PromptBarCallbacks {
 	onCancel?: () => void;
 	onOpenModelMenu: (anchorEl: HTMLElement) => void;
 	onPermissionChange: (mode: PermissionMode) => void;
-	getCurrentModelLabel: () => string;
+	getCurrentModelLabel: () => { name: string; effort?: string };
 	getActiveContext: () => ActiveContext;
 	onStartNewSession?: () => void;
 }
@@ -104,8 +104,6 @@ const PERMISSION_MODES: { value: PermissionMode; label: string; desc: string; ic
 	{ value: 'auto', label: 'Auto', desc: 'Apply valid changes automatically', icon: 'unlock' },
 ];
 
-const MODEL_EFFORT_PATTERN = /^(.+?)\s+(Low|Medium|High|Minimal|Max|Thinking)$/;
-
 interface ContextMenuItem {
 	key: string;
 	label: string;
@@ -126,13 +124,13 @@ const OBSIDIAN_CRYSTAL_STOPS = [
 	'rgba(69, 27, 158, 0.85)',   // Inner fold shadow
 ];
 
-const DEFAULT_SLASH_COMMANDS: AutocompleteItem[] = [
-	{ key: 'compare', name: '/compare', desc: 'Compare notes, ideas, or topics', icon: 'git-compare', type: 'command' },
-	{ key: 'plan', name: '/plan', desc: 'Draft an actionable step-by-step plan', icon: 'list-checks', type: 'command' },
-	{ key: 'search', name: '/search', desc: 'Deep search across vault notes', icon: 'search', type: 'command' },
-	{ key: 'summarize', name: '/summarize', desc: 'Summarize note or conversation context', icon: 'file-text', type: 'command' },
-	{ key: 'clear', name: '/clear', desc: 'Start a fresh conversation session', icon: 'trash-2', type: 'command' },
-];
+const CLEAR_COMMAND: AutocompleteItem = {
+	key: 'clear',
+	name: '/clear',
+	desc: 'Start a fresh conversation session',
+	icon: 'trash-2',
+	type: 'command',
+};
 
 export class PromptBarView {
 	private app: App;
@@ -301,24 +299,18 @@ export class PromptBarView {
 		}
 	}
 
-	public updateModelLabel(label?: string): void {
+	public updateModelLabel(): void {
 		if (!this.modelPillLabelEl) return;
-		const fullLabel = label ?? this.callbacks.getCurrentModelLabel();
+		const { name, effort } = this.callbacks.getCurrentModelLabel();
 		this.modelPillLabelEl.empty();
-		const match = MODEL_EFFORT_PATTERN.exec(fullLabel);
-		if (match && match[1] && match[2]) {
-			this.modelPillLabelEl.createSpan({
-				cls: 'anti-dian-promptbar-model-base',
-				text: match[1],
-			});
+		this.modelPillLabelEl.createSpan({
+			cls: 'anti-dian-promptbar-model-base',
+			text: name,
+		});
+		if (effort) {
 			this.modelPillLabelEl.createSpan({
 				cls: 'anti-dian-promptbar-model-effort',
-				text: match[2],
-			});
-		} else {
-			this.modelPillLabelEl.createSpan({
-				cls: 'anti-dian-promptbar-model-base',
-				text: fullLabel,
+				text: effort,
 			});
 		}
 	}
@@ -927,8 +919,19 @@ export class PromptBarView {
 	getKnownChipLabels(): { sources: string[]; commands: string[] } {
 		return {
 			sources: ['Web search'],
-			commands: DEFAULT_SLASH_COMMANDS.filter((c) => c.key !== 'clear').map((c) => c.name),
+			commands: this.getAgentCommands().map((c) => c.name),
 		};
+	}
+
+	/** Slash commands and skills the backend offers in this session. */
+	private getAgentCommands(): AutocompleteItem[] {
+		return this.plugin.antigravityProvider.getAvailableCommands().map((c) => ({
+			key: `command:${c.name}`,
+			name: `/${c.name}`,
+			desc: c.description,
+			icon: 'square-slash',
+			type: 'command',
+		}));
 	}
 
 	private formatSelectionBlock(snippet: SelectionSnippet): string {
@@ -1566,8 +1569,9 @@ export class PromptBarView {
 		const fuzzy = query ? prepareFuzzySearch(query) : null;
 
 		if (kind === 'slash') {
-			if (!fuzzy) return DEFAULT_SLASH_COMMANDS;
-			return DEFAULT_SLASH_COMMANDS.flatMap((c) => {
+			const commands = [CLEAR_COMMAND, ...this.getAgentCommands()];
+			if (!fuzzy) return commands;
+			return commands.flatMap((c) => {
 				const match = fuzzy(c.name.slice(1));
 				return match ? [{ ...c, match }] : [];
 			}).sort((a, b) => (b.match?.score ?? 0) - (a.match?.score ?? 0));
@@ -1738,6 +1742,7 @@ export class PromptBarView {
 			height: `${target.offsetHeight}px`,
 			opacity: this.isGliderEngaged ? '1' : '0.5',
 		});
+		target.scrollIntoView({ block: 'nearest' });
 	}
 
 	private pickAutocompleteItem(item: AutocompleteItem, kind: 'at' | 'slash'): void {

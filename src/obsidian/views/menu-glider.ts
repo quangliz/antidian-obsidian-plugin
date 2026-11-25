@@ -74,9 +74,12 @@ export function attachNativeMenuGlider(menu: Menu): void {
 	dom.addClass('anti-dian-glide-menu');
 	const glider = new MenuGlider(dom);
 	// Obsidian also marks label rows ("Model", "Permission") as selected; skip them.
+	// The effort bar shows its own selected state.
 	const sync = () =>
 		glider.moveTo(
-			dom.querySelector<HTMLElement>('.menu-item.selected:not(.is-label):not(.is-disabled)'),
+			dom.querySelector<HTMLElement>(
+				'.menu-item.selected:not(.is-label, .is-disabled, :has(.anti-dian-effort))',
+			),
 		);
 	// Ignore the glider's own class changes, or syncing would retrigger itself.
 	new MutationObserver((records) => {

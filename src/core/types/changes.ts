@@ -62,7 +62,8 @@ export type ValidationErrorCode =
 	| 'stale_base'
 	| 'invalid_content'
 	| 'target_not_found'
-	| 'ambiguous_match';
+	| 'ambiguous_match'
+	| 'binary_file';
 
 export interface ValidationError {
 	operationIndex: number;
