@@ -26,7 +26,7 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
   - `agent/` — Agent orchestration loop and default system prompt.
   - `context/` — `ContextCompiler` (deduplicated active note outline/selection, skill summaries, Plan Mode notice, forked context handling).
   - `models/` — ACP client (`antigravity-acp.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
-  - `sessions/` — `TurnTraceRecorder` (`trace.ts`) and transcript/replay helpers (`transcript.ts`).
+  - `sessions/` — Trace recording and replay merging (`trace.ts`, including rebuilding image-only turns the CLI does not replay) and `agy` transcript loading (`transcript.ts`).
   - `skills/` — Pure Markdown skill parser and constants.
   - `tools/` — `ToolRegistry` and 12 tool definitions.
   - `transactions/` — `ChangeStagingManager`, `StagedVaultOverlay`, `ChangeSetValidator`, `ChangeSetDiffGenerator`, `MutationGate`, `ChangeSetApplicator`, and Markdown structural helpers.

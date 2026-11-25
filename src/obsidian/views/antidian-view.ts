@@ -36,12 +36,14 @@ import {
 import { segmentPrompt, type PromptChip } from './prompt-chips';
 import logoUrl from '../../../assets/logo-hero.png';
 import { formatForkedTitle, UNTITLED_SESSION } from './session-format';
-import { mergeStoredTraces } from '../../core/sessions/trace';
+import {
+	mergeStoredTraces,
+	storedTurnsToReplayedMessages,
+} from '../../core/sessions/trace';
 import {
 	deleteAgySessionData,
 	forkedTurnsToReplayedMessages,
 	loadAgyTranscriptTurns,
-	storedTurnsToReplayedMessages,
 } from '../../core/sessions/transcript';
 import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
@@ -506,7 +508,10 @@ export class AntiDianView extends ItemView implements HoverParent {
 				const userMsg = turn.userGroupEl.createDiv({
 					cls: 'anti-dian-message anti-dian-message-user is-replayed',
 				});
-				this.renderUserMessageBody(userMsg, message.text);
+				this.renderUserMedia(userMsg, message.media ?? []);
+				if (message.text) {
+					this.renderUserMessageBody(userMsg, message.text);
+				}
 				this.renderUserMetaRow(turn.userGroupEl, {
 					text: message.text,
 					timestamp: message.timestamp,
@@ -763,19 +768,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			cls: 'anti-dian-message anti-dian-message-user',
 		});
 
-		if (mediaToSend.length > 0) {
-			const mediaRow = userMsg.createDiv({
-				cls: 'anti-dian-user-media-row',
-			});
-			for (const m of mediaToSend) {
-				if (m.type === 'image' && m.data) {
-					mediaRow.createEl('img', {
-						cls: 'anti-dian-user-media-img',
-						attr: { src: m.data },
-					});
-				}
-			}
-		}
+		this.renderUserMedia(userMsg, mediaToSend);
 
 		if (text) {
 			this.renderUserMessageBody(userMsg, text, chips);
@@ -1186,6 +1179,23 @@ export class AntiDianView extends ItemView implements HoverParent {
 				open();
 			}
 		});
+	}
+
+	/** Attached images above a user message's text. */
+	private renderUserMedia(userMsg: HTMLElement, media: MediaInput[]): void {
+		const images = media.filter((m) => m.type === 'image');
+		if (images.length === 0) return;
+		const row = userMsg.createDiv({ cls: 'anti-dian-user-media-row' });
+		for (const image of images) {
+			if (image.data) {
+				row.createEl('img', {
+					cls: 'anti-dian-user-media-img',
+					attr: { src: image.data, alt: 'Attached image' },
+				});
+			} else {
+				row.createSpan({ text: 'Image unavailable' });
+			}
+		}
 	}
 
 	private renderUserMetaRow(

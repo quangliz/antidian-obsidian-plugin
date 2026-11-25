@@ -10,6 +10,7 @@ import {
 import { ANTI_DIAN_APP_DATA_DIR } from '../models/antigravity-acp';
 import { computeLineDiff, groupDiffHunks } from '../transactions/diff';
 import type { ChangeOperationType, FileDiff } from '../types/changes';
+import type { MediaInput } from '../types/model';
 import type {
 	ReplayedAgentEvent,
 	ReplayedMessage,
@@ -33,6 +34,8 @@ interface TranscriptStep {
 	status?: unknown;
 	created_at?: unknown;
 	content?: unknown;
+	media?: unknown;
+	thinking?: unknown;
 	input_tokens?: unknown;
 	cache_read_tokens?: unknown;
 	output_tokens?: unknown;
@@ -59,6 +62,20 @@ function parseTimestampMs(raw: unknown): number | undefined {
 function extractRawUserPrompt(rawContent: string): string {
 	const tagMatch = rawContent.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
 	return tagMatch?.[1] ?? rawContent;
+}
+
+/** Attached images of a USER_INPUT step, as `uri` references (not yet read). */
+function parseTranscriptMedia(raw: unknown): MediaInput[] {
+	if (!Array.isArray(raw)) return [];
+	const out: MediaInput[] = [];
+	for (const item of raw) {
+		if (!isRecord(item)) continue;
+		const { mime_type: mimeType, uri } = item;
+		if (typeof mimeType !== 'string' || typeof uri !== 'string') continue;
+		if (!/^image\/[\w.+-]+$/.test(mimeType)) continue;
+		out.push({ type: 'image', mimeType, uri });
+	}
+	return out;
 }
 
 function stripMcpPrefix(name: string): string {
@@ -264,6 +281,7 @@ export function parseAgyTranscriptJsonl(
 	const turns: StoredTurnTrace[] = [];
 	let current: {
 		userText: string;
+		media: MediaInput[];
 		agentTextParts: string[];
 		forkedContext?: ForkedTurn[];
 		events: ReplayedAgentEvent[];
@@ -286,6 +304,7 @@ export function parseAgyTranscriptJsonl(
 				: undefined;
 		turns.push({
 			userText: current.userText,
+			...(current.media.length > 0 ? { media: current.media } : {}),
 			...(agentText ? { agentText } : {}),
 			...(current.forkedContext && current.forkedContext.length > 0
 				? { forkedContext: current.forkedContext }
@@ -326,10 +345,12 @@ export function parseAgyTranscriptJsonl(
 			const rawContent = typeof step.content === 'string' ? step.content : '';
 			const rawPrompt = extractRawUserPrompt(rawContent);
 			const userText = stripCompiledContext(rawPrompt).trim();
-			if (!userText) continue;
+			const media = parseTranscriptMedia(step.media);
+			if (!userText && media.length === 0) continue;
 			const forkedContext = extractForkedContext(rawPrompt);
 			current = {
 				userText,
+				media,
 				agentTextParts: [],
 				forkedContext: forkedContext.length > 0 ? forkedContext : undefined,
 				events: [],
@@ -353,6 +374,9 @@ export function parseAgyTranscriptJsonl(
 		updateEnd(createdAtMs);
 
 		if (type === 'PLANNER_RESPONSE') {
+			if (typeof step.thinking === 'string' && step.thinking.trim()) {
+				current.events.push({ type: 'thought', text: step.thinking.trim() });
+			}
 			if (typeof step.content === 'string' && step.content.trim()) {
 				current.agentTextParts.push(step.content.trim());
 			}
@@ -482,8 +506,43 @@ function createScopedStepOutputReader(
 }
 
 /**
- * Loads per-turn tool results, durations, and usage directly from `agy`'s own
- * session transcript logs on disk.
+ * Reads attached images into data URLs. Only files in this session's own
+ * `.user_uploaded` folder are read; unreadable ones keep `data` unset.
+ */
+async function loadTurnMedia(
+	turns: StoredTurnTrace[],
+	sessionId: string,
+	appDataDir: string,
+	homeDir: string,
+): Promise<void> {
+	const allowedPrefix =
+		path.resolve(
+			homeDir,
+			'.gemini',
+			appDataDir,
+			'brain',
+			sessionId,
+			'.user_uploaded',
+		) + path.sep;
+	await Promise.all(
+		turns
+			.flatMap((turn) => turn.media ?? [])
+			.map(async (item) => {
+				const resolved = path.resolve(item.uri ?? '');
+				if (!resolved.startsWith(allowedPrefix)) return;
+				try {
+					const base64 = await fs.promises.readFile(resolved, 'base64');
+					item.data = `data:${item.mimeType};base64,${base64}`;
+				} catch {
+					// File is gone: the message is still shown, without its image
+				}
+			}),
+	);
+}
+
+/**
+ * Loads per-turn tool results, durations, usage, and attached images directly
+ * from `agy`'s own session transcript logs on disk.
  */
 export async function loadAgyTranscriptTurns(
 	sessionId: string,
@@ -500,40 +559,14 @@ export async function loadAgyTranscriptTurns(
 	for (const filePath of paths) {
 		try {
 			const text = await fs.promises.readFile(filePath, 'utf8');
-			return parseAgyTranscriptJsonl(text, { readStepOutput });
+			const turns = parseAgyTranscriptJsonl(text, { readStepOutput });
+			await loadTurnMedia(turns, sessionId, appDataDir, homeDir);
+			return turns;
 		} catch {
 			// Try next candidate
 		}
 	}
 	return [];
-}
-
-/** Converts parsed transcript turns into displayable replay messages. */
-export function storedTurnsToReplayedMessages(
-	turns: StoredTurnTrace[],
-): ReplayedMessage[] {
-	const messages: ReplayedMessage[] = [];
-	for (const turn of turns) {
-		const ts = turn.savedAt || undefined;
-		if (turn.userText) {
-			messages.push({
-				role: 'user',
-				text: turn.userText,
-				timestamp: ts,
-			});
-		}
-		if (turn.agentText || turn.events.length > 0) {
-			messages.push({
-				role: 'agent',
-				text: turn.agentText ?? '',
-				timestamp: ts,
-				events: turn.events.length > 0 ? turn.events : undefined,
-				durationMs: turn.durationMs,
-				usage: turn.usage,
-			});
-		}
-	}
-	return messages;
 }
 
 /** Converts plain forked context turns (fallback when parent logs are absent) into replay messages. */

@@ -46,6 +46,11 @@ test('stripCompiledContext recovers the typed text from every compiled prompt sh
 	assert.equal(stripCompiledContext('[Vault Skills: none configured]\n\nhi'), 'hi');
 	assert.equal(stripCompiledContext('[not ours] keep'), '[not ours] keep');
 	assert.equal(stripCompiledContext('plain'), 'plain');
+
+	// Image-only prompt: nothing typed, and the CLI trims the trailing separator.
+	const imageOnly = await compiler.compile('', { activeFile: 'Notes/C.md', selection: 'x' });
+	assert.equal(stripCompiledContext(imageOnly.prompt.trim()), '');
+	assert.equal(stripCompiledContext('[Vault Skills: none configured]'), '');
 });
 
 test('ContextCompiler.resumeSession skips skill disclosure but re-sends the active note', async () => {
@@ -208,6 +213,7 @@ const {
 	TurnTraceRecorder,
 	compactTraceValue,
 	mergeStoredTraces,
+	storedTurnsToReplayedMessages,
 	originalTextSize,
 	parseStoredTurns,
 	TRACE_MAX_STRING_CHARS,
@@ -553,7 +559,6 @@ test('extractForkedContext and parseAgyTranscriptJsonl recover parent turns for 
 	const {
 		forkedTurnsToReplayedMessages,
 		parseAgyTranscriptJsonl,
-		storedTurnsToReplayedMessages,
 	} = await import('../src/core/sessions/transcript.ts');
 
 	const compiler = new ContextCompiler();
@@ -641,6 +646,94 @@ test('custom session titles override default/fork titles and deleteAgySessionDat
 		assert.equal(fs.existsSync(brainDir), false);
 		assert.equal(fs.existsSync(path.join(convDir, 'sess-del-1.db')), false);
 		assert.equal(fs.existsSync(path.join(convDir, 'keep.db')), true);
+	} finally {
+		fs.rmSync(tmpHome, { recursive: true, force: true });
+	}
+});
+
+test('image-only turns keep their own user message when a session is reopened', async () => {
+	const fs = await import('node:fs');
+	const os = await import('node:os');
+	const path = await import('node:path');
+	const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-dian-media-'));
+	try {
+		const brain = path.join(tmpHome, '.gemini', 'antigravity-anti-dian', 'brain', 'sess-img');
+		const logs = path.join(brain, '.system_generated', 'logs');
+		const uploads = path.join(brain, '.user_uploaded');
+		fs.mkdirSync(logs, { recursive: true });
+		fs.mkdirSync(uploads, { recursive: true });
+		const image = path.join(uploads, 'a.jpg');
+		fs.writeFileSync(image, 'img');
+		const outside = path.join(brain, 'secret.png');
+		fs.writeFileSync(outside, 'secret');
+
+		const user = (text, media) => ({
+			type: 'USER_INPUT',
+			created_at: '2026-11-25T03:28:21Z',
+			content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>`,
+			media,
+		});
+		const agent = (content, thinking) => ({
+			type: 'PLANNER_RESPONSE',
+			created_at: '2026-11-25T03:28:27Z',
+			content,
+			thinking,
+		});
+		const jpg = (uri) => ({ mime_type: 'image/jpeg', uri });
+		fs.writeFileSync(
+			path.join(logs, 'transcript_full.jsonl'),
+			[
+				user('[Vault Skills: none configured]', [jpg(image)]),
+				agent('zero'),
+				user('what is this'),
+				agent('one', 'think one'),
+				user('', [jpg(image)]),
+				agent('two', 'think two\n\n'),
+				user('', [jpg(path.join(uploads, 'gone.jpg')), jpg(outside), { mime_type: 'text/html', uri: image }]),
+				user('with text', [jpg(image)]),
+				agent('three'),
+			]
+				.map((step) => JSON.stringify(step))
+				.join('\n'),
+		);
+		const stored = await loadAgyTranscriptTurns('sess-img', 'antigravity-anti-dian', tmpHome);
+		assert.equal(stored.length, 5);
+
+		const loaded = { type: 'image', mimeType: 'image/jpeg', uri: image, data: 'data:image/jpeg;base64,aW1n' };
+		// What the CLI replays: image-only user messages missing, answers glued together.
+		const replayed = [
+			{ role: 'agent', text: 'zero', events: [] },
+			{ role: 'user', text: 'what is this' },
+			{ role: 'agent', text: 'one\n\ntwo', events: [{ type: 'thought', text: 'think onethink two' }] },
+			{ role: 'user', text: 'with text' },
+			{ role: 'agent', text: 'three', events: [] },
+		];
+		const merged = mergeStoredTraces(replayed, stored);
+		assert.deepEqual(
+			merged.map((m) => [m.role, m.text]),
+			[
+				['user', ''],
+				['agent', 'zero'],
+				['user', 'what is this'],
+				['agent', 'one'],
+				['user', ''],
+				['agent', 'two'],
+				['user', ''],
+				['user', 'with text'],
+				['agent', 'three'],
+			],
+		);
+		assert.deepEqual(merged[0].media, [loaded]);
+		assert.equal(merged[2].media, undefined);
+		assert.deepEqual(merged[3].events, [{ type: 'thought', text: 'think one' }]);
+		assert.deepEqual(merged[4].media, [loaded]);
+		assert.deepEqual(merged[5].events, [{ type: 'thought', text: 'think two' }]);
+		// Missing files and paths outside .user_uploaded are never read; non-images are dropped.
+		assert.deepEqual(merged[6].media.map((m) => m.data), [undefined, undefined]);
+		assert.deepEqual(merged[7].media, [loaded]);
+
+		assert.equal(storedTurnsToReplayedMessages(stored).filter((m) => m.role === 'user').length, 5);
+		assert.deepEqual(mergeStoredTraces([], stored), []);
 	} finally {
 		fs.rmSync(tmpHome, { recursive: true, force: true });
 	}

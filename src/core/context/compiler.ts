@@ -245,7 +245,9 @@ function compiledBlockEnd(text: string): number | null {
 
 function endAfter(text: string, marker: string, from = 0): number | null {
 	const i = text.indexOf(marker, from);
-	return i === -1 ? null : i + marker.length;
+	if (i !== -1) return i + marker.length;
+	// An image-only prompt has no typed text, and the CLI trims the trailing `\n\n`.
+	return text.trimEnd().endsWith(marker.trimEnd()) ? text.length : null;
 }
 
 /**
