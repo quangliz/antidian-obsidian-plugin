@@ -9,6 +9,7 @@ Anti-dian works with your existing vault without forcing a folder structure or m
 - **Chat with your vault**: Open the sidebar to ask questions, summarize, compare, or draft notes with live active-note context and clickable `[[wikilink]]` previews.
 - **Rich input**: Mention notes with `@`, run quick actions with `/` (`/compare`, `/plan`, `/search`, `/summarize`, `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
 - **Reads more than notes**: Ask about images, PDFs, audio, video, and Office documents (`.docx`, `.xlsx`, `.pptx`) in your vault (up to 100 MB each), as well as canvases and other text files.
+- **Interactive questions**: When clarifying requirements or options, the assistant can present structured single-select or multi-select question cards above the input bar with numbered shortcuts, a write-in **Other** field, and multi-question step navigation.
 - **Safe, reviewable edits**:
   - **Ask** *(default)*: Reads are automatic; every edit shows a diff in the sidebar and inline in your note for you to **Accept** or **Reject**.
   - **Plan**: Read-only mode—the assistant can explore and propose changes without modifying files.

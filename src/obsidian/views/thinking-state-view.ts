@@ -17,6 +17,7 @@ import type { ApprovalDecision, ApprovalRequest } from '../../core/transactions'
 import { bindNoteLink, linkifyCodeWikilinks } from './note-link';
 import { buildToolDetail } from './tool-detail';
 import { originalTextSize } from '../../core/sessions/trace';
+import { parseAskQuestionOutcome } from '../../core/models/elicitation';
 import { ANTI_DIAN_ICON } from '../icon';
 import { AgentStepEvent } from '../../core/agent';
 
@@ -51,6 +52,8 @@ export interface ThinkingStep {
 	error?: string;
 	/** Human-in-the-loop state for a write call. */
 	approval?: StepApproval;
+	/** Interactive state for an `ask_question` tool call. */
+	questionState?: 'waiting' | 'answered' | 'skipped' | 'cancelled';
 }
 
 interface StepApproval {
@@ -183,13 +186,17 @@ export class ThinkingStateView {
 				status: 'running',
 				args: step.toolArgs,
 				sources: [],
+				questionState: step.toolName === 'ask_question' ? 'waiting' : undefined,
 			};
 			this.steps.push(newStep);
-			this.activeStatus = isSearch
-				? step.toolName === 'web_search'
-					? 'Searching the web'
-					: 'Searching notes'
-				: `Running ${formatted.primary.toLowerCase()}`;
+			this.activeStatus =
+				step.toolName === 'ask_question'
+					? 'Waiting for answer'
+					: isSearch
+						? step.toolName === 'web_search'
+							? 'Searching the web'
+							: 'Searching notes'
+						: `Running ${formatted.primary.toLowerCase()}`;
 
 			this.isExpanded = true;
 			this.updateHeader();
@@ -213,6 +220,15 @@ export class ThinkingStateView {
 				current.status = isError ? 'error' : 'done';
 				current.output = step.toolOutput;
 				this.applyReviewOutcome(current, step.toolOutput);
+				if (current.toolName === 'ask_question') {
+					const outcome = parseAskQuestionOutcome(current.args, step.toolOutput);
+					current.questionState =
+						outcome?.action === 'decline'
+							? 'skipped'
+							: outcome?.action === 'cancel'
+								? 'cancelled'
+								: 'answered';
+				}
 				if (isError) {
 					current.error = String((step.toolOutput as { error: unknown }).error);
 					this.openStepIds.add(current.id);
@@ -445,6 +461,9 @@ export class ThinkingStateView {
 				if (step.status === 'running') {
 					step.status = 'cancelled';
 				}
+				if (step.questionState === 'waiting') {
+					step.questionState = 'cancelled';
+				}
 			}
 		}
 
@@ -541,10 +560,19 @@ export class ThinkingStateView {
 		if (skills.length === 1) clauses.push([{ text: 'loaded skill ' }, { text: skills[0] ?? '', file: true }]);
 		else if (skills.length > 1) clauses.push([{ text: `loaded ${skills.length} skills` }]);
 
+		const askedCount = this.steps
+			.filter((s) => s.toolName === 'ask_question')
+			.reduce((sum, s) => {
+				const qs = Array.isArray(s.args?.questions) ? s.args.questions.length : 1;
+				return sum + Math.max(1, qs);
+			}, 0);
+		if (askedCount === 1) clauses.push([{ text: 'asked a question' }]);
+		else if (askedCount > 1) clauses.push([{ text: `asked ${askedCount} questions` }]);
+
 		const known = new Set([
 			'search_notes', 'web_search', 'search_web', 'list_notes', 'read_note', 'get_note_outline',
 			'create_note', 'edit_note', 'patch_note', 'replace_block', 'append_note', 'update_frontmatter',
-			'load_skill', 'list_skills',
+			'load_skill', 'list_skills', 'ask_question',
 		]);
 		const other = this.steps.filter((s) => !known.has(s.toolName)).length;
 		if (other) clauses.push([{ text: `ran ${other} ${other === 1 ? 'tool' : 'tools'}` }]);
@@ -614,6 +642,18 @@ export class ThinkingStateView {
 					primary: 'Load skill',
 					secondary: typeof args.name === 'string' ? args.name : undefined,
 				};
+			case 'ask_question': {
+				const qs = Array.isArray(args.questions) ? args.questions : [];
+				const firstQ = qs[0];
+				const firstText =
+					isRecord(firstQ) && typeof firstQ.question === 'string'
+						? firstQ.question
+						: undefined;
+				return {
+					primary: 'Ask question',
+					secondary: qs.length > 1 ? `${qs.length} questions` : firstText,
+				};
+			}
 			default: {
 				// Unknown tools: sentence case, same file display as known ones.
 				const words = toolName.replace(/[_-]+/g, ' ').trim();
@@ -799,7 +839,10 @@ export class ThinkingStateView {
 			row.toggleClass('is-selected', isOpen);
 
 			// Status icon
-			if (step.approval?.state === 'pending') {
+			if (
+				step.approval?.state === 'pending' ||
+				step.questionState === 'waiting'
+			) {
 				const wait = row.createSpan({ cls: 'anti-dian-thinking-row-await' });
 				setIcon(wait, 'hand');
 			} else if (step.status === 'running') {
@@ -870,6 +913,17 @@ export class ThinkingStateView {
 				row.createSpan({
 					cls: `anti-dian-thinking-row-tag is-${step.approval.state}`,
 					text: label,
+				});
+			} else if (step.questionState) {
+				const metaMap = {
+					waiting: { label: 'Waiting for answer', cls: 'is-pending' },
+					answered: { label: 'Answered', cls: 'is-applied' },
+					skipped: { label: 'Skipped', cls: 'is-rejected' },
+					cancelled: { label: 'Cancelled', cls: 'is-rejected' },
+				}[step.questionState];
+				row.createSpan({
+					cls: `anti-dian-thinking-row-tag ${metaMap.cls}`,
+					text: metaMap.label,
 				});
 			}
 

@@ -25,17 +25,17 @@ Anti-dian enforces a strict one-way dependency boundary (`src/main.ts` → `src/
 - `src/core/` — Pure harness runtime with **no Obsidian SDK imports**:
   - `agent/` — Agent orchestration loop and default system prompt.
   - `context/` — `ContextCompiler` (deduplicated active note outline/selection, skill summaries, Plan Mode notice, forked context handling).
-  - `models/` — ACP client (`antigravity-acp.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
+  - `models/` — ACP client (`antigravity-acp.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
   - `sessions/` — Trace recording and replay merging (`trace.ts`, including rebuilding image-only turns the CLI does not replay) and `agy` transcript loading (`transcript.ts`).
   - `skills/` — Pure Markdown skill parser and constants.
   - `tools/` — `ToolRegistry` and 12 tool definitions.
   - `transactions/` — `ChangeStagingManager`, `StagedVaultOverlay`, `ChangeSetValidator`, `ChangeSetDiffGenerator`, `MutationGate`, `ChangeSetApplicator`, and Markdown structural helpers.
-  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `skills`).
+  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `skills`, `elicitation`).
 - `src/obsidian/` — Obsidian SDK integration:
   - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, `Editor`, and `Skills` adapters.
   - `commands/` — Command palette registrations and editor context menu hooks.
   - `editor/` — CodeMirror 6 `InlineDiffController` for inline write approvals in open Markdown views.
-  - `views/` — Sidebar view, prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), thinking trace, diff renderer, model menu, and resizable session drawer.
+  - `views/` — Sidebar view, prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
 - `src/main.ts` — Thin composition root that wires services, registers tools/views/commands, and handles lifecycle cleanup.
 - `src/settings.ts` — Persisted plugin settings and `AntiDianSettingTab`.
 
@@ -52,6 +52,14 @@ All vault access goes through `ToolRegistry` exposed over `McpToolServer` so the
 `read_note` reads any vault file. Non-text files (`src/core/files.ts`) return a `FileToolResult`, which `McpToolServer` sends as an MCP image/resource block; the bytes never reach the UI or traces. `agy` passes small files straight to the model and offloads larger ones to its own session folder, where the model opens them with the built-in `read_file` (no permission request, no vault access). `agy` has no Office reader (its CLI falls back to shell scripts, which Anti-dian rejects), so `read_note` returns the text of Office documents itself (`src/core/office.ts`). `ChangeSetValidator` rejects text edits to these files.
 
 `McpToolServer` binds a per-turn `ToolContext` (active context, `permissionMode`, read `mtime` tracking, and `reviewMutation` callback) and blocks mutating tools (`tool.mutates === true`) at the MCP boundary when in `plan` mode.
+
+## Interactive Questions (ACP Elicitation)
+
+During ACP `initialize`, `AntigravityAcpClient` advertises `clientCapabilities.elicitation.form: {}`. When the model invokes `agy`'s built-in `ask_question` tool (or another form elicitation), `agy acp` sends a JSON-RPC `elicitation/create` request (`mode: "form"`):
+
+- `src/core/models/elicitation.ts` parses `requestedSchema` into typed fields, pairing `<key>` + `<key>_other` into single-select or multi-select questions with an integrated write-in `"Other"` option and `(Recommended)` badge extraction (while also supporting generic text, number, and boolean fields).
+- `ElicitationCardView` renders the interactive card docked above the prompt bar with numbered shortcuts (`1`–`9`), keyboard navigation (`←`/`→`, `↑`/`↓`, `Enter`), stepper tabs for multi-question polls, and **Skip** / **Submit** actions.
+- Responses are returned over ACP (`accept` with encoded `content`, `decline`, or `cancel` on turn abort/session switch), and the Q&A summary is recorded on the `ask_question` step in `ThinkingStateView` and reconstructed on session replay.
 
 ## Staged Mutation Pipeline
 

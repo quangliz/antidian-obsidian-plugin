@@ -47,6 +47,7 @@ import {
 } from '../../core/sessions/transcript';
 import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
+import { ElicitationCardView } from './elicitation-card-view';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, registerInternalLinkHandlers } from './note-link';
 import { ANTI_DIAN_ICON } from '../icon';
@@ -78,6 +79,8 @@ export class AntiDianView extends ItemView implements HoverParent {
 	/** Title of a resumed session, kept until the CLI reports one of its own. */
 	private resumedTitle: string | null = null;
 	private promptBar!: PromptBarView;
+	/** Docked interactive question/poll card shown above the prompt bar. */
+	private elicitationCard: ElicitationCardView | null = null;
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
 	private renderedTurns: RenderedTurn[] = [];
@@ -212,6 +215,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	async onClose(): Promise<void> {
 		// Cancel any active run and pending write approvals so nothing hangs after close.
 		this.turnToken++;
+		this.elicitationCard?.cancel();
 		this.handleCancel();
 		if (this.unsubscribeContext) {
 			this.unsubscribeContext();
@@ -373,6 +377,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 			return;
 		}
 		const myToken = ++this.turnToken;
+		this.elicitationCard?.cancel();
 		this.activeThinking?.cancelPendingApprovals();
 		this.activeThinking = null;
 		this.loadingSession = session;
@@ -648,6 +653,11 @@ export class AntiDianView extends ItemView implements HoverParent {
 		this.heroTitleEl = heroEl.createDiv({ cls: 'anti-dian-empty-title' });
 		this.refreshGreeting();
 
+		const elicitationSlotEl = this.centerContainerEl.createDiv({
+			cls: 'anti-dian-elicitation-slot',
+		});
+		this.elicitationCard = new ElicitationCardView(elicitationSlotEl);
+
 		this.promptBar = new PromptBarView(
 			this.centerContainerEl,
 			this.app,
@@ -681,6 +691,7 @@ export class AntiDianView extends ItemView implements HoverParent {
 	}
 
 	private handleCancel(): void {
+		this.elicitationCard?.cancel();
 		if (!this.isRunning) return;
 		this.activeThinking?.cancelPendingApprovals();
 		this.agent.cancel();
@@ -943,6 +954,14 @@ export class AntiDianView extends ItemView implements HoverParent {
 							request.callId,
 						);
 					}
+				},
+				undefined,
+				async (request) => {
+					if (myToken !== this.turnToken || !this.elicitationCard) {
+						return { action: 'cancel' };
+					}
+					this.scrollToBottom();
+					return await this.elicitationCard.show(request);
 				},
 			);
 

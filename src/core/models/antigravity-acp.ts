@@ -9,6 +9,11 @@ import {
 	clearTimeout as nodeClearTimeout,
 } from 'timers';
 import type { MediaInput, TokenUsage } from '../types/model';
+import type {
+	ElicitationHandler,
+	ElicitationResponse,
+} from '../types/elicitation';
+import { parseElicitationRequest } from './elicitation';
 import {
 	type BinaryDownloadProgress,
 	type EnsureAgyBinaryResult,
@@ -109,6 +114,8 @@ export interface AcpStreamCallbacks {
 		callId?: string,
 	) => void;
 	onToolEnd?: (toolName: string, toolOutput: unknown, callId?: string) => void;
+	/** Handles interactive ACP `elicitation/create` form prompts (e.g. `ask_question`). */
+	onElicitation?: ElicitationHandler;
 }
 
 export interface AcpPromptResult {
@@ -172,6 +179,7 @@ const SAFE_BUILTIN_TOOLS = new Set([
 	'search_web',
 	'web_search',
 	'google_search',
+	'ask_question',
 ]);
 
 export function formatTokens(tokens?: number): string {
@@ -376,6 +384,8 @@ export class AntigravityAcpClient {
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
+	private activeElicitationCancels = new Set<() => void>();
+	private elicitationOutcomes = new Map<string, Record<string, unknown>>();
 	private startPromise: Promise<void> | null = null;
 	private sessionTitle: string | null = null;
 	private sessionInfoListeners = new Set<() => void>();
@@ -848,6 +858,7 @@ export class AntigravityAcpClient {
 			return;
 		}
 		this.turnCancelled = true;
+		this.cancelActiveElicitations();
 		if (this.sessionId && this.proc?.stdin && !this.proc.killed) {
 			this.sendNotification('session/cancel', {
 				sessionId: this.sessionId,
@@ -888,6 +899,7 @@ export class AntigravityAcpClient {
 		this.activeCallbacks = callbacks ?? null;
 		this.activeAnswerChunks = [];
 		this.activeToolNames.clear();
+		this.elicitationOutcomes.clear();
 
 		const onAbort = () => this.cancel();
 		signal?.addEventListener('abort', onAbort, { once: true });
@@ -990,6 +1002,8 @@ export class AntigravityAcpClient {
 			this.activeCallbacks = null;
 			this.activeAnswerChunks = [];
 			this.activeToolNames.clear();
+			this.elicitationOutcomes.clear();
+			this.cancelActiveElicitations();
 		}
 	}
 
@@ -1027,7 +1041,11 @@ export class AntigravityAcpClient {
 		if (!this.initialized) {
 			await this.sendRequest('initialize', {
 				protocolVersion: 1,
-				clientCapabilities: {},
+				clientCapabilities: {
+					elicitation: {
+						form: {},
+					},
+				},
 				clientInfo: {
 					name: 'anti-dian',
 					version: '1.0.0',
@@ -1274,6 +1292,7 @@ export class AntigravityAcpClient {
 
 	private destroyProcess(): void {
 		this.intentionalStop = true;
+		this.cancelActiveElicitations();
 		if (this.recoveryTimer) {
 			nodeClearTimeout(this.recoveryTimer);
 			this.recoveryTimer = null;
@@ -1347,6 +1366,24 @@ export class AntigravityAcpClient {
 		);
 	}
 
+	private sendError(id: number | string, code: number, message: string): void {
+		if (!this.proc?.stdin || this.proc.killed) return;
+		this.proc.stdin.write(
+			`${JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })}\n`,
+		);
+	}
+
+	private cancelActiveElicitations(): void {
+		for (const cancel of this.activeElicitationCancels) {
+			try {
+				cancel();
+			} catch {
+				// Ignore listener errors during cancellation
+			}
+		}
+		this.activeElicitationCancels.clear();
+	}
+
 	private handleLine(line: string): void {
 		const trimmed = line.trim();
 		if (!trimmed) return;
@@ -1392,9 +1429,77 @@ export class AntigravityAcpClient {
 			return;
 		}
 
+		// Agent->client interactive form elicitation (e.g. ask_question)
+		if (msg.method === 'elicitation/create' && msg.id !== undefined) {
+			void this.handleElicitationRequest(msg.id, msg.params ?? {});
+			return;
+		}
+
 		// Agent->client streaming update notification
 		if (msg.method === 'session/update' && msg.params) {
 			this.handleSessionUpdate(msg.params);
+		}
+	}
+
+	private async handleElicitationRequest(
+		id: number | string,
+		params: Record<string, unknown>,
+	): Promise<void> {
+		if (this.turnCancelled) {
+			this.sendResponse(id, { action: 'cancel' });
+			return;
+		}
+
+		const parsed = parseElicitationRequest(params);
+		if (parsed.unsupportedMode) {
+			this.sendError(
+				id,
+				-32602,
+				`Unsupported elicitation mode: ${parsed.unsupportedMode}`,
+			);
+			return;
+		}
+
+		const request = parsed.request;
+		const handler = this.activeCallbacks?.onElicitation;
+		if (!request || !handler) {
+			this.sendResponse(id, { action: 'decline' });
+			return;
+		}
+
+		let cancelPending: (() => void) | null = null;
+		const cancelPromise = new Promise<ElicitationResponse>((resolve) => {
+			cancelPending = () => resolve({ action: 'cancel' });
+		});
+		const cancelFn = () => cancelPending?.();
+		this.activeElicitationCancels.add(cancelFn);
+
+		try {
+			const response = await Promise.race([
+				handler(request).catch(
+					(): ElicitationResponse => ({ action: 'decline' }),
+				),
+				cancelPromise,
+			]);
+
+			const finalAction = this.turnCancelled ? 'cancel' : response.action;
+			if (request.toolCallId) {
+				this.elicitationOutcomes.set(request.toolCallId, {
+					action: finalAction,
+					answers: finalAction === 'accept' ? (response.summary ?? []) : [],
+				});
+			}
+
+			if (finalAction === 'accept') {
+				this.sendResponse(id, {
+					action: 'accept',
+					content: response.content ?? {},
+				});
+			} else {
+				this.sendResponse(id, { action: finalAction });
+			}
+		} finally {
+			this.activeElicitationCancels.delete(cancelFn);
 		}
 	}
 
@@ -1531,9 +1636,15 @@ export class AntigravityAcpClient {
 				this.activeToolNames.get(toolCallId) ?? update.name ?? '';
 			const rawName = update.name ?? '';
 			if (!rawName.startsWith(MCP_TOOL_PREFIX) && displayName) {
+				const elicitationOutcome = toolCallId
+					? this.elicitationOutcomes.get(toolCallId)
+					: undefined;
+				if (toolCallId && elicitationOutcome) {
+					this.elicitationOutcomes.delete(toolCallId);
+				}
 				this.activeCallbacks?.onToolEnd?.(
 					displayName,
-					update.rawOutput ?? { status: update.status },
+					update.rawOutput ?? elicitationOutcome ?? { status: update.status },
 					toolCallId || undefined,
 				);
 			}

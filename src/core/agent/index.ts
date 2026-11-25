@@ -1,6 +1,7 @@
 import type { ActiveContext, ContextReference } from '../types/context';
 import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
+import type { ElicitationHandler } from '../types/elicitation';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import {
@@ -68,6 +69,7 @@ Tool rules (strict):
 - ALWAYS use the \`anti-dian-vault\` MCP tools for every vault operation.
 - NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exception: when a \`read_note\` result says it was offloaded to a file, open that exact file with \`read_file\`.
 - Built-in web search (\`search_web\`) may be used when external information is needed.
+- Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
 
 Recommended vault workflow:
 1. Act directly when the target note and its relevant content are already in context or earlier turns; only call \`list_notes\` or \`search_notes\` when you need to discover unknown notes or find related notes. For long unread notes, prefer \`get_note_outline\` (headings, frontmatter, tags, links, backlinks) before reading in full with \`read_note\`. \`read_note\` also opens images, PDFs, audio, video, and Office documents (docx, xlsx, pptx).
@@ -168,6 +170,7 @@ export class Agent {
 		permissionMode: HarnessPermissionMode = 'ask',
 		requestApproval?: ApprovalHandler,
 		signal?: AbortSignal,
+		requestElicitation?: ElicitationHandler,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -278,6 +281,7 @@ export class Agent {
 							callId: callId ? `acp-${callId}` : undefined,
 						});
 					},
+					onElicitation: requestElicitation,
 				},
 				turnController.signal,
 			);
