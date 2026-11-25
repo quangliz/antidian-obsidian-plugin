@@ -177,7 +177,7 @@ const SAFE_BUILTIN_TOOLS = new Set([
 export function formatTokens(tokens?: number): string {
 	if (!tokens) return '';
 	if (tokens >= 1_000_000) {
-		return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
+		return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 	}
 	if (tokens >= 1000) {
 		return `${Math.round(tokens / 1000)}k`;

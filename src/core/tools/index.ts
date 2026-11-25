@@ -1,3 +1,4 @@
+import { extractOfficeText, isOfficeMime } from '../office';
 import type {
 	VaultService,
 	SearchResult,
@@ -252,7 +253,7 @@ export function createReadNoteTool(
 	return {
 		name: 'read_note',
 		description:
-			'Read any vault file: a note (or one heading section of it), another text file (canvas, base, JSON, CSV, code, SVG source), or a non-text file (image, PDF, audio, video), which is returned as the file itself. Automatically reflects any pending edits staged earlier in the current turn.',
+			'Read any vault file: a note (or one heading section of it), another text file (canvas, base, JSON, CSV, code, SVG source), an Office document (docx, xlsx, pptx), returned as its text, or another non-text file (image, PDF, audio, video), returned as the file itself. Automatically reflects any pending edits staged earlier in the current turn.',
 		schema: {
 			type: 'object',
 			properties: {
@@ -277,6 +278,17 @@ export function createReadNoteTool(
 				typeof input?.heading === 'string' ? input.heading : undefined;
 
 			const binary = await vaultService.readBinary?.(path);
+			if (binary && isOfficeMime(binary.mimeType)) {
+				ctx?.recordContext?.({ path: binary.path, reason: 'Read file' });
+				try {
+					const content = extractOfficeText(Buffer.from(binary.data, 'base64'), binary.mimeType);
+					return { path: binary.path, content, mtime: binary.mtime };
+				} catch (err) {
+					throw new Error(
+						`Could not read "${binary.path}": ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
 			if (binary) {
 				ctx?.recordContext?.({ path: binary.path, reason: 'Read file' });
 				return new FileToolResult(

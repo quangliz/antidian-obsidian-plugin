@@ -12,7 +12,8 @@ export const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
 	avif: 'image/avif',
 	mp4: 'video/mp4',
 	webm: 'video/webm',
-	mov: 'video/quicktime',
+	// Same container as MP4; agy saves 'video/quicktime' without an extension and cannot reopen it.
+	mov: 'video/mp4',
 	mkv: 'video/x-matroska',
 	ogv: 'video/ogg',
 	mp3: 'audio/mpeg',
@@ -22,8 +23,20 @@ export const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
 	flac: 'audio/flac',
 };
 
-/** Largest non-text file handed to the model. */
-export const MAX_BINARY_READ_BYTES = 20 * 1024 * 1024;
+/** Non-text files that can be read from the vault but not attached to a prompt. */
+const READ_ONLY_TYPES_BY_EXTENSION: Record<string, string> = {
+	pdf: 'application/pdf',
+	tif: 'image/tiff',
+	tiff: 'image/tiff',
+	aac: 'audio/aac',
+	opus: 'audio/ogg',
+	docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+	pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
+/** Largest non-text file handed to the model: the limit of agy's own file reader. */
+export const MAX_BINARY_READ_BYTES = 100 * 1024 * 1024;
 
 function extensionOf(path: string): string {
 	return /\.([^./\\]+)$/.exec(path.trim())?.[1]?.toLowerCase() ?? '';
@@ -41,5 +54,5 @@ export function mediaMimeForName(name: string): string | undefined {
 export function binaryMimeForPath(path: string): string | undefined {
 	const ext = extensionOf(path);
 	if (ext === 'svg') return undefined;
-	return ext === 'pdf' ? 'application/pdf' : MEDIA_TYPES_BY_EXTENSION[ext];
+	return READ_ONLY_TYPES_BY_EXTENSION[ext] ?? MEDIA_TYPES_BY_EXTENSION[ext];
 }

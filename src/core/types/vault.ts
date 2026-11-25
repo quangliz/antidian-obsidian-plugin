@@ -31,7 +31,7 @@ export interface NoteContent {
 	isStaged?: boolean;
 }
 
-/** A non-text vault file (image, PDF, audio, video). */
+/** A non-text vault file (image, PDF, audio, video, Office document). */
 export interface BinaryContent {
 	path: string;
 	mimeType: string;

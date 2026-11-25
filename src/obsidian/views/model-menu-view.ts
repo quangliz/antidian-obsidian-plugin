@@ -12,6 +12,14 @@ import {
 } from '../../core/models/antigravity-acp';
 import { attachNativeMenuGlider } from './menu-glider';
 
+interface UsageRow {
+	title: string;
+	detail?: string;
+	value: string;
+	/** Omitted for plain counts that have no limit to measure against. */
+	bar?: { pct: number; status: 'normal' | 'warning' | 'error' };
+}
+
 export interface ModelMenuContext {
 	getCurrentModelId: () => string;
 	onSelectModel: (modelId: string) => void;
@@ -319,9 +327,9 @@ export class ModelMenuController {
 			text: tier?.tierName || 'Antigravity CLI (ACP)',
 			cls: 'anti-dian-usage-tier-badge',
 		});
-		if (tier?.tierId) {
+		if (tier?.tierId === 'free-tier') {
 			tierRow.createSpan({
-				text: tier.tierId === 'free-tier' ? 'Free' : tier.tierId,
+				text: 'Free',
 				cls: 'anti-dian-usage-tier-tag',
 			});
 		}
@@ -334,7 +342,7 @@ export class ModelMenuController {
 			});
 			loadingSec.createDiv({
 				text: 'Loading quota limits...',
-				cls: 'anti-dian-usage-limit-subtext',
+				cls: 'anti-dian-usage-row-detail',
 			});
 		}
 
@@ -350,27 +358,22 @@ export class ModelMenuController {
 			});
 
 			for (const bucket of group.buckets) {
-				const pct = `${Math.round(bucket.remainingFraction * 100)}%`;
-				const status: 'success' | 'warning' | 'error' =
-					bucket.remainingFraction < 0.15
-						? 'error'
-						: bucket.remainingFraction < 0.3
-							? 'warning'
-							: 'success';
-
-				const subtext = this.formatResetSubtext(
-					bucket.resetTime,
-					bucket.window,
-					bucket.remainingFraction,
-				);
-
-				this.renderUsageLimitRow(
-					groupSec,
-					bucket.name,
-					pct,
-					subtext,
-					status,
-				);
+				const remainingPct = bucket.remainingFraction * 100;
+				this.renderUsageRow(groupSec, {
+					// The value already says "left", so drop the suffix the CLI puts in the name.
+					title: bucket.name.replace(/\s+remaining$/i, ''),
+					detail: this.formatResetDetail(bucket.resetTime, bucket.remainingFraction),
+					value: `${Math.round(remainingPct)}% left`,
+					bar: {
+						pct: remainingPct,
+						status:
+							bucket.remainingFraction < 0.15
+								? 'error'
+								: bucket.remainingFraction < 0.3
+									? 'warning'
+									: 'normal',
+					},
+				});
 			}
 		}
 
@@ -385,108 +388,75 @@ export class ModelMenuController {
 		});
 
 		const stats = this.ctx.getSessionStats();
-		this.renderUsageLimitRow(
-			sessionSec,
-			'Session Tokens Processed',
-			stats.totalTokens.toLocaleString(),
-			`${stats.promptTokens.toLocaleString()} in / ${stats.candidateTokens.toLocaleString()} out`,
-			'success',
-		);
+		this.renderUsageRow(sessionSec, {
+			title: 'Tokens processed',
+			detail:
+				stats.totalTokens > 0
+					? `${stats.promptTokens.toLocaleString()} in / ${stats.candidateTokens.toLocaleString()} out`
+					: undefined,
+			value: stats.totalTokens.toLocaleString(),
+		});
 
 		if (stats.cachedReadTokens > 0 && stats.promptTokens > 0) {
-			const cachedPct = Math.round((stats.cachedReadTokens / stats.promptTokens) * 100);
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Cached Input',
-				`${cachedPct}%`,
-				`${stats.cachedReadTokens.toLocaleString()} of ${stats.promptTokens.toLocaleString()} input tokens from cache`,
-				'success',
-			);
+			const cachedPct = (stats.cachedReadTokens / stats.promptTokens) * 100;
+			this.renderUsageRow(sessionSec, {
+				title: 'Cached input',
+				detail: `${formatTokens(stats.cachedReadTokens)} / ${formatTokens(stats.promptTokens)}`,
+				value: `${Math.round(cachedPct)}%`,
+				bar: { pct: cachedPct, status: 'normal' },
+			});
 		}
 		if (stats.thoughtTokens > 0) {
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Thinking Tokens',
-				formatTokens(stats.thoughtTokens),
-				`${stats.thoughtTokens.toLocaleString()} reasoning tokens this session`,
-				'success',
-			);
+			this.renderUsageRow(sessionSec, {
+				title: 'Thinking tokens',
+				value: stats.thoughtTokens.toLocaleString(),
+			});
 		}
 
 		const ctxUsage = this.ctx.getContextUsage();
 		if (ctxUsage && ctxUsage.size > 0) {
-			const usedPct = Math.min(
-				100,
-				Math.round((ctxUsage.used / ctxUsage.size) * 100),
-			);
-			const ctxStatus: 'success' | 'warning' | 'error' =
-				usedPct > 85 ? 'error' : usedPct > 65 ? 'warning' : 'success';
-			this.renderUsageLimitRow(
-				sessionSec,
-				'Context Window',
-				`${usedPct}%`,
-				`${formatTokens(ctxUsage.used)} / ${formatTokens(ctxUsage.size)}`,
-				ctxStatus,
-			);
-		}
-	}
-
-	private formatResetSubtext(
-		resetTime?: string,
-		windowType?: string,
-		remainingFraction?: number,
-	): string | undefined {
-		if (remainingFraction !== undefined && remainingFraction >= 0.999) {
-			return windowType === '5h'
-				? 'Full 5-hour window available'
-				: 'Full weekly window available';
-		}
-		if (!resetTime) return undefined;
-		const diffMs = new Date(resetTime).getTime() - Date.now();
-		if (!Number.isFinite(diffMs) || diffMs <= 0) {
-			return 'Refreshing soon';
-		}
-		const totalMins = Math.round(diffMs / 60_000);
-		const days = Math.floor(totalMins / (60 * 24));
-		const hours = Math.floor((totalMins % (60 * 24)) / 60);
-		const mins = totalMins % 60;
-		if (days > 0) {
-			return `Resets in ${days}d ${hours}h`;
-		}
-		if (hours > 0) {
-			return `Resets in ${hours}h ${mins}m`;
-		}
-		return `Resets in ${mins}m`;
-	}
-
-	private renderUsageLimitRow(
-		parent: HTMLElement,
-		title: string,
-		percentage: string,
-		subtext?: string,
-		status: 'success' | 'warning' | 'error' = 'success',
-	): void {
-		const row = parent.createDiv({ cls: 'anti-dian-usage-limit-row' });
-		const textCol = row.createDiv({ cls: 'anti-dian-usage-text-col' });
-		textCol.createDiv({
-			text: title,
-			cls: 'anti-dian-usage-limit-title',
-		});
-		if (subtext) {
-			textCol.createDiv({
-				text: subtext,
-				cls: 'anti-dian-usage-limit-subtext',
+			const usedPct = Math.min(100, (ctxUsage.used / ctxUsage.size) * 100);
+			this.renderUsageRow(sessionSec, {
+				title: 'Context window',
+				detail: `${formatTokens(ctxUsage.used) || '0'} / ${formatTokens(ctxUsage.size)}`,
+				value: `${Math.round(usedPct)}%`,
+				bar: {
+					pct: usedPct,
+					status: usedPct > 85 ? 'error' : usedPct > 65 ? 'warning' : 'normal',
+				},
 			});
 		}
+	}
 
-		const rightCol = row.createDiv({ cls: 'anti-dian-usage-right-col' });
-		rightCol.createSpan({
-			text: percentage,
-			cls: 'anti-dian-usage-pct',
-		});
-		rightCol.createSpan({
-			cls: `anti-dian-usage-ring ring-${status}`,
-		});
+	/** "Resets at 4:10 PM" today, "Resets Sun 8:00 PM" on another day; nothing for an unused window. */
+	private formatResetDetail(
+		resetTime: string | undefined,
+		remainingFraction: number,
+	): string | undefined {
+		if (!resetTime || remainingFraction >= 0.999) return undefined;
+		const reset = new Date(resetTime);
+		const now = new Date();
+		if (!(reset.getTime() > now.getTime())) return 'Refreshing soon';
+		const time = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		if (reset.toDateString() === now.toDateString()) return `Resets at ${time}`;
+		return `Resets ${reset.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+	}
+
+	private renderUsageRow(parent: HTMLElement, opts: UsageRow): void {
+		const row = parent.createDiv({ cls: 'anti-dian-usage-row' });
+		const label = row.createDiv({ cls: 'anti-dian-usage-row-label' });
+		label.createSpan({ text: opts.title, cls: 'anti-dian-usage-row-title' });
+		if (opts.detail) {
+			label.createSpan({ text: opts.detail, cls: 'anti-dian-usage-row-detail' });
+		}
+		label.createSpan({ text: opts.value, cls: 'anti-dian-usage-row-value' });
+
+		if (opts.bar) {
+			const bar = row.createDiv({ cls: `anti-dian-usage-bar is-${opts.bar.status}` });
+			bar.createDiv({ cls: 'anti-dian-usage-bar-fill' }).setCssProps({
+				'--anti-dian-usage-pct': `${opts.bar.pct}%`,
+			});
+		}
 	}
 
 	closeUsagePanel(): void {
