@@ -71,10 +71,11 @@ function parseEnumList(
 	rawNames?: unknown,
 ): ElicitationOption[] {
 	if (!Array.isArray(rawEnum)) return [];
-	const names = Array.isArray(rawNames) ? rawNames : [];
+	const items: unknown[] = rawEnum;
+	const names: unknown[] = Array.isArray(rawNames) ? rawNames : [];
 	const out: ElicitationOption[] = [];
-	for (let i = 0; i < rawEnum.length; i++) {
-		const val = rawEnum[i];
+	for (let i = 0; i < items.length; i++) {
+		const val = items[i];
 		if (typeof val !== 'string' && typeof val !== 'number') continue;
 		const value = String(val);
 		const rawTitle = nonEmptyStr(names[i]) ?? value;

@@ -643,7 +643,7 @@ export class ThinkingStateView {
 					secondary: typeof args.name === 'string' ? args.name : undefined,
 				};
 			case 'ask_question': {
-				const qs = Array.isArray(args.questions) ? args.questions : [];
+				const qs: unknown[] = Array.isArray(args.questions) ? args.questions : [];
 				const firstQ = qs[0];
 				const firstText =
 					isRecord(firstQ) && typeof firstQ.question === 'string'

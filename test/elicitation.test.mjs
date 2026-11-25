@@ -259,6 +259,10 @@ rl.on('line', (line) => {
 		send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'sess-fake', models: { availableModels: [] } } });
 		return;
 	}
+	if (msg.method === 'session/close') {
+		send({ jsonrpc: '2.0', id: msg.id, result: {} });
+		return;
+	}
 	if (msg.method === 'session/prompt') {
 		promptReqId = msg.id;
 		send({
