@@ -146,8 +146,10 @@ function parseToolResultContent(
 		}
 	}
 
-	// Strip leading `Created At:` / `Completed At:` metadata lines
+	// Strip leading `Created At:` / `Completed At:` metadata lines, and the notes
+	// agy adds where a tool returned a file
 	body = body
+		.replace(/^\[Resource offloaded to file:\/\/.*\]$/gm, '')
 		.replace(/^Created At:.*\r?\n/gm, '')
 		.replace(/^Completed At:.*\r?\n/gm, '')
 		.trim();

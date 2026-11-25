@@ -4,6 +4,7 @@ import type {
 	SearchNotesParams,
 	ReadNoteParams,
 	NoteContent,
+	BinaryContent,
 	ListNotesParams,
 	NoteListItem,
 	NoteOutline,
@@ -44,6 +45,23 @@ export interface Tool<I = unknown, O = unknown> {
 	schema: Record<string, unknown>;
 	mutates?: boolean;
 	execute(input: I, ctx?: ToolContext): Promise<O>;
+}
+
+/**
+ * A tool result that carries a file. `info` is the JSON the model and the UI
+ * see; the bytes go to the model as a separate MCP content block.
+ */
+export class FileToolResult {
+	readonly info: Record<string, unknown>;
+	readonly file: Pick<BinaryContent, 'path' | 'mimeType' | 'data'>;
+
+	constructor(
+		info: Record<string, unknown>,
+		file: Pick<BinaryContent, 'path' | 'mimeType' | 'data'>,
+	) {
+		this.info = info;
+		this.file = file;
+	}
 }
 
 export interface ToolDeclaration {
@@ -185,7 +203,7 @@ export function createSearchNotesTool(
 	return {
 		name: 'search_notes',
 		description:
-			'Search vault notes and sections. Returns structured matches with path, heading, matchType (title|heading|text|property|link), and snippet to pinpoint relevant sections before reading.',
+			'Search vault notes and sections, plus other files (images, PDFs, …) by name. Returns structured matches with path, heading, matchType (title|heading|text|property|link), and snippet to pinpoint relevant sections before reading.',
 		schema: {
 			type: 'object',
 			properties: {
@@ -230,21 +248,22 @@ export function createSearchNotesTool(
 export function createReadNoteTool(
 	vaultService: VaultService,
 	overlay?: StagedVaultOverlay,
-): Tool<ReadNoteParams, NoteContent | null> {
+): Tool<ReadNoteParams, NoteContent | FileToolResult | null> {
 	return {
 		name: 'read_note',
 		description:
-			'Read the content of a note or a specific heading section in the vault. Automatically reflects any pending edits staged earlier in the current turn.',
+			'Read any vault file: a note (or one heading section of it), another text file (canvas, base, JSON, CSV, code, SVG source), or a non-text file (image, PDF, audio, video), which is returned as the file itself. Automatically reflects any pending edits staged earlier in the current turn.',
 		schema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Vault path to the note (e.g. "llama.cpp.md")',
+					description:
+						'Vault path to the file (e.g. "llama.cpp.md", "Assets/diagram.png")',
 				},
 				heading: {
 					type: 'string',
-					description: 'Optional heading section to read',
+					description: 'Optional heading section to read (notes only)',
 				},
 			},
 			required: ['path'],
@@ -252,13 +271,34 @@ export function createReadNoteTool(
 		execute: async (
 			input: ReadNoteParams,
 			ctx?: ToolContext,
-		): Promise<NoteContent | null> => {
+		): Promise<NoteContent | FileToolResult | null> => {
 			const path = typeof input?.path === 'string' ? input.path : '';
 			const heading =
 				typeof input?.heading === 'string' ? input.heading : undefined;
+
+			const binary = await vaultService.readBinary?.(path);
+			if (binary) {
+				ctx?.recordContext?.({ path: binary.path, reason: 'Read file' });
+				return new FileToolResult(
+					{
+						path: binary.path,
+						mimeType: binary.mimeType,
+						size: binary.size,
+						mtime: binary.mtime,
+						message:
+							'The file follows. If it was offloaded to a file instead, open that exact file with read_file to view it.',
+					},
+					binary,
+				);
+			}
+
 			const note = overlay
 				? await overlay.readEffectiveNote({ path, heading })
 				: await vaultService.readNote({ path, heading });
+
+			if (note?.content.includes('\0')) {
+				throw new Error(`"${note.path}" is a binary file of an unsupported type.`);
+			}
 
 			if (note) {
 				if (ctx?.recordContext) {

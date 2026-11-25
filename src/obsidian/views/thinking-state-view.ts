@@ -40,7 +40,8 @@ export interface ThinkingStep {
 	query?: string;
 	primary: string;
 	secondary?: string;
-	mono?: boolean;
+	/** `secondary` names the target file, so the row links to it. */
+	isFile?: boolean;
 	add?: number;
 	del?: number;
 	status: 'running' | 'done' | 'error' | 'cancelled';
@@ -178,7 +179,7 @@ export class ThinkingStateView {
 				query: typeof step.toolArgs.query === 'string' ? step.toolArgs.query : undefined,
 				primary: formatted.primary,
 				secondary: formatted.secondary,
-				mono: formatted.mono,
+				isFile: formatted.isFile,
 				status: 'running',
 				args: step.toolArgs,
 				sources: [],
@@ -571,11 +572,11 @@ export class ThinkingStateView {
 	private formatToolStep(
 		toolName: string,
 		args: Record<string, unknown>,
-	): { primary: string; secondary?: string; mono?: boolean } {
+	): { primary: string; secondary?: string; isFile?: boolean } {
 		const file = (primary: string) => ({
 			primary,
 			secondary: basename(args.path),
-			mono: true,
+			isFile: true,
 		});
 		switch (toolName) {
 			case 'search_notes':
@@ -590,7 +591,6 @@ export class ThinkingStateView {
 						typeof args.folder === 'string' && args.folder
 							? args.folder
 							: quoted(args.query),
-					mono: typeof args.folder === 'string' && args.folder.length > 0,
 				};
 			case 'read_note':
 				return file('Read');
@@ -613,7 +613,6 @@ export class ThinkingStateView {
 				return {
 					primary: 'Load skill',
 					secondary: typeof args.name === 'string' ? args.name : undefined,
-					mono: true,
 				};
 			default: {
 				// Unknown tools: sentence case, same file display as known ones.
@@ -829,11 +828,11 @@ export class ThinkingStateView {
 					: isRecord(step.output) && typeof step.output.path === 'string'
 						? step.output.path
 						: undefined;
-			if (step.secondary && targetPath && step.mono) {
+			if (step.secondary && targetPath && step.isFile) {
 				this.renderFileLink(row, targetPath, step.secondary);
 			} else if (step.secondary) {
 				row.createSpan({
-					cls: `anti-dian-thinking-row-secondary ${step.mono ? 'is-mono' : ''}`,
+					cls: 'anti-dian-thinking-row-secondary',
 					text: step.secondary,
 				});
 			}
@@ -979,6 +978,10 @@ export class ThinkingStateView {
 	private formatReadNoteInlineMeta(step: ThinkingStep): string | null {
 		if (step.toolName !== 'read_note' || step.status !== 'done') return null;
 		if (!isRecord(step.output)) return null;
+		if (typeof step.output.mimeType === 'string') {
+			const size = typeof step.output.size === 'number' ? step.output.size : 0;
+			return `· ${step.output.mimeType} · ${Math.ceil(size / 1024).toLocaleString()} KB`;
+		}
 		const content =
 			typeof step.output.content === 'string' ? step.output.content : undefined;
 		const size = originalTextSize(step.output, 'content');
@@ -1005,7 +1008,7 @@ export class ThinkingStateView {
 	private renderFileLink(row: HTMLElement, path: unknown, label: string): void {
 		const file = this.resolveNote(path);
 		const el = row.createSpan({
-			cls: 'anti-dian-thinking-row-secondary is-mono',
+			cls: 'anti-dian-thinking-row-secondary',
 			text: label,
 		});
 		if (file) {

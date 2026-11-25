@@ -4,6 +4,7 @@ import type {
 	ValidationResult,
 } from '../types/changes';
 import type { VaultInspectionService, VaultService } from '../types/vault';
+import { binaryMimeForPath } from '../files';
 import { applyOperationToContent } from './overlay';
 
 type ValidatorVault = VaultInspectionService &
@@ -92,6 +93,17 @@ export class ChangeSetValidator {
 
 			// 4. Validate against running virtual content state
 			const currentContent = await loadCurrentContent(normPath);
+
+			// Edits are text: writing one into an image, PDF, zip, etc. would corrupt it
+			if (binaryMimeForPath(normPath) || currentContent?.includes('\0')) {
+				errors.push({
+					operationIndex: i,
+					path: normPath,
+					code: 'binary_file',
+					message: `"${normPath}" is not a text file and cannot be edited.`,
+				});
+				continue;
+			}
 
 			// If inspector does not support readNote (minimal mock), fall back to headingExists for patch-section
 			if (

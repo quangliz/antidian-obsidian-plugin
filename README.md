@@ -8,6 +8,7 @@ Anti-dian works with your existing vault without forcing a folder structure or m
 
 - **Chat with your vault**: Open the sidebar to ask questions, summarize, compare, or draft notes with live active-note context and clickable `[[wikilink]]` previews.
 - **Rich input**: Mention notes with `@`, run quick actions with `/` (`/compare`, `/plan`, `/search`, `/summarize`, `/clear`), send selected text via **Add to anti-dian**, or drag-and-drop / paste images, video, and audio.
+- **Reads more than notes**: Ask about images, PDFs, audio, and video in your vault (up to 20 MB each), as well as canvases and other text files.
 - **Safe, reviewable edits**:
   - **Ask** *(default)*: Reads are automatic; every edit shows a diff in the sidebar and inline in your note for you to **Accept** or **Reject**.
   - **Plan**: Read-only mode—the assistant can explore and propose changes without modifying files.
@@ -53,7 +54,7 @@ Anti-dian discovers your skills automatically and loads them on demand.
 
 ## Privacy & Network Use
 
-- **Google account & AI requests**: Anti-dian authenticates with your Google account and sends your prompts, attached media, and the note context accessed during a conversation to Google's Antigravity backend via the `agy` CLI. It never uploads your entire vault.
+- **Google account & AI requests**: Anti-dian authenticates with your Google account and sends your prompts, attached media, and the notes and files accessed during a conversation to Google's Antigravity backend via the `agy` CLI. It never uploads your entire vault.
 - **Backend binary**: If `agy` is not already installed, Anti-dian downloads and verifies the official Antigravity CLI binary from Google's release endpoint (or you can provide a local binary path in **Settings → Anti-dian → Advanced**).
 
 ## Technical Details & Development

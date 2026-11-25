@@ -1910,7 +1910,7 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-status-text {
-	font-size: 12.5px;
+	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-medium);
 	white-space: nowrap;
 }
@@ -1949,6 +1949,8 @@ button.anti-dian-thinking-header-btn:hover {
 	margin-top: 4px;
 	margin-left: 7px;
 	padding-left: 14px;
+	/* One size for the whole trace: rows, file names, sources and thoughts inherit it. */
+	font-size: var(--font-ui-smaller);
 }
 
 .anti-dian-thinking-guideline {
@@ -1971,7 +1973,6 @@ button.anti-dian-thinking-header-btn:hover {
 	position: relative;
 	padding: 2px 6px;
 	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
 	line-height: 1.5;
 	max-height: 9em;
 	overflow: hidden;
@@ -1997,6 +1998,14 @@ button.anti-dian-thinking-header-btn:hover {
 .anti-dian-thinking-model-text :is(p, li, strong, em, code) {
 	color: inherit;
 	font-size: inherit;
+}
+
+/* Models put file and tool names in backticks: same look as file names in rows. */
+.anti-dian-thinking-model-text :not(pre) > code {
+	padding: 0;
+	background: none;
+	font-family: inherit;
+	color: var(--text-normal);
 }
 
 .anti-dian-thinking-model-text p {
@@ -2051,8 +2060,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-source-title {
-	font-size: 12.5px;
-	font-weight: var(--font-medium);
 	color: var(--text-normal);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2067,7 +2074,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-source-subtitle {
-	font-size: 11.5px;
 	color: var(--text-muted);
 	margin-left: auto;
 	flex-shrink: 0;
@@ -2078,7 +2084,6 @@ button.anti-dian-thinking-header-btn:hover {
 }
 
 .anti-dian-thinking-more-count {
-	font-size: 11.5px;
 	color: var(--text-muted);
 	padding-left: 28px;
 	margin-top: 1px;
@@ -2095,7 +2100,6 @@ button.anti-dian-thinking-header-btn:hover {
 	border: none;
 	cursor: default;
 	transition: background-color 0.12s ease;
-	font-size: 12px;
 	width: 100%;
 	box-sizing: border-box;
 }
@@ -2162,16 +2166,11 @@ button.anti-dian-thinking-header-btn:hover {
 
 .anti-dian-thinking-row-secondary {
 	color: var(--text-muted);
-	font-size: 11.5px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	min-width: 0;
 	flex: 0 1 auto;
-}
-
-.anti-dian-thinking-row-secondary.is-mono {
-	font-family: var(--font-monospace);
 }
 
 /* Note names in tool rows open the note (hover + mod key previews it). */
@@ -2199,12 +2198,11 @@ button.anti-dian-thinking-header-btn:hover {
 
 .anti-dian-thinking-row-tag {
 	flex-shrink: 0;
-	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
 
 .anti-dian-thinking-status-file {
-	font-family: var(--font-monospace);
+	font-weight: var(--font-normal);
 	color: var(--text-normal);
 }
 
