@@ -20,6 +20,14 @@ import {
 	getManagedAgyBinaryPath,
 	readValidBinarySidecar,
 } from './core/models/agy-binary-manager';
+import {
+	getMcpConfigPath,
+	listMcpServers,
+	removeMcpServer,
+	setMcpServerEnabled,
+	type McpServerListItem,
+} from './core/models/mcp-config';
+import { McpServerModal } from './obsidian/views/mcp-server-modal';
 
 export type PermissionMode = 'ask' | 'plan' | 'auto';
 
@@ -170,6 +178,10 @@ export class AntidianSettingTab extends PluginSettingTab {
 				],
 			},
 			{
+				heading: 'MCP servers',
+				rows: this.getMcpServerRows(),
+			},
+			{
 				heading: 'Backend',
 				rows: [
 					{
@@ -313,6 +325,108 @@ export class AntidianSettingTab extends PluginSettingTab {
 			setting.setDesc(
 				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
 			);
+		});
+	}
+
+	private getMcpServerRows(): SettingRow[] {
+		const configPath = getMcpConfigPath();
+		const rows: SettingRow[] = [
+			{
+				name: 'Configured servers',
+				desc: `Shared with Antigravity CLI (${configPath}). Changes apply to new conversations.`,
+				render: (setting) => {
+					setting.addButton((button) => {
+						button
+							.setButtonText('Add server')
+							.setCta()
+							.onClick(() => {
+								new McpServerModal(this.app, {
+									onSaved: () => this.refresh(),
+								}).open();
+							});
+					});
+					setting.addExtraButton((button) => {
+						button
+							.setIcon('refresh-cw')
+							.setTooltip('Reload configuration')
+							.onClick(() => this.refresh());
+					});
+				},
+			},
+		];
+
+		let servers: McpServerListItem[];
+		try {
+			servers = listMcpServers(configPath);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			rows.push({
+				name: 'Configuration error',
+				desc: `Could not read ${configPath}: ${message}`,
+				render: () => {},
+			});
+			return rows;
+		}
+
+		if (servers.length === 0) {
+			rows.push({
+				name: 'No MCP servers configured',
+				desc: 'Click Add server to connect a local stdio or remote HTTP MCP server.',
+				render: () => {},
+			});
+			return rows;
+		}
+
+		for (const item of servers) {
+			rows.push({
+				name: item.name,
+				desc: `${item.type} · ${item.summary}`,
+				render: (setting) => this.renderMcpServerRow(setting, item),
+			});
+		}
+		return rows;
+	}
+
+	private renderMcpServerRow(setting: Setting, item: McpServerListItem): void {
+		setting.addToggle((toggle) => {
+			toggle.setValue(item.enabled).onChange((enabled) => {
+				try {
+					setMcpServerEnabled(item.name, enabled);
+					new Notice(
+						`MCP server "${item.name}" ${enabled ? 'enabled' : 'disabled'}. Start a new conversation to apply.`,
+					);
+				} catch (err) {
+					new Notice(err instanceof Error ? err.message : String(err));
+					toggle.setValue(!enabled);
+				}
+			});
+		});
+		setting.addExtraButton((button) => {
+			button
+				.setIcon('pencil')
+				.setTooltip(`Edit ${item.name}`)
+				.onClick(() => {
+					new McpServerModal(this.app, {
+						existing: item,
+						onSaved: () => this.refresh(),
+					}).open();
+				});
+		});
+		setting.addExtraButton((button) => {
+			button
+				.setIcon('trash')
+				.setTooltip(`Remove ${item.name}`)
+				.onClick(() => {
+					try {
+						removeMcpServer(item.name);
+						new Notice(
+							`Removed MCP server "${item.name}". Start a new conversation to apply.`,
+						);
+						this.refresh();
+					} catch (err) {
+						new Notice(err instanceof Error ? err.message : String(err));
+					}
+				});
 		});
 	}
 
