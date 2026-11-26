@@ -105,12 +105,20 @@ tool call
   → ChangeSetValidator (checks vault path boundaries, stale baseMtime, target uniqueness)
   → ChangeSetDiffGenerator (computes line/hunk diffs)
   → MutationGate (invoked via ToolContext.reviewMutation):
-      • ask  → pauses for Approve / Reject in the sidebar trace and InlineDiffController
+      • ask  → asks for Approve / Reject in the sidebar trace and InlineDiffController,
+               and the tool returns `pendingApproval` at once (see below)
       • auto → approves automatically when validation succeeds
       • plan → never staged (blocked at the MCP boundary)
   → ChangeSetApplicator (captures before-state snapshot & applies via ObsidianVaultAdapter)
-  → tool returns `applied` or `rejectedByUser` to the model (UI-only fields stripped)
+  → outcome (`applied`, `rejectedByUser`, or an error) reaches the model (UI-only fields stripped)
 ```
+
+In Ask mode the gate does not hold the MCP request open while the user decides: `agy`'s MCP client gives up after about a minute without response headers. The tool returns `pendingApproval: true` right away, and the approval runs on:
+
+- **Lock**: until decided, the gate refuses further writes to that file, so two pending changes never build on each other.
+- **Decision**: on Approve, the gate validates again (the note may have changed meanwhile) and applies; on Reject it discards. `onDecided` sends the final output to the tool row as a second `tool_end`, which enables Undo.
+- **Reporting**: `MutationGate.takeReviewNotes()` reports each decision to the model once. `McpToolServer` appends it to the next tool result of the turn; otherwise `Agent.run` adds it, with the files still waiting, to the next turn's context.
+- **Lifetime**: an approval can outlast its turn. Leaving the session (new, load, fork, rewind) or closing the view rejects every pending approval, and `forgetDecisions()` drops unreported decisions. Stop rejects only the running turn's approvals.
 
 Applied operations retain before-state snapshots in memory so they can be reverted individually or via `Undo last agent change`.
 

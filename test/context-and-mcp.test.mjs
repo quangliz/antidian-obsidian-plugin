@@ -203,6 +203,47 @@ test('McpToolServer blocks mutating tools in plan mode and allows read tools', a
 	}
 });
 
+test('McpToolServer appends review notes to the next tool result', async () => {
+	const registry = new ToolRegistry();
+	registry.register({
+		name: 'read_stub',
+		description: 'Reads',
+		schema: { type: 'object', properties: {} },
+		execute: async () => ({ ok: true }),
+	});
+	const server = new McpToolServer(registry);
+	const info = await server.start();
+	const notes = ['Decisions on earlier changes:\n- `edit_note` on `A.md`: approved and applied.'];
+
+	try {
+		server.setTurnContext({ permissionMode: 'ask', takeReviewNotes: () => notes.shift() });
+		const callStub = () =>
+			new Promise((resolve, reject) => {
+				const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_stub', arguments: {} } });
+				const req = http.request(
+					info.url,
+					{ method: 'POST', headers: { Authorization: `Bearer ${info.token}`, 'Content-Type': 'application/json' } },
+					(res) => {
+						let data = '';
+						res.on('data', (chunk) => {
+							data += chunk.toString();
+						});
+						res.on('end', () => resolve(JSON.parse(data).result.content.map((block) => block.text)));
+					},
+				);
+				req.on('error', reject);
+				req.end(body);
+			});
+
+		const first = await callStub();
+		assert.deepEqual(JSON.parse(first[0]), { ok: true });
+		assert.match(first[1], /approved and applied/);
+		assert.equal((await callStub()).length, 1, 'no note once reported');
+	} finally {
+		await server.stop();
+	}
+});
+
 test('Agent.cancel aborts active turn, forwards cancel to provider, and preserves partial answer', async () => {
 	let providerCancelled = false;
 	let signalAborted = false;

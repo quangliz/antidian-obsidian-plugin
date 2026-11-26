@@ -293,11 +293,14 @@ export class McpToolServer {
 						output,
 					});
 				}
-				const fileBlocks: Record<string, unknown>[] = [];
+				const extraBlocks: Record<string, unknown>[] = [];
 				if (output instanceof FileToolResult) {
-					fileBlocks.push(fileContentBlock(output.file));
+					extraBlocks.push(fileContentBlock(output.file));
 					output = output.info;
 				}
+				// Ask-mode decisions made since the last result reach the model here.
+				const reviewNotes = turnContext?.takeReviewNotes?.();
+				if (reviewNotes) extraBlocks.push({ type: 'text', text: reviewNotes });
 				this.onToolEnd?.({
 					callId,
 					toolName: name,
@@ -313,7 +316,7 @@ export class McpToolServer {
 									? output
 									: JSON.stringify(withoutPrivateFields(output)),
 						},
-						...fileBlocks,
+						...extraBlocks,
 					],
 				});
 			} catch (err) {

@@ -90,7 +90,7 @@ Recommended vault workflow:
    - \`append_note\` for adding content to the end of a note or under a heading
    - \`update_frontmatter\` for setting or removing YAML properties
    - \`create_note\` for new notes, and \`edit_note\` only when a full-file rewrite is truly needed.
-3. Each write tool call is reviewed immediately: in Ask mode the user approves or rejects it before the tool returns. The result says whether it was applied (\`applied: true\`) or rejected (\`rejectedByUser: true\`); if rejected, don't retry the same edit — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied and staged edits.
+3. Each write tool call is reviewed on its own. In Auto mode it is applied before the tool returns (\`applied: true\`). In Ask mode the tool returns at once with \`pendingApproval: true\`: the user is shown the change, and it is not in the vault until they approve it. Don't retry it or edit that file again until it is decided (such edits are refused); continue other work or finish your answer, saying the change awaits the user's approval. Decisions arrive later in a tool result or with the user's next message; if a change was rejected, don't retry it — ask the user instead. \`read_note\` and \`get_note_outline\` reflect applied edits only.
 4. Use a skill only when it matches the request or the user invokes it with \`/name\`. Skills cannot run scripts or shell commands here, and their vault edits still go through the \`antidian-vault\` tools.
 5. In Plan Mode (read-only), do not call write tools; present your analysis and proposed edits in markdown.
 
@@ -143,12 +143,14 @@ export class Agent {
 		this.cancel();
 		this.contextCompiler.reset();
 		await this.provider.resetSession();
+		this.mutationGate?.forgetDecisions();
 	}
 
 	/** Starts a new session seeded with turns from a parent conversation. */
 	async forkSession(turns: ForkedTurn[]): Promise<void> {
 		this.cancel();
 		await this.provider.resetSession();
+		this.mutationGate?.forgetDecisions();
 		this.contextCompiler.seedForkedHistory(turns);
 	}
 
@@ -163,6 +165,7 @@ export class Agent {
 	async loadSession(sessionId: string): Promise<ReplayedMessage[]> {
 		this.cancel();
 		const replayed = await this.provider.loadSession(sessionId);
+		this.mutationGate?.forgetDecisions();
 		this.contextCompiler.reset();
 		const messages = replayed
 			.map((m) =>
@@ -211,6 +214,12 @@ export class Agent {
 			permissionMode,
 		);
 		rawContextUsed.push(...compiled.contextRefs);
+		// Ask-mode decisions made after the last turn ended reach the model here.
+		const reviewNotes = isCompactCommand(userMessage)
+			? undefined
+			: this.mutationGate?.takeReviewNotes({ includeAwaiting: true });
+		const turnContextText =
+			[compiled.context, reviewNotes].filter(Boolean).join('\n\n') || undefined;
 
 		const currentMessages: Message[] = [
 			...history,
@@ -258,8 +267,12 @@ export class Agent {
 									mode: permissionMode === 'auto' ? 'auto' : 'ask',
 									requestApproval,
 									recordReadMtime: (path, mtime) => readMtimes.set(path, mtime),
+									// The tool already returned a pending result; update its row.
+									onDecided: (callId, toolOutput) =>
+										onStep?.({ type: 'tool_end', toolName: call.toolName, toolOutput, callId }),
 								})
 						: undefined,
+				takeReviewNotes: () => this.mutationGate?.takeReviewNotes(),
 			},
 			{
 				onToolStart: ({ callId, toolName, toolArgs }) => {
@@ -311,7 +324,7 @@ export class Agent {
 						onStep?.({ type: 'focus_update', focus }),
 				},
 				turnController.signal,
-				compiled.context,
+				turnContextText,
 			);
 
 			const contextUsed = this.deduplicateContext(rawContextUsed);
