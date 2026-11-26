@@ -20,6 +20,7 @@ import {
 	isCompactCommand,
 } from '../context/compiler';
 import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, stripMcpPrefix } from '../legacy-names';
+import { isSkillFilePath } from '../skills';
 import { parseElicitationRequest } from './elicitation';
 import { parseFocusText, parsePlanSteps } from './plan';
 import {
@@ -379,6 +380,8 @@ export class AntigravityAcpClient {
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
 	private activeToolNames = new Map<string, string>();
+	/** Built-in tools this turn's permission requests were refused for. */
+	private rejectedTools = new Set<string>();
 	private activeElicitationCancels = new Set<() => void>();
 	private elicitationOutcomes = new Map<string, Record<string, unknown>>();
 	private startPromise: Promise<void> | null = null;
@@ -977,6 +980,7 @@ export class AntigravityAcpClient {
 		this.activeCallbacks = callbacks ?? null;
 		this.activeAnswerChunks = [];
 		this.activeToolNames.clear();
+		this.rejectedTools.clear();
 		this.elicitationOutcomes.clear();
 
 		const onAbort = () => this.cancel();
@@ -1062,13 +1066,21 @@ export class AntigravityAcpClient {
 				this.prefetchQuota(true);
 			}
 
+			// agy ends the turn when a tool is refused; say why instead of an empty reply.
+			const blocked =
+				!partial && !this.turnCancelled && signal?.aborted !== true
+					? blockedToolsReply([...this.rejectedTools])
+					: undefined;
+
 			return {
-				answer: cancelled
-					? partial
-					: partial ||
-						(isCompactCommand(text)
-							? COMPACTED_REPLY
-							: '(No response text generated)'),
+				answer: blocked
+					? blocked
+					: cancelled
+						? partial
+						: partial ||
+							(isCompactCommand(text)
+								? COMPACTED_REPLY
+								: '(No response text generated)'),
 				stopReason: cancelled ? 'cancelled' : result?.stopReason,
 				usage,
 			};
@@ -1092,6 +1104,7 @@ export class AntigravityAcpClient {
 			this.activeCallbacks = null;
 			this.activeAnswerChunks = [];
 			this.activeToolNames.clear();
+			this.rejectedTools.clear();
 			this.elicitationOutcomes.clear();
 			this.cancelActiveElicitations();
 		}
@@ -1693,17 +1706,32 @@ export class AntigravityAcpClient {
 			return;
 		}
 		const toolCall = params.toolCall as
-			| { title?: string; name?: string; rawInput?: Record<string, unknown> }
+			| {
+					toolCallId?: string;
+					title?: string;
+					name?: string;
+					rawInput?: Record<string, unknown>;
+			  }
 			| undefined;
 		const options =
 			(params.options as { optionId: string; kind?: string }[] | undefined) ??
 			[];
 
-		const rawName = toolCall?.name ?? toolCall?.title ?? '';
+		const rawName =
+			toolCall?.name ??
+			(toolCall?.toolCallId ? this.activeToolNames.get(toolCall.toolCallId) : undefined) ??
+			toolCall?.title ??
+			'';
 		const isVaultMcpTool = rawName.includes(MCP_SERVER_NAME);
 		const isSafeBuiltin = SAFE_BUILTIN_TOOLS.has(rawName);
+		const isSkillRead =
+			rawName === 'read_file' &&
+			isSkillFilePath(
+				toolCall?.rawInput?.Path ?? toolCall?.rawInput?.path,
+				skillReadRoots(this.cwd),
+			);
 
-		if (isVaultMcpTool || isSafeBuiltin) {
+		if (isVaultMcpTool || isSafeBuiltin || isSkillRead) {
 			const allowOpt =
 				options.find((o) => o.kind === 'allow_once') ??
 				options.find((o) => o.kind === 'allow_always') ??
@@ -1717,6 +1745,7 @@ export class AntigravityAcpClient {
 		}
 
 		// Reject direct filesystem/shell mutations so edits go through Obsidian's staged ChangeSets
+		this.rejectedTools.add(stripMcpPrefix(rawName) || 'unknown tool');
 		const rejectOpt =
 			options.find((o) => o.kind === 'reject_once') ??
 			options.find((o) => o.kind === 'reject_always');
@@ -1872,6 +1901,25 @@ export class AntigravityAcpClient {
 			}
 		}
 	}
+}
+
+/**
+ * The only folders the model may read from with agy's built-in `read_file`
+ * (one skill folder below each, see `isSkillFilePath`). Every other built-in
+ * file access is refused; vault access goes through the antidian-vault tools.
+ */
+export function skillReadRoots(vaultPath: string, homeDir: string = os.homedir()): string[] {
+	return [
+		path.join(vaultPath, '.agents', 'skills'),
+		path.join(homeDir, '.agents', 'skills'),
+	];
+}
+
+/** Reply for a turn agy ended after Antidian refused built-in tools (pure; unit-tested). */
+export function blockedToolsReply(toolNames: readonly string[]): string | undefined {
+	if (toolNames.length === 0) return undefined;
+	const names = toolNames.map((n) => `\`${n}\``).join(', ');
+	return `Stopped: Antidian blocked the built-in tool ${names}, so agy ended the turn. Built-in file and shell tools cannot reach the vault; ask again and the model can use the antidian-vault tools instead.`;
 }
 
 /** Merges consecutive chunks of the same role into one replayed message. */
