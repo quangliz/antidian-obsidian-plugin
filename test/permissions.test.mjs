@@ -8,7 +8,7 @@ import { isSkillFilePath } from '../src/core/skills/index.ts';
 import {
 	AntigravityAcpClient,
 	blockedToolsReply,
-	skillReadRoots,
+	readFileRoots,
 } from '../src/core/models/antigravity-acp.ts';
 
 test('isSkillFilePath accepts files inside a skill folder under a skill root', () => {
@@ -29,11 +29,15 @@ test('isSkillFilePath rejects paths outside skill folders', () => {
 	assert.equal(isSkillFilePath(undefined, roots), false);
 });
 
-test('skillReadRoots lists only the vault and home .agents/skills folders', () => {
-	assert.deepEqual(skillReadRoots('/vault', '/home/u'), [
+test('readFileRoots lists only the skill folders and agy MCP tool schemas', () => {
+	const roots = readFileRoots('/vault', 'antigravity-anti-dian', '/home/u');
+	assert.deepEqual(roots, [
 		'/vault/.agents/skills',
 		'/home/u/.agents/skills',
+		'/home/u/.gemini/antigravity-anti-dian/mcp',
 	]);
+	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/mcp/excalidraw/addRect.json', roots), true);
+	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/brain/x.md', roots), false);
 });
 
 test('blockedToolsReply names refused tools, or nothing when none were refused', () => {

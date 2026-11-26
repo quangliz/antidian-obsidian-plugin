@@ -73,7 +73,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Antidian, an intelligent not
 
 Tool rules (strict):
 - ALWAYS use the \`antidian-vault\` MCP tools for every vault operation.
-- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exceptions, both with \`read_file\`: the exact file a \`read_note\` result says it was offloaded to, and a skill's \`SKILL.md\` plus the files it references.
+- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exceptions, all with \`read_file\`: the exact file a \`read_note\` result says it was offloaded to, a skill's \`SKILL.md\` plus the files it references, and an MCP tool's schema file.
 - Built-in web search (\`search_web\`) may be used when external information is needed.
 - Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
 

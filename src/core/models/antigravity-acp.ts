@@ -1724,14 +1724,14 @@ export class AntigravityAcpClient {
 			'';
 		const isVaultMcpTool = rawName.includes(MCP_SERVER_NAME);
 		const isSafeBuiltin = SAFE_BUILTIN_TOOLS.has(rawName);
-		const isSkillRead =
+		const isAllowedRead =
 			rawName === 'read_file' &&
 			isSkillFilePath(
 				toolCall?.rawInput?.Path ?? toolCall?.rawInput?.path,
-				skillReadRoots(this.cwd),
+				readFileRoots(this.cwd, this.appDataDir),
 			);
 
-		if (isVaultMcpTool || isSafeBuiltin || isSkillRead) {
+		if (isVaultMcpTool || isSafeBuiltin || isAllowedRead) {
 			const allowOpt =
 				options.find((o) => o.kind === 'allow_once') ??
 				options.find((o) => o.kind === 'allow_always') ??
@@ -1905,13 +1905,20 @@ export class AntigravityAcpClient {
 
 /**
  * The only folders the model may read from with agy's built-in `read_file`
- * (one skill folder below each, see `isSkillFilePath`). Every other built-in
- * file access is refused; vault access goes through the antidian-vault tools.
+ * (only files inside a subfolder of each, see `isSkillFilePath`): the vault and
+ * global skill folders, and agy's MCP tool schemas (`<appDataDir>/mcp/<server>/<tool>.json`),
+ * which the model reads before it calls an MCP tool. Every other built-in file
+ * access is refused; vault access goes through the antidian-vault tools.
  */
-export function skillReadRoots(vaultPath: string, homeDir: string = os.homedir()): string[] {
+export function readFileRoots(
+	vaultPath: string,
+	appDataDir: string,
+	homeDir: string = os.homedir(),
+): string[] {
 	return [
 		path.join(vaultPath, '.agents', 'skills'),
 		path.join(homeDir, '.agents', 'skills'),
+		path.join(homeDir, '.gemini', appDataDir, 'mcp'),
 	];
 }
 
