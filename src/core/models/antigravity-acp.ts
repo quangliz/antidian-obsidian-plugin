@@ -1724,11 +1724,14 @@ export class AntigravityAcpClient {
 			'';
 		const isVaultMcpTool = rawName.includes(MCP_SERVER_NAME);
 		const isSafeBuiltin = SAFE_BUILTIN_TOOLS.has(rawName);
+		const sessionId =
+			(typeof params.sessionId === 'string' ? params.sessionId : null) ??
+			this.getSessionId();
 		const isAllowedRead =
 			rawName === 'read_file' &&
 			isSkillFilePath(
 				toolCall?.rawInput?.Path ?? toolCall?.rawInput?.path,
-				readFileRoots(this.cwd, this.appDataDir),
+				readFileRoots(this.cwd, this.appDataDir, undefined, sessionId),
 			);
 
 		// User-configured MCP servers (mcp_config.json) are trusted, except in
@@ -1912,20 +1915,34 @@ export class AntigravityAcpClient {
 /**
  * The only folders the model may read from with agy's built-in `read_file`
  * (only files inside a subfolder of each, see `isSkillFilePath`): the vault and
- * global skill folders, and agy's MCP tool schemas (`<appDataDir>/mcp/<server>/<tool>.json`),
- * which the model reads before it calls an MCP tool. Every other built-in file
- * access is refused; vault access goes through the antidian-vault tools.
+ * global skill folders, agy's MCP tool schemas (`<appDataDir>/mcp/<server>/<tool>.json`),
+ * and the current session's `.system_generated` folder (e.g. offloaded large tool
+ * outputs in `steps/<n>/output.txt`). Every other built-in file access is refused;
+ * vault access goes through the antidian-vault tools.
  */
 export function readFileRoots(
 	vaultPath: string,
 	appDataDir: string,
 	homeDir: string = os.homedir(),
+	sessionId?: string | null,
 ): string[] {
-	return [
+	const roots = [
 		path.join(vaultPath, '.agents', 'skills'),
 		path.join(homeDir, '.agents', 'skills'),
 		path.join(homeDir, '.gemini', appDataDir, 'mcp'),
 	];
+	if (
+		typeof sessionId === 'string' &&
+		sessionId.length > 0 &&
+		!/[/\\]/.test(sessionId) &&
+		sessionId !== '.' &&
+		sessionId !== '..'
+	) {
+		roots.push(
+			path.join(homeDir, '.gemini', appDataDir, 'brain', sessionId, '.system_generated'),
+		);
+	}
+	return roots;
 }
 
 /** Whether an agy `call_mcp_tool` call targets Antidian's own vault server (pure). */

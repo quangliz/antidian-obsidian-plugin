@@ -30,15 +30,25 @@ test('isSkillFilePath rejects paths outside skill folders', () => {
 	assert.equal(isSkillFilePath(undefined, roots), false);
 });
 
-test('readFileRoots lists only the skill folders and agy MCP tool schemas', () => {
-	const roots = readFileRoots('/vault', 'antigravity-anti-dian', '/home/u');
+test('readFileRoots lists only the skill folders, agy MCP tool schemas, and current session offloaded outputs', () => {
+	const roots = readFileRoots('/vault', 'antigravity-anti-dian', '/home/u', 'sess-1');
 	assert.deepEqual(roots, [
 		'/vault/.agents/skills',
 		'/home/u/.agents/skills',
 		'/home/u/.gemini/antigravity-anti-dian/mcp',
+		'/home/u/.gemini/antigravity-anti-dian/brain/sess-1/.system_generated',
 	]);
 	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/mcp/excalidraw/addRect.json', roots), true);
+	assert.equal(
+		isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/brain/sess-1/.system_generated/steps/49/output.txt', roots),
+		true,
+	);
 	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/brain/x.md', roots), false);
+	assert.equal(
+		isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/brain/sess-2/.system_generated/steps/1/output.txt', roots),
+		false,
+	);
+	assert.equal(readFileRoots('/vault', 'antigravity-anti-dian', '/home/u', '../evil').length, 3);
 });
 
 test('isVaultMcpServer recognizes only the vault MCP server', () => {
@@ -57,6 +67,17 @@ test('AntigravityAcpClient allows skill reads, refuses other built-ins, and expl
 	const fakeBin = path.join(tmpDir, 'fake-agy.mjs');
 	const outFile = path.join(tmpDir, 'responses.json');
 	const skillFile = path.join(tmpDir, '.agents', 'skills', 'json-canvas', 'SKILL.md');
+	const offloadedFile = path.join(
+		os.homedir(),
+		'.gemini',
+		'antigravity-test-perm',
+		'brain',
+		'sess-fake',
+		'.system_generated',
+		'steps',
+		'49',
+		'output.txt',
+	);
 	fs.writeFileSync(
 		fakeBin,
 		`#!/usr/bin/env node
@@ -95,7 +116,11 @@ rl.on('line', (line) => {
 	}
 	if (msg.method === 'session/prompt') {
 		promptReqId = msg.id;
-		for (const [callId, Path] of [['call_skill', ${JSON.stringify(skillFile)}], ['call_other', '/etc/hosts']]) {
+		for (const [callId, Path] of [
+			['call_skill', ${JSON.stringify(skillFile)}],
+			['call_offload', ${JSON.stringify(offloadedFile)}],
+			['call_other', '/etc/hosts'],
+		]) {
 			send({
 				jsonrpc: '2.0',
 				method: 'session/update',
@@ -103,6 +128,7 @@ rl.on('line', (line) => {
 			});
 		}
 		send(permission('perm-skill', 'call_skill', 'read_file', ${JSON.stringify(skillFile)}));
+		send(permission('perm-offload', 'call_offload', 'read_file', ${JSON.stringify(offloadedFile)}));
 		send(permission('perm-other', 'call_other', 'read_file', '/etc/hosts'));
 		send({
 			jsonrpc: '2.0',
@@ -119,9 +145,9 @@ rl.on('line', (line) => {
 		});
 		return;
 	}
-	if (msg.id === 'perm-skill' || msg.id === 'perm-other' || msg.id === 'perm-mcp') {
+	if (msg.id === 'perm-skill' || msg.id === 'perm-offload' || msg.id === 'perm-other' || msg.id === 'perm-mcp') {
 		replies[msg.id] = msg.result;
-		if (Object.keys(replies).length === 3) {
+		if (Object.keys(replies).length === 4) {
 			fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(replies));
 			send({ jsonrpc: '2.0', id: promptReqId, result: { stopReason: 'end_turn' } });
 		}
@@ -134,6 +160,7 @@ rl.on('line', (line) => {
 	const client = new AntigravityAcpClient({
 		cliPath: fakeBin,
 		cwd: tmpDir,
+		appDataDir: 'antigravity-test-perm',
 		quotaFetcher: async () => null,
 	});
 
@@ -141,6 +168,7 @@ rl.on('line', (line) => {
 		const res = await client.prompt('Format this canvas');
 		const replies = JSON.parse(fs.readFileSync(outFile, 'utf8'));
 		assert.deepEqual(replies['perm-skill'], { outcome: { outcome: 'selected', optionId: 'allow' } });
+		assert.deepEqual(replies['perm-offload'], { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.deepEqual(replies['perm-other'], { outcome: { outcome: 'selected', optionId: 'reject' } });
 		assert.deepEqual(replies['perm-mcp'], { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.match(res.answer, /blocked the built-in tool `read_file`/);
