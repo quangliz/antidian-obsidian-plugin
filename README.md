@@ -24,7 +24,14 @@ Chat with your notes, and let the agent read, write, and edit them with you. It 
 Antidian runs `agy` in the background and talks to it over the **Agent Client Protocol (ACP)**:
 
 - **From `agy`**: the agent itself, along with its models, conversations, slash commands, and skills.
-- **From Antidian**: its own **MCP server**, which gives the agent tools to search, read, and edit your vault through Obsidian, plus the chat interface and edit review.
+- **From Antidian**: its own **MCP server**, which gives the agent tools to search, read, and edit your vault through Obsidian, plus the chat interface, file attachments, and inline edit review (`Ask`, `Plan`, or `Auto` modes).
+
+## MCP Servers & Companion Plugins
+
+Extend Antidian with additional tools in **Settings → Antidian → MCP servers**:
+
+- **Companion plugins (zero setup)**: Enabled Obsidian plugins whose ID ends with `-antidian` (such as **Excalidraw MCP**, `excalidraw-mcp-antidian`) are detected automatically over local loopback HTTP (`127.0.0.1` / `localhost`) and can be toggled on or off individually.
+- **Custom MCP servers**: Add, edit, toggle, or remove local `stdio` or remote `HTTP` MCP servers directly in Settings (shared with `mcp_config.json`). Changes apply to new conversations.
 
 ## Privacy & Network Use
 
@@ -43,7 +50,7 @@ Up to 1.0.1 the plugin was listed as Anti-dian (id `anti-dian`). Obsidian treats
 
 Antidian drives a local agent process, so Obsidian's automated review lists these capabilities on the plugin page:
 
-- **Shell execution** (`child_process`): starts the `agy` binary directly, without a shell, and runs `tar` to unpack its download. The agent gets no shell: its requests to run commands are rejected, and vault access goes through the MCP server. The agent's built-in file tools are refused too, except reading skill files inside `<vault>/.agents/skills/<skill>/` and `~/.agents/skills/<skill>/`, the MCP tool schemas `agy` keeps in `~/.gemini/<app-data-dir>/mcp/<server>/`, and offloaded tool outputs for the current session under `~/.gemini/<app-data-dir>/brain/<session>/.system_generated/`. Calls to MCP servers you add yourself are allowed, except in Plan mode.
+- **Shell execution** (`child_process`): starts the `agy` binary directly, without a shell, and runs `tar` to unpack its download. The agent gets no shell: its requests to run commands are rejected, and vault access goes through the MCP server. The agent's built-in file tools are refused too, except reading skill files inside `<vault>/.agents/skills/<skill>/` and `~/.agents/skills/<skill>/`, the MCP tool schemas `agy` keeps in `~/.gemini/<app-data-dir>/mcp/<server>/`, and offloaded tool outputs for the current session under `~/.gemini/<app-data-dir>/brain/<session>/.system_generated/`. Calls to MCP servers you add yourself and enabled local `*-antidian` companion plugins are allowed, except in Plan mode.
 - **Filesystem access outside the vault** (`fs`): installs and updates `agy` in `~/.gemini/bin`, reads and deletes this plugin's conversations and logs under `~/.gemini`, and reads a certificate file you configure or files you attach by pasting or dropping.
 - **Vault enumeration**: lists files so the agent can search your vault and you can `@`-mention notes. Searching happens locally; only the results the agent asked for are sent.
 - **Clipboard**: copies a message when you press its copy button, and reads copied file paths when you paste into the prompt.
