@@ -37,8 +37,8 @@ test('parseFileUriList only accepts clipboard text made of file:// URIs', () => 
 
 test('parseClipboardFilePaths accepts plain absolute media paths (Nautilus text/plain)', () => {
 	assert.deepEqual(
-		parseClipboardFilePaths('/home/quang/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'),
-		['/home/quang/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'],
+		parseClipboardFilePaths('/home/u/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'),
+		['/home/u/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'],
 	);
 	assert.deepEqual(parseClipboardFilePaths('/a/b.png\n/c/d.mp4'), ['/a/b.png', '/c/d.mp4']);
 	assert.deepEqual(parseClipboardFilePaths('C:\\Users\\me\\shot.jpg'), ['C:\\Users\\me\\shot.jpg']);
@@ -52,8 +52,8 @@ test('parseClipboardFilePaths accepts plain absolute media paths (Nautilus text/
 
 test('parseGnomeCopiedFiles reads Nautilus copy/cut payloads', () => {
 	assert.deepEqual(
-		parseGnomeCopiedFiles('copy\nfile:///home/quang/Pictures/Screenshots/Screenshot%202026-11-24%2021-42-26.png'),
-		['/home/quang/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'],
+		parseGnomeCopiedFiles('copy\nfile:///home/u/Pictures/Screenshots/Screenshot%202026-11-24%2021-42-26.png'),
+		['/home/u/Pictures/Screenshots/Screenshot 2026-11-24 21-42-26.png'],
 	);
 	assert.deepEqual(parseGnomeCopiedFiles('cut\nfile:///a.png\nfile:///b.jpg'), ['/a.png', '/b.jpg']);
 	assert.deepEqual(parseGnomeCopiedFiles('hello'), []);
