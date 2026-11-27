@@ -1,5 +1,6 @@
-import { Notice } from 'obsidian';
+import { Notice, TAbstractFile, TFile } from 'obsidian';
 import type AntidianPlugin from '../../main';
+import { mediaMimeForName } from '../../core/files';
 import { ANTIDIAN_ICON } from '../icon';
 
 export function registerCommands(plugin: AntidianPlugin): void {
@@ -49,6 +50,39 @@ export function registerCommands(plugin: AntidianPlugin): void {
 							startLine: from.line + 1,
 							endLine: to.line + 1,
 						});
+					});
+			});
+		}),
+	);
+
+	const isAddableFile = (file: TAbstractFile): file is TFile =>
+		file instanceof TFile &&
+		(file.extension === 'md' || Boolean(mediaMimeForName(file.name)));
+
+	plugin.registerEvent(
+		plugin.app.workspace.on('file-menu', (menu, file) => {
+			if (!isAddableFile(file)) return;
+			menu.addItem((item) => {
+				item
+					.setTitle(`Add to ${plugin.manifest.name}`)
+					.setIcon(ANTIDIAN_ICON)
+					.onClick(() => {
+						void plugin.addFilesToChat([file]);
+					});
+			});
+		}),
+	);
+
+	plugin.registerEvent(
+		plugin.app.workspace.on('files-menu', (menu, files) => {
+			const addable = files.filter(isAddableFile);
+			if (addable.length === 0) return;
+			menu.addItem((item) => {
+				item
+					.setTitle(`Add to ${plugin.manifest.name}`)
+					.setIcon(ANTIDIAN_ICON)
+					.onClick(() => {
+						void plugin.addFilesToChat(addable);
 					});
 			});
 		}),

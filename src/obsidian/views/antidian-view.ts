@@ -4,6 +4,7 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	Notice,
+	TFile,
 	WorkspaceLeaf,
 	setIcon,
 	setTooltip,
@@ -154,6 +155,10 @@ export class AntidianView extends ItemView implements HoverParent {
 
 	public addSelectionToPrompt(snippet: SelectionSnippet): void {
 		this.promptBar?.addSelection(snippet);
+	}
+
+	public async addFilesToPrompt(files: TFile[]): Promise<void> {
+		await this.promptBar?.addVaultFiles(files);
 	}
 
 	async onOpen(): Promise<void> {
