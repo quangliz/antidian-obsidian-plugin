@@ -54,7 +54,3 @@ Antidian drives a local agent process, so Obsidian's automated review lists thes
 - **Filesystem access outside the vault** (`fs`): installs and updates `agy` in `~/.gemini/bin`, reads and deletes this plugin's conversations and logs under `~/.gemini`, and reads a certificate file you configure or files you attach by pasting or dropping.
 - **Vault enumeration**: lists files so the agent can search your vault and you can `@`-mention notes. Searching happens locally; only the results the agent asked for are sent.
 - **Clipboard**: copies a message when you press its copy button, and reads copied file paths when you paste into the prompt.
-
-## Development
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for how it works and how to build it, and [AGENTS.md](./AGENTS.md) for contributor guidelines.
