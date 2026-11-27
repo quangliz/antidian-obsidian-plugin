@@ -1731,7 +1731,13 @@ export class AntigravityAcpClient {
 				readFileRoots(this.cwd, this.appDataDir),
 			);
 
-		if (isVaultMcpTool || isSafeBuiltin || isAllowedRead) {
+		// User-configured MCP servers (mcp_config.json) are trusted, except in
+		// read-only plan mode; vault calls are guarded by the vault server itself.
+		const isMcpCall =
+			rawName === 'call_mcp_tool' &&
+			(isVaultMcpServer(toolCall?.rawInput) || !this.mcpToolServer?.isPlanMode());
+
+		if (isVaultMcpTool || isSafeBuiltin || isAllowedRead || isMcpCall) {
 			const allowOpt =
 				options.find((o) => o.kind === 'allow_once') ??
 				options.find((o) => o.kind === 'allow_always') ??
@@ -1920,6 +1926,12 @@ export function readFileRoots(
 		path.join(homeDir, '.agents', 'skills'),
 		path.join(homeDir, '.gemini', appDataDir, 'mcp'),
 	];
+}
+
+/** Whether an agy `call_mcp_tool` call targets Antidian's own vault server (pure). */
+export function isVaultMcpServer(rawInput: Record<string, unknown> | undefined): boolean {
+	const server = rawInput?.ServerName ?? rawInput?.serverName ?? rawInput?.server;
+	return typeof server === 'string' && server.includes(MCP_SERVER_NAME);
 }
 
 /** Reply for a turn agy ended after Antidian refused built-in tools (pure; unit-tested). */

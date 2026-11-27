@@ -52,6 +52,11 @@ export class McpToolServer {
 		this.onToolEnd = callbacks?.onToolEnd;
 	}
 
+	/** Whether the current turn runs in read-only `plan` mode. */
+	isPlanMode(): boolean {
+		return this.activeTurnContext?.permissionMode === 'plan';
+	}
+
 	clearTurnContext(): void {
 		this.activeTurnContext = undefined;
 		this.onToolStart = undefined;

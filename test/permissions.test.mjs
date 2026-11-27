@@ -8,6 +8,7 @@ import { isSkillFilePath } from '../src/core/skills/index.ts';
 import {
 	AntigravityAcpClient,
 	blockedToolsReply,
+	isVaultMcpServer,
 	readFileRoots,
 } from '../src/core/models/antigravity-acp.ts';
 
@@ -38,6 +39,12 @@ test('readFileRoots lists only the skill folders and agy MCP tool schemas', () =
 	]);
 	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/mcp/excalidraw/addRect.json', roots), true);
 	assert.equal(isSkillFilePath('/home/u/.gemini/antigravity-anti-dian/brain/x.md', roots), false);
+});
+
+test('isVaultMcpServer recognizes only the vault MCP server', () => {
+	assert.equal(isVaultMcpServer({ ServerName: 'antidian-vault', ToolName: 'read_note' }), true);
+	assert.equal(isVaultMcpServer({ ServerName: 'excalidraw' }), false);
+	assert.equal(isVaultMcpServer(undefined), false);
 });
 
 test('blockedToolsReply names refused tools, or nothing when none were refused', () => {
@@ -97,11 +104,24 @@ rl.on('line', (line) => {
 		}
 		send(permission('perm-skill', 'call_skill', 'read_file', ${JSON.stringify(skillFile)}));
 		send(permission('perm-other', 'call_other', 'read_file', '/etc/hosts'));
+		send({
+			jsonrpc: '2.0',
+			id: 'perm-mcp',
+			method: 'session/request_permission',
+			params: {
+				sessionId: 'sess-fake',
+				toolCall: { toolCallId: 'call_mcp', name: 'call_mcp_tool', rawInput: { ServerName: 'excalidraw', ToolName: 'addRect' } },
+				options: [
+					{ optionId: 'allow', kind: 'allow_once' },
+					{ optionId: 'reject', kind: 'reject_once' },
+				],
+			},
+		});
 		return;
 	}
-	if (msg.id === 'perm-skill' || msg.id === 'perm-other') {
+	if (msg.id === 'perm-skill' || msg.id === 'perm-other' || msg.id === 'perm-mcp') {
 		replies[msg.id] = msg.result;
-		if (Object.keys(replies).length === 2) {
+		if (Object.keys(replies).length === 3) {
 			fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(replies));
 			send({ jsonrpc: '2.0', id: promptReqId, result: { stopReason: 'end_turn' } });
 		}
@@ -122,6 +142,7 @@ rl.on('line', (line) => {
 		const replies = JSON.parse(fs.readFileSync(outFile, 'utf8'));
 		assert.deepEqual(replies['perm-skill'], { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.deepEqual(replies['perm-other'], { outcome: { outcome: 'selected', optionId: 'reject' } });
+		assert.deepEqual(replies['perm-mcp'], { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.match(res.answer, /blocked the built-in tool `read_file`/);
 	} finally {
 		await client.destroy();
