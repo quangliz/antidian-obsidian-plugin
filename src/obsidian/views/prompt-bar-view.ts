@@ -1087,7 +1087,7 @@ export class PromptBarView {
 		}
 	}
 
-	private async addVaultFiles(files: TFile[]): Promise<void> {
+	public async addVaultFiles(files: TFile[]): Promise<void> {
 		let skipped = 0;
 		for (const file of files) {
 			if (file.extension === 'md') {
@@ -1115,6 +1115,7 @@ export class PromptBarView {
 		if (skipped > 0) {
 			new Notice(`Only notes, images, video and audio can be added (${skipped} skipped).`);
 		}
+		this.focus();
 	}
 
 	private async addMediaFile(file: File): Promise<void> {

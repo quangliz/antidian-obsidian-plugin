@@ -4,6 +4,7 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	Notice,
+	TFile,
 	WorkspaceLeaf,
 	setIcon,
 	setTooltip,
@@ -156,6 +157,10 @@ export class AntidianView extends ItemView implements HoverParent {
 		this.promptBar?.addSelection(snippet);
 	}
 
+	public async addFilesToPrompt(files: TFile[]): Promise<void> {
+		await this.promptBar?.addVaultFiles(files);
+	}
+
 	async onOpen(): Promise<void> {
 		this.rootEl = this.contentEl;
 		this.rootEl.empty();
@@ -221,6 +226,7 @@ export class AntidianView extends ItemView implements HoverParent {
 		this.turnToken++;
 		this.elicitationCard?.cancel();
 		this.handleCancel();
+		this.rejectAllPendingApprovals();
 		if (this.unsubscribeContext) {
 			this.unsubscribeContext();
 			this.unsubscribeContext = null;
@@ -384,7 +390,7 @@ export class AntidianView extends ItemView implements HoverParent {
 		}
 		const myToken = ++this.turnToken;
 		this.elicitationCard?.cancel();
-		this.activeThinking?.cancelPendingApprovals();
+		this.rejectAllPendingApprovals();
 		this.activeThinking = null;
 		this.loadingSession = session;
 		this.resumedTitle = null;
@@ -719,6 +725,14 @@ export class AntidianView extends ItemView implements HoverParent {
 		this.modelMenuController.refresh();
 	}
 
+	/**
+	 * Ask-mode writes stay open after their turn ends; leaving the session (or
+	 * closing the view) rejects every one still waiting, in any turn.
+	 */
+	private rejectAllPendingApprovals(): void {
+		for (const turn of this.renderedTurns) turn.thinkingState?.cancelPendingApprovals();
+	}
+
 	private handleCancel(): void {
 		this.elicitationCard?.cancel();
 		if (!this.isRunning) return;
@@ -732,9 +746,8 @@ export class AntidianView extends ItemView implements HoverParent {
 			this.handleCancel();
 			this.isRunning = false;
 			this.promptBar?.setRunning(false);
-		} else {
-			this.activeThinking?.cancelPendingApprovals();
 		}
+		this.rejectAllPendingApprovals();
 		this.history = [];
 		this.loadingSession = null;
 		this.resumedTitle = null;
@@ -950,7 +963,7 @@ export class AntidianView extends ItemView implements HoverParent {
 					);
 				},
 				this.plugin.settings.permissionMode ?? 'ask',
-				// Ask mode: each write waits here for Approve / Reject on its tool row
+				// Ask mode: each write waits here (without blocking the model) for Approve / Reject on its tool row
 				// and (when enabled) inline in the open Markdown editor.
 				async (request) => {
 					const inlineEnabled =
@@ -1337,9 +1350,8 @@ export class AntidianView extends ItemView implements HoverParent {
 			this.handleCancel();
 			this.isRunning = false;
 			this.promptBar?.setRunning(false);
-		} else {
-			this.activeThinking?.cancelPendingApprovals();
 		}
+		this.rejectAllPendingApprovals();
 
 		const keptTurns = this.renderedTurns.slice(0, idx + 1);
 		const droppedTurns = this.renderedTurns.slice(idx + 1);
@@ -1427,6 +1439,8 @@ export class AntidianView extends ItemView implements HoverParent {
 			}
 		}
 
+		// The session restarts below: no write from it may still be applied.
+		this.rejectAllPendingApprovals();
 		for (const turn of affected) {
 			turn.userGroupEl.remove();
 			turn.agentEl?.remove();

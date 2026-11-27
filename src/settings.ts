@@ -20,6 +20,15 @@ import {
 	getManagedAgyBinaryPath,
 	readValidBinarySidecar,
 } from './core/models/agy-binary-manager';
+import {
+	getMcpConfigPath,
+	listMcpServers,
+	removeMcpServer,
+	setMcpServerEnabled,
+	type McpServerListItem,
+} from './core/models/mcp-config';
+import { discoverCompanionMcpServers } from './obsidian/adapters/companion-mcp';
+import { McpServerModal } from './obsidian/views/mcp-server-modal';
 
 export type PermissionMode = 'ask' | 'plan' | 'auto';
 
@@ -50,6 +59,8 @@ export interface AntidianSettings {
 	pinnedSessions?: string[];
 	/** Session IDs deleted by the user (filtered from the conversation list). */
 	deletedSessions?: string[];
+	/** Companion `*-antidian` plugin IDs whose auto-detected MCP server is disabled. */
+	disabledCompanionMcps?: string[];
 }
 
 export const DEFAULT_SETTINGS: AntidianSettings = {
@@ -168,6 +179,10 @@ export class AntidianSettingTab extends PluginSettingTab {
 						render: (setting) => this.renderVaultSkills(setting),
 					},
 				],
+			},
+			{
+				heading: 'MCP servers',
+				rows: this.getMcpServerRows(),
 			},
 			{
 				heading: 'Backend',
@@ -313,6 +328,145 @@ export class AntidianSettingTab extends PluginSettingTab {
 			setting.setDesc(
 				'Skills in .anti-dian/skills/ are no longer loaded. Move each one to .agents/skills/<name>/SKILL.md.',
 			);
+		});
+	}
+
+	private getMcpServerRows(): SettingRow[] {
+		const configPath = getMcpConfigPath();
+		const rows: SettingRow[] = [
+			{
+				name: 'Configured servers',
+				desc: `Shared with Antigravity CLI (${configPath}). Changes apply to new conversations.`,
+				render: (setting) => {
+					setting.addButton((button) => {
+						button
+							.setButtonText('Add server')
+							.setCta()
+							.onClick(() => {
+								new McpServerModal(this.app, {
+									onSaved: () => this.refresh(),
+								}).open();
+							});
+					});
+					setting.addExtraButton((button) => {
+						button
+							.setIcon('refresh-cw')
+							.setTooltip('Reload configuration')
+							.onClick(() => this.refresh());
+					});
+				},
+			},
+		];
+
+		let servers: McpServerListItem[] = [];
+		let configReadError: string | null = null;
+		try {
+			servers = listMcpServers(configPath);
+		} catch (err) {
+			configReadError = err instanceof Error ? err.message : String(err);
+		}
+
+		if (configReadError) {
+			rows.push({
+				name: 'Configuration error',
+				desc: `Could not read ${configPath}: ${configReadError}`,
+				render: () => {},
+			});
+		} else if (servers.length === 0) {
+			rows.push({
+				name: 'No MCP servers configured',
+				desc: 'Click Add server to connect a local stdio or remote HTTP MCP server.',
+				render: () => {},
+			});
+		} else {
+			for (const item of servers) {
+				rows.push({
+					name: item.name,
+					desc: `${item.type} · ${item.summary}`,
+					render: (setting) => this.renderMcpServerRow(setting, item),
+				});
+			}
+		}
+
+		const companions = discoverCompanionMcpServers(this.app);
+		const disabledSet = new Set(this.plugin.settings.disabledCompanionMcps ?? []);
+		if (companions.length === 0) {
+			rows.push({
+				name: 'No companion plugins detected',
+				desc: 'Enabled Obsidian plugins ending with -antidian that expose getAntidianMcpServer() appear here automatically.',
+				render: () => {},
+			});
+		} else {
+			for (const companion of companions) {
+				const enabled = !disabledSet.has(companion.pluginId);
+				rows.push({
+					name: `${companion.pluginName} (${companion.serverName})`,
+					desc: `http · ${companion.url} · auto-detected (${companion.pluginId})`,
+					render: (setting) => {
+						setting.addToggle((toggle) => {
+							toggle.setValue(enabled).onChange(async (nextEnabled) => {
+								const nextDisabled = new Set(
+									this.plugin.settings.disabledCompanionMcps ?? [],
+								);
+								if (nextEnabled) {
+									nextDisabled.delete(companion.pluginId);
+								} else {
+									nextDisabled.add(companion.pluginId);
+								}
+								this.plugin.settings.disabledCompanionMcps = Array.from(nextDisabled);
+								await this.plugin.saveSettings();
+								new Notice(
+									`Companion MCP "${companion.serverName}" ${nextEnabled ? 'enabled' : 'disabled'}. Start a new conversation to apply.`,
+								);
+							});
+						});
+					},
+				});
+			}
+		}
+		return rows;
+	}
+
+	private renderMcpServerRow(setting: Setting, item: McpServerListItem): void {
+		setting.addToggle((toggle) => {
+			toggle.setValue(item.enabled).onChange((enabled) => {
+				try {
+					setMcpServerEnabled(item.name, enabled);
+					new Notice(
+						`MCP server "${item.name}" ${enabled ? 'enabled' : 'disabled'}. Start a new conversation to apply.`,
+					);
+				} catch (err) {
+					new Notice(err instanceof Error ? err.message : String(err));
+					toggle.setValue(!enabled);
+				}
+			});
+		});
+		setting.addExtraButton((button) => {
+			button
+				.setIcon('pencil')
+				.setTooltip(`Edit ${item.name}`)
+				.onClick(() => {
+					new McpServerModal(this.app, {
+						existing: item,
+						onSaved: () => this.refresh(),
+					}).open();
+				});
+		});
+		setting.addExtraButton((button) => {
+			button
+				.setIcon('trash')
+				.setTooltip(`Remove ${item.name}`)
+				.onClick(() => {
+					try {
+						removeMcpServer(item.name);
+						new Notice(
+							`Removed MCP server "${item.name}". Start a new conversation to apply.`,
+						);
+						this.refresh();
+					} catch (err) {
+						new Notice(err instanceof Error ? err.message : String(err));
+					}
+				});
 		});
 	}
 

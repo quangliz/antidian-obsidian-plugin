@@ -2017,6 +2017,34 @@ input[type='range'].antidian-effort-input::-webkit-slider-thumb {
 	margin-bottom: 0;
 }
 
+/* Keep inline code in the same font as prose so backticked labels don't jump to monospace. */
+.antidian-answer-body :not(pre) > code {
+	font-family: inherit;
+	font-size: inherit;
+	padding: 0.08em 0.32em;
+	border-radius: var(--radius-s, 4px);
+	background: var(--code-background, var(--background-modifier-hover));
+	color: var(--code-normal, var(--text-normal));
+}
+
+/* Fenced code blocks use Obsidian's configured monospace font instead of raw browser monospace. */
+.antidian-answer-body pre {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	padding: 10px 12px;
+	border-radius: var(--radius-s, 4px);
+	background: var(--code-background, var(--background-secondary));
+	overflow-x: auto;
+}
+
+.antidian-answer-body pre > code {
+	font-family: inherit;
+	font-size: inherit;
+	padding: 0;
+	background: transparent;
+}
+
 /* Markdown tables inside chat answers (Obsidian's .markdown-rendered styles don't apply here). */
 .antidian-answer-body > .antidian-answer-table {
 	overflow-x: auto;

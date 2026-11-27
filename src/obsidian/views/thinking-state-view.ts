@@ -1254,7 +1254,8 @@ export class ThinkingStateView {
 
 	/**
 	 * Ask mode: show the write's diff on its tool row with Approve / Reject and
-	 * wait. The agent's tool call (and the model) stays paused until decided.
+	 * wait. The tool call has already returned "pending" to the model, so this
+	 * can outlast the turn; the gate applies or discards the write when decided.
 	 */
 	public requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
 		const step =

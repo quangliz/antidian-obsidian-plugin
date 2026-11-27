@@ -55,7 +55,7 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 
 ## Slash Commands & Skills
 
-`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file` (no permission request). Antidian only surfaces them:
+`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file`. For files outside a workspace, such as the vault's skills, `agy` asks permission first. `AntigravityAcpClient.handlePermissionRequest` allows `read_file` only for files inside a subfolder under the roots `readFileRoots` lists: `<vault>/.agents/skills/`, `~/.agents/skills/`, `~/.gemini/<appDataDir>/mcp/` (where `agy` keeps one schema file per MCP tool that the model reads before calling it), and `~/.gemini/<appDataDir>/brain/<sessionId>/.system_generated/` (where `agy` offloads large tool outputs such as `steps/<n>/output.txt`; path check: `isSkillFilePath` in `src/core/skills/`), and refuses every other built-in tool except `SAFE_BUILTIN_TOOLS` and `call_mcp_tool`, agy's call to a user-configured MCP server (`mcp_config.json`), which is allowed except in `plan` mode (the vault server, `isVaultMcpServer`, is always allowed: it enforces the permission mode itself). `agy` ends the turn when a tool is refused, so a turn that ends with no text after a refusal replies with the refused tool names (`blockedToolsReply`) instead of an empty answer. Antidian only surfaces skills:
 
 - `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Antidian's own.
 - The CLI runs a command or skill that starts the prompt; attached context (below) does not get in its way.
@@ -105,12 +105,20 @@ tool call
   → ChangeSetValidator (checks vault path boundaries, stale baseMtime, target uniqueness)
   → ChangeSetDiffGenerator (computes line/hunk diffs)
   → MutationGate (invoked via ToolContext.reviewMutation):
-      • ask  → pauses for Approve / Reject in the sidebar trace and InlineDiffController
+      • ask  → asks for Approve / Reject in the sidebar trace and InlineDiffController,
+               and the tool returns `pendingApproval` at once (see below)
       • auto → approves automatically when validation succeeds
       • plan → never staged (blocked at the MCP boundary)
   → ChangeSetApplicator (captures before-state snapshot & applies via ObsidianVaultAdapter)
-  → tool returns `applied` or `rejectedByUser` to the model (UI-only fields stripped)
+  → outcome (`applied`, `rejectedByUser`, or an error) reaches the model (UI-only fields stripped)
 ```
+
+In Ask mode the gate does not hold the MCP request open while the user decides: `agy`'s MCP client gives up after about a minute without response headers. The tool returns `pendingApproval: true` right away, and the approval runs on:
+
+- **Lock**: until decided, the gate refuses further writes to that file, so two pending changes never build on each other.
+- **Decision**: on Approve, the gate validates again (the note may have changed meanwhile) and applies; on Reject it discards. `onDecided` sends the final output to the tool row as a second `tool_end`, which enables Undo.
+- **Reporting**: `MutationGate.takeReviewNotes()` reports each decision to the model once. `McpToolServer` appends it to the next tool result of the turn; otherwise `Agent.run` adds it, with the files still waiting, to the next turn's context.
+- **Lifetime**: an approval can outlast its turn. Leaving the session (new, load, fork, rewind) or closing the view rejects every pending approval, and `forgetDecisions()` drops unreported decisions. Stop rejects only the running turn's approvals.
 
 Applied operations retain before-state snapshots in memory so they can be reverted individually or via `Undo last agent change`.
 

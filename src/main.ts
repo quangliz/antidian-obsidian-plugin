@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from 'obsidian';
+import { Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	AntidianSettings,
@@ -11,6 +11,7 @@ import {
 import type { SelectionSnippet } from './obsidian/views/prompt-bar-view';
 import { ObsidianWorkspaceAdapter } from './obsidian/adapters/workspace';
 import { ObsidianVaultAdapter } from './obsidian/adapters/vault';
+import { discoverCompanionMcpServers } from './obsidian/adapters/companion-mcp';
 import { AntigravityProvider } from './core/models/antigravity-provider';
 import { McpToolServer } from './core/models/mcp-tool-server';
 import {
@@ -112,6 +113,12 @@ export default class AntidianPlugin extends Plugin {
 			thoughtLevel: this.settings.thoughtLevel,
 			systemPrompt: DEFAULT_AGENT_SYSTEM_PROMPT,
 			mcpToolServer: this.mcpToolServer,
+			getCompanionMcpServers: () => {
+				const disabled = new Set(this.settings.disabledCompanionMcps ?? []);
+				return discoverCompanionMcpServers(this.app).filter(
+					(server) => !disabled.has(server.pluginId),
+				);
+			},
 			initialCache: this.settings.cachedMetadata,
 			onCacheUpdate: (cache) => {
 				this.settings.cachedMetadata = cache;
@@ -190,6 +197,11 @@ export default class AntidianPlugin extends Plugin {
 	async addSelectionToChat(snippet: SelectionSnippet): Promise<void> {
 		const view = await this.activateView();
 		view?.addSelectionToPrompt(snippet);
+	}
+
+	async addFilesToChat(files: TFile[]): Promise<void> {
+		const view = await this.activateView();
+		await view?.addFilesToPrompt(files);
 	}
 
 	async loadSettings(): Promise<void> {

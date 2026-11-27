@@ -29,6 +29,8 @@ export interface ToolContext {
 	 * the model should see instead.
 	 */
 	reviewMutation?: (call: MutationCall) => Promise<unknown>;
+	/** Decisions on earlier changes the model has not been told about yet. */
+	takeReviewNotes?: () => string | undefined;
 	[key: string]: unknown;
 }
 
