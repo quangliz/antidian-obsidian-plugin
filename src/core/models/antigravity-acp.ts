@@ -40,6 +40,10 @@ import {
 } from './agy-diagnostics';
 import { resolveAppDataDir } from './app-data-dir';
 import type { McpToolServer } from './mcp-tool-server';
+import {
+	toAcpHttpMcpServer,
+	type CompanionMcpResolver,
+} from '../types/companion-mcp';
 
 export interface ModelOption {
 	value: string;
@@ -146,6 +150,8 @@ export interface AntigravityAcpOptions {
 	thoughtLevel?: string;
 	systemPrompt?: string;
 	mcpToolServer?: McpToolServer;
+	/** Resolves enabled companion `*-antidian` HTTP MCP servers. */
+	getCompanionMcpServers?: CompanionMcpResolver;
 	/**
 	 * Subdirectory of `~/.gemini` where `agy acp` stores conversations,
 	 * brain artifacts, and logs. Defaults to a dedicated directory so
@@ -345,6 +351,8 @@ export class AntigravityAcpClient {
 	private thoughtLevel?: string;
 	private systemPrompt?: string;
 	private mcpToolServer?: McpToolServer;
+	private getCompanionMcpServers?: CompanionMcpResolver;
+	private companionMcpServerNames = new Set<string>();
 	private appDataDir: string;
 
 	private proc: ChildProcess | null = null;
@@ -405,6 +413,7 @@ export class AntigravityAcpClient {
 		this.thoughtLevel = options.thoughtLevel;
 		this.systemPrompt = options.systemPrompt;
 		this.mcpToolServer = options.mcpToolServer;
+		this.getCompanionMcpServers = options.getCompanionMcpServers;
 		this.appDataDir = options.appDataDir ?? resolveAppDataDir();
 		this.onCacheUpdate = options.onCacheUpdate;
 		this.quotaFetcher = options.quotaFetcher;
@@ -1171,6 +1180,7 @@ export class AntigravityAcpClient {
 	/** Shared `session/new` / `session/load` params: vault cwd, MCP server, system prompt. */
 	private async buildSessionParams(): Promise<Record<string, unknown>> {
 		const mcpServers: Record<string, unknown>[] = [];
+		const seenNames = new Set<string>();
 		if (this.mcpToolServer) {
 			const info = await this.mcpToolServer.start();
 			mcpServers.push({
@@ -1184,6 +1194,15 @@ export class AntigravityAcpClient {
 					},
 				],
 			});
+			seenNames.add(MCP_SERVER_NAME);
+		}
+
+		this.companionMcpServerNames.clear();
+		for (const companion of this.getCompanionMcpServers?.() ?? []) {
+			if (seenNames.has(companion.serverName)) continue;
+			seenNames.add(companion.serverName);
+			this.companionMcpServerNames.add(companion.serverName);
+			mcpServers.push(toAcpHttpMcpServer(companion));
 		}
 
 		const params: Record<string, unknown> = {
@@ -1723,6 +1742,13 @@ export class AntigravityAcpClient {
 			toolCall?.title ??
 			'';
 		const isVaultMcpTool = rawName.includes(MCP_SERVER_NAME);
+		const isCompanionMcpTool =
+			!this.mcpToolServer?.isPlanMode() &&
+			Array.from(this.companionMcpServerNames).some(
+				(name) =>
+					rawName.startsWith(`mcp_${name}_`) ||
+					rawName.startsWith(`mcp__${name}__`),
+			);
 		const isSafeBuiltin = SAFE_BUILTIN_TOOLS.has(rawName);
 		const sessionId =
 			(typeof params.sessionId === 'string' ? params.sessionId : null) ??
@@ -1740,7 +1766,13 @@ export class AntigravityAcpClient {
 			rawName === 'call_mcp_tool' &&
 			(isVaultMcpServer(toolCall?.rawInput) || !this.mcpToolServer?.isPlanMode());
 
-		if (isVaultMcpTool || isSafeBuiltin || isAllowedRead || isMcpCall) {
+		if (
+			isVaultMcpTool ||
+			isCompanionMcpTool ||
+			isSafeBuiltin ||
+			isAllowedRead ||
+			isMcpCall
+		) {
 			const allowOpt =
 				options.find((o) => o.kind === 'allow_once') ??
 				options.find((o) => o.kind === 'allow_always') ??
