@@ -48,6 +48,13 @@ import type { StoredTurnTrace } from '../../core/types/sessions';
 import { PromptBarView, type SelectionSnippet } from './prompt-bar-view';
 import { SignInView } from './sign-in-view';
 import { ElicitationCardView } from './elicitation-card-view';
+import { PermissionCardView } from './permission-card-view';
+import {
+	blockedContinuePrompt,
+	blockedToolsReply,
+	describeBlockedTools,
+} from '../../core/models/tool-permissions';
+import type { BlockedTool } from '../../core/types/permissions';
 import { ThinkingStateView } from './thinking-state-view';
 import { linkifyCodeWikilinks, markTableWrappers, registerInternalLinkHandlers } from './note-link';
 import { ANTIDIAN_ICON } from '../icon';
@@ -83,6 +90,8 @@ export class AntidianView extends ItemView implements HoverParent {
 	private promptBar!: PromptBarView;
 	/** Docked interactive question/poll card shown above the prompt bar. */
 	private elicitationCard: ElicitationCardView | null = null;
+	/** Docked card asking whether a tool call may run. */
+	private permissionCard: PermissionCardView | null = null;
 	/** Trace of the current/last turn; holds any pending write approvals. */
 	private activeThinking: ThinkingStateView | null = null;
 	private renderedTurns: RenderedTurn[] = [];
@@ -225,6 +234,7 @@ export class AntidianView extends ItemView implements HoverParent {
 		// Cancel any active run and pending write approvals so nothing hangs after close.
 		this.turnToken++;
 		this.elicitationCard?.cancel();
+		this.permissionCard?.cancel();
 		this.handleCancel();
 		this.rejectAllPendingApprovals();
 		if (this.unsubscribeContext) {
@@ -390,6 +400,7 @@ export class AntidianView extends ItemView implements HoverParent {
 		}
 		const myToken = ++this.turnToken;
 		this.elicitationCard?.cancel();
+		this.permissionCard?.cancel();
 		this.rejectAllPendingApprovals();
 		this.activeThinking = null;
 		this.loadingSession = session;
@@ -678,6 +689,10 @@ export class AntidianView extends ItemView implements HoverParent {
 			cls: 'antidian-elicitation-slot',
 		});
 		this.elicitationCard = new ElicitationCardView(elicitationSlotEl);
+		const permissionSlotEl = this.centerContainerEl.createDiv({
+			cls: 'antidian-elicitation-slot',
+		});
+		this.permissionCard = new PermissionCardView(permissionSlotEl);
 
 		this.promptBar = new PromptBarView(
 			this.centerContainerEl,
@@ -735,6 +750,7 @@ export class AntidianView extends ItemView implements HoverParent {
 
 	private handleCancel(): void {
 		this.elicitationCard?.cancel();
+		this.permissionCard?.cancel();
 		if (!this.isRunning) return;
 		this.activeThinking?.cancelPendingApprovals();
 		this.agent.cancel();
@@ -992,6 +1008,13 @@ export class AntidianView extends ItemView implements HoverParent {
 					this.scrollToBottom();
 					return await this.elicitationCard.show(request);
 				},
+				async (request) => {
+					if (myToken !== this.turnToken || !this.permissionCard) {
+						return 'cancel';
+					}
+					this.scrollToBottom();
+					return await this.permissionCard.show(request);
+				},
 			);
 
 			if (myToken !== this.turnToken) {
@@ -1049,6 +1072,9 @@ export class AntidianView extends ItemView implements HoverParent {
 				);
 				linkifyCodeWikilinks(this.app, answerEl, activeCtx.activeFile ?? '');
 				markTableWrappers(answerEl);
+				if (result.blockedTools?.length) {
+					this.renderBlockedNotice(agentMsg, result.blockedTools);
+				}
 			}
 
 			if (result.contextUsed && result.contextUsed.length > 0) {
@@ -1057,7 +1083,7 @@ export class AntidianView extends ItemView implements HoverParent {
 
 			const finalAnswerText = result.cancelled
 				? result.answer || streamedMarkdown.trim()
-				: result.answer;
+				: result.answer || blockedToolsReply(result.blockedTools) || '';
 			turnRecord.agentText = finalAnswerText;
 
 			if (result.usage) {
@@ -1091,11 +1117,42 @@ export class AntidianView extends ItemView implements HoverParent {
 			});
 		} finally {
 			if (myToken === this.turnToken) {
+				// agy may end the turn while a permission question is still open.
+				this.permissionCard?.cancel();
 				this.isRunning = false;
 				this.promptBar.setRunning(false);
 				this.scrollToBottom();
 			}
 		}
+	}
+
+	/**
+	 * Says which tool calls were refused (agy ends the turn on a refusal), with a
+	 * button that sends a prompt to carry on without them.
+	 */
+	private renderBlockedNotice(parent: HTMLElement, blocked: BlockedTool[]): void {
+		const text = describeBlockedTools(blocked);
+		if (!text) return;
+		const notice = parent.createDiv({ cls: 'antidian-blocked-notice' });
+		const iconEl = notice.createSpan({ cls: 'antidian-blocked-notice-icon' });
+		setIcon(iconEl, 'shield-alert');
+		const body = notice.createDiv({ cls: 'antidian-blocked-notice-body' });
+		const textEl = body.createDiv({ cls: 'antidian-blocked-notice-text' });
+		void MarkdownRenderer.render(this.app, text, textEl, '', this);
+		const continueBtn = body.createEl('button', {
+			cls: 'antidian-blocked-notice-continue',
+			text: 'Continue',
+			attr: { type: 'button' },
+		});
+		setTooltip(continueBtn, 'Ask the agent to carry on without the refused tools');
+		continueBtn.onclick = () => {
+			if (this.isRunning) {
+				new Notice('Wait for the current response to finish.');
+				return;
+			}
+			continueBtn.remove();
+			void this.handleSend(blockedContinuePrompt(blocked), []);
+		};
 	}
 
 	private recordPendingForkIfReady(): void {
