@@ -3477,6 +3477,26 @@ button.antidian-question-option.is-selected .antidian-question-indicator.is-chec
 	font-weight: var(--font-medium);
 }
 
+/* Tool permission card (reuses the question card) */
+.antidian-permission-target {
+	padding: 5px 8px;
+	border-radius: 7px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+	max-height: 96px;
+	overflow-y: auto;
+}
+
+.antidian-permission-scope {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	overflow-wrap: anywhere;
+}
+
 .antidian-question-other-wrap {
 	display: flex;
 	flex-direction: column;
@@ -3704,4 +3724,46 @@ button.antidian-question-btn:disabled {
 	font-variant-numeric: tabular-nums;
 	margin-left: 2px;
 	white-space: nowrap;
+}
+
+/* Refused tool calls, under the answer of a turn agy ended */
+.antidian-blocked-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 8px 10px;
+	border-radius: 10px;
+	border: 1px solid color-mix(in srgb, var(--color-orange) 40%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--color-orange) 8%, var(--background-primary));
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.antidian-blocked-notice-icon {
+	display: inline-flex;
+	flex-shrink: 0;
+	margin-top: 2px;
+	color: var(--color-orange);
+	--icon-size: 15px;
+}
+
+.antidian-blocked-notice-body {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	min-width: 0;
+}
+
+.antidian-blocked-notice-text p {
+	margin: 0;
+}
+
+button.antidian-blocked-notice-continue {
+	height: auto;
+	padding: 3px 10px;
+	border-radius: 7px;
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
 }

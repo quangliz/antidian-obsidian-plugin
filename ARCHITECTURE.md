@@ -25,17 +25,17 @@ Antidian enforces a strict one-way dependency boundary (`src/main.ts` → `src/o
 - `src/core/` — Pure harness runtime with **no Obsidian SDK imports**:
   - `agent/` — Agent orchestration loop and default system prompt.
   - `context/` — `ContextCompiler` (deduplicated active note outline/selection, Plan Mode notice, forked context handling).
-  - `models/` — ACP client (`antigravity-acp.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), plan/focus progress parser (`plan.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
+  - `models/` — ACP client (`antigravity-acp.ts`), tool permission policy (`tool-permissions.ts`), ACP form elicitation parser/encoder (`elicitation.ts`), plan/focus progress parser (`plan.ts`), provider wrapper (`antigravity-provider.ts`), local HTTP MCP server (`mcp-tool-server.ts`), managed binary downloader/updater (`agy-binary-manager.ts`), and diagnostics (`agy-diagnostics.ts`).
   - `sessions/` — Trace recording and replay merging (`trace.ts`, including rebuilding image-only turns the CLI does not replay) and `agy` transcript loading (`transcript.ts`).
   - `skills/` — Recognizes skill reads in tool traces (`agy` itself discovers and loads skills).
   - `tools/` — `ToolRegistry` and the tool definitions.
   - `transactions/` — `ChangeStagingManager`, `StagedVaultOverlay`, `ChangeSetValidator`, `ChangeSetDiffGenerator`, `MutationGate`, `ChangeSetApplicator`, and Markdown structural helpers.
-  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `elicitation`, `plan`).
+  - `types/` — Core domain and service interfaces (`vault`, `context`, `changes`, `model`, `sessions`, `elicitation`, `plan`, `permissions`).
 - `src/obsidian/` — Obsidian SDK integration:
   - `adapters/` — `Vault`, `MetadataCache`, `Workspace`, and `Editor` adapters.
   - `commands/` — Command palette registrations and editor context menu hooks.
   - `editor/` — CodeMirror 6 `InlineDiffController` for inline write approvals in open Markdown views.
-  - `views/` — Sidebar view, sign-in screen shown instead of the prompt bar until the backend is usable (`sign-in-view.ts`), prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
+  - `views/` — Sidebar view, sign-in screen shown instead of the prompt bar until the backend is usable (`sign-in-view.ts`), prompt bar (autocomplete chips, selection chips, drag-and-drop/clipboard media attachments, media preview modal), docked interactive question/poll card (`elicitation-card-view.ts`), tool permission card (`permission-card-view.ts`), thinking trace, diff renderer, model menu, and resizable session drawer.
 - `src/main.ts` — Thin composition root that wires services, registers tools/views/commands, and handles lifecycle cleanup.
 - `src/settings.ts` — Persisted plugin settings and `AntidianSettingTab`.
 
@@ -55,11 +55,26 @@ Note access goes through `ToolRegistry` exposed over `McpToolServer` so the mode
 
 ## Slash Commands & Skills
 
-`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills, and the model reads a skill with the built-in `read_file`. For files outside a workspace, such as the vault's skills, `agy` asks permission first. `AntigravityAcpClient.handlePermissionRequest` allows `read_file` only for files inside a subfolder under the roots `readFileRoots` lists: `<vault>/.agents/skills/`, `~/.agents/skills/`, `~/.gemini/<appDataDir>/mcp/` (where `agy` keeps one schema file per MCP tool that the model reads before calling it), and `~/.gemini/<appDataDir>/brain/<sessionId>/.system_generated/` (where `agy` offloads large tool outputs such as `steps/<n>/output.txt`; path check: `isSkillFilePath` in `src/core/skills/`), and refuses every other built-in tool except `SAFE_BUILTIN_TOOLS` and `call_mcp_tool`, agy's call to a user-configured MCP server (`mcp_config.json`), which is allowed except in `plan` mode (the vault server, `isVaultMcpServer`, is always allowed: it enforces the permission mode itself). `agy` ends the turn when a tool is refused, so a turn that ends with no text after a refusal replies with the refused tool names (`blockedToolsReply`) instead of an empty answer. Antidian only surfaces skills:
+`agy` owns skills: it discovers `.agents/skills/<name>/SKILL.md` in the vault plus the user's global skills (`~/.gemini/config/skills/` and `~/.agents/skills/`), and the model reads a skill with the built-in `read_file`. For files outside a workspace, such as the vault's skills, `agy` asks permission first (see [Tool Permissions](#tool-permissions)). Antidian only surfaces skills:
 
 - `agy acp` advertises commands and skills with `available_commands_update` after a session starts. `AntigravityAcpClient` keeps the list for the prompt bar's `/` menu, minus `HIDDEN_COMMANDS` (built-ins that spawn subagents, run on timers, or write files directly). `/clear` is Antidian's own.
 - The CLI runs a command or skill that starts the prompt; attached context (below) does not get in its way.
 - `/compact` is sent without context, and the active note is re-sent on the next turn. The CLI completes it without a reply, so replay inserts one to keep it apart from the next prompt.
+
+## Tool Permissions
+
+`agy` sends `session/request_permission` before a built-in tool or MCP call runs, and **ends the turn when one is refused**. `classifyToolPermission` (`src/core/models/tool-permissions.ts`, pure) decides each request from the tool name (`toolCall.name`, else the raw name its `tool_call` update gave, else the title) and its arguments:
+
+| Verdict | Requests |
+| --- | --- |
+| **Allow** | The vault server (`mcp_antidian-vault_*`, or `call_mcp_tool` to it), which enforces the permission mode itself. Other MCP tools (`call_mcp_tool`, `mcp_<server>_<tool>`: servers from `mcp_config.json` and companion plugins), except in Plan mode. Built-ins that touch no local file (`search_web`, `read_url_content`, `view_content_chunk`, `ask_question`, `update_steps`, `update_focus`). File reads (`read_file`, `view_file`) of files inside a subfolder of a `readFileRoots` root, and folder reads (`list_dir`, `find_by_name`, `grep_search`) at or below one. |
+| **Refuse** | Built-in file tools that reach into the vault (including relative paths and `..`), built-in file writes (`write_to_file`, `replace_file_content`, …), and shell tools (`run_command`, …). |
+| **Ask** | Everything else: reads elsewhere on disk, other built-ins (browser, image generation, …), and MCP tools in Plan mode. |
+
+`readFileRoots` lists `<vault>/.agents/skills/`, `~/.agents/skills/`, `~/.gemini/config/skills/`, `~/.gemini/<appDataDir>/mcp/` (one schema file per MCP tool, which the model reads before calling it), and `~/.gemini/<appDataDir>/brain/<sessionId>/.system_generated/` (large tool outputs such as `steps/<n>/output.txt`). Paths may be `file://` URIs, as `agy` names offloaded outputs (`toAbsolutePath`).
+
+- **Asking**: `AntigravityAcpClient` puts requests to `onPermissionRequest` one at a time (`permissionQueue`); the view shows `PermissionCardView` above the prompt bar with **Allow once**, **Allow for this session**, and **Deny** (keys `1`–`3`). A session allowance covers the same tool in the same folder (or the same MCP tool, or the same other built-in) until the session changes (`resetSession`). The client answers with `allow_once`, never `allow_always`, which `agy` would keep. Stop, a session switch, or the end of the turn cancels the question. Once a request was refused in a turn, later ones are refused without asking, because `agy` ends the turn anyway.
+- **Reporting**: refusals are kept per turn with their reason (`BlockedTool`: `vault`, `write`, `shell`, `user`, `unanswered`) and returned as `blockedTools`. `agy` may end such a turn as `cancelled`; that is not taken for the user's Stop. The view shows `describeBlockedTools` under the answer with a **Continue** button that sends `blockedContinuePrompt`, and a turn with no text keeps `blockedToolsReply` in its history.
 
 ## Turn Context
 

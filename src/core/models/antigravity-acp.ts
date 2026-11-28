@@ -14,13 +14,17 @@ import type {
 	ElicitationResponse,
 } from '../types/elicitation';
 import type { PlanStep } from '../types/plan';
+import type {
+	BlockedTool,
+	ToolPermissionDecision,
+	ToolPermissionHandler,
+} from '../types/permissions';
 import {
 	COMPACTED_REPLY,
 	CONTEXT_RESOURCE_URI,
 	isCompactCommand,
 } from '../context/compiler';
 import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, stripMcpPrefix } from '../legacy-names';
-import { isSkillFilePath } from '../skills';
 import { parseElicitationRequest } from './elicitation';
 import { parseFocusText, parsePlanSteps } from './plan';
 import {
@@ -40,6 +44,11 @@ import {
 } from './agy-diagnostics';
 import { resolveAppDataDir } from './app-data-dir';
 import type { McpToolServer } from './mcp-tool-server';
+import {
+	classifyToolPermission,
+	readFileRoots,
+	type ToolPermissionVerdict,
+} from './tool-permissions';
 import {
 	toAcpHttpMcpServer,
 	type CompanionMcpResolver,
@@ -128,6 +137,8 @@ export interface AcpStreamCallbacks {
 	onToolEnd?: (toolName: string, toolOutput: unknown, callId?: string) => void;
 	/** Handles interactive ACP `elicitation/create` form prompts (e.g. `ask_question`). */
 	onElicitation?: ElicitationHandler;
+	/** Asks the user about a tool call Antidian neither allows nor refuses itself. */
+	onPermissionRequest?: ToolPermissionHandler;
 	/** Called when the agent publishes or updates its live step checklist. */
 	onPlanUpdate?: (steps: PlanStep[]) => void;
 	/** Called when the agent publishes a high-level focus status phrase. */
@@ -138,6 +149,8 @@ export interface AcpPromptResult {
 	answer: string;
 	stopReason?: string;
 	usage?: TokenUsage;
+	/** Tool calls refused this turn (agy ends the turn on a refusal); absent when the user stopped it. */
+	blockedTools?: BlockedTool[];
 }
 
 export interface AntigravityAcpOptions {
@@ -206,17 +219,14 @@ const HIDDEN_COMMANDS = new Set([
 	'teamwork',
 ]);
 
-const SAFE_BUILTIN_TOOLS = new Set([
-	'search_web',
-	'web_search',
-	'google_search',
-	'ask_question',
-	'update_steps',
-	'update_focus',
-]);
-
 /** Built-in progress/tracking tools rendered as live plan/focus UI rather than trace rows. */
 const PROGRESS_BUILTIN_TOOLS = new Set(['update_steps', 'update_focus']);
+
+/** An option of an ACP `session/request_permission` request. */
+interface PermissionOption {
+	optionId: string;
+	kind?: string;
+}
 
 /** ACP auth method for a Google account sign-in through the browser. */
 const LOGIN_METHOD_ID = 'oauth-personal';
@@ -387,10 +397,16 @@ export class AntigravityAcpClient {
 	private availableCommands: AvailableCommand[] = [];
 	private activeCallbacks: AcpStreamCallbacks | null = null;
 	private activeAnswerChunks: string[] = [];
+	/** Raw tool names (as agy names them) of this turn's tool calls, by call id. */
 	private activeToolNames = new Map<string, string>();
-	/** Built-in tools this turn's permission requests were refused for. */
-	private rejectedTools = new Set<string>();
-	private activeElicitationCancels = new Set<() => void>();
+	/** Tools this turn's permission requests were refused for, by name. */
+	private rejectedTools = new Map<string, BlockedTool>();
+	/** Permission scopes the user allowed for the rest of this session. */
+	private sessionAllowedTools = new Set<string>();
+	/** Permission questions are put to the user one at a time. */
+	private permissionQueue: Promise<void> = Promise.resolve();
+	/** Cancels the elicitation and permission questions waiting on the user. */
+	private activeUserPromptCancels = new Set<() => void>();
 	private elicitationOutcomes = new Map<string, Record<string, unknown>>();
 	private startPromise: Promise<void> | null = null;
 	private sessionTitle: string | null = null;
@@ -922,6 +938,7 @@ export class AntigravityAcpClient {
 
 	async resetSession(): Promise<void> {
 		const hadSession = this.getSessionId() !== null || this.sessionTitle !== null;
+		this.sessionAllowedTools.clear();
 		this.sessionTitle = null;
 		this.conversationId = null;
 		if (hadSession) this.emitSessionInfo();
@@ -947,7 +964,7 @@ export class AntigravityAcpClient {
 			return;
 		}
 		this.turnCancelled = true;
-		this.cancelActiveElicitations();
+		this.cancelActiveUserPrompts();
 		if (this.sessionId && this.proc?.stdin && !this.proc.killed) {
 			this.sendNotification('session/cancel', {
 				sessionId: this.sessionId,
@@ -1066,32 +1083,35 @@ export class AntigravityAcpClient {
 				: undefined;
 
 			const partial = this.activeAnswerChunks.join('').trim();
+			const stoppedByUser = this.turnCancelled || signal?.aborted === true;
+			// agy ends the turn when a tool is refused, possibly as `cancelled`:
+			// that is not the user's Stop, and the UI says what was refused.
+			const blockedTools =
+				!stoppedByUser && this.rejectedTools.size > 0
+					? [...this.rejectedTools.values()]
+					: undefined;
 			const cancelled =
-				this.turnCancelled ||
-				signal?.aborted === true ||
-				result?.stopReason === 'cancelled';
+				stoppedByUser || (!blockedTools && result?.stopReason === 'cancelled');
 
 			if (!cancelled) {
 				this.prefetchQuota(true);
 			}
 
-			// agy ends the turn when a tool is refused; say why instead of an empty reply.
-			const blocked =
-				!partial && !this.turnCancelled && signal?.aborted !== true
-					? blockedToolsReply([...this.rejectedTools])
-					: undefined;
-
 			return {
-				answer: blocked
-					? blocked
-					: cancelled
+				answer:
+					cancelled || blockedTools
 						? partial
 						: partial ||
 							(isCompactCommand(text)
 								? COMPACTED_REPLY
 								: '(No response text generated)'),
-				stopReason: cancelled ? 'cancelled' : result?.stopReason,
+				stopReason: cancelled
+					? 'cancelled'
+					: result?.stopReason === 'cancelled'
+						? 'blocked'
+						: result?.stopReason,
 				usage,
+				...(blockedTools ? { blockedTools } : {}),
 			};
 		} catch (err) {
 			if (this.turnCancelled || signal?.aborted) {
@@ -1115,7 +1135,7 @@ export class AntigravityAcpClient {
 			this.activeToolNames.clear();
 			this.rejectedTools.clear();
 			this.elicitationOutcomes.clear();
-			this.cancelActiveElicitations();
+			this.cancelActiveUserPrompts();
 		}
 	}
 
@@ -1501,7 +1521,7 @@ export class AntigravityAcpClient {
 
 	private destroyProcess(): void {
 		this.intentionalStop = true;
-		this.cancelActiveElicitations();
+		this.cancelActiveUserPrompts();
 		if (this.recoveryTimer) {
 			nodeClearTimeout(this.recoveryTimer);
 			this.recoveryTimer = null;
@@ -1582,15 +1602,15 @@ export class AntigravityAcpClient {
 		);
 	}
 
-	private cancelActiveElicitations(): void {
-		for (const cancel of this.activeElicitationCancels) {
+	private cancelActiveUserPrompts(): void {
+		for (const cancel of this.activeUserPromptCancels) {
 			try {
 				cancel();
 			} catch {
 				// Ignore listener errors during cancellation
 			}
 		}
-		this.activeElicitationCancels.clear();
+		this.activeUserPromptCancels.clear();
 	}
 
 	private handleLine(line: string): void {
@@ -1685,7 +1705,7 @@ export class AntigravityAcpClient {
 			cancelPending = () => resolve({ action: 'cancel' });
 		});
 		const cancelFn = () => cancelPending?.();
-		this.activeElicitationCancels.add(cancelFn);
+		this.activeUserPromptCancels.add(cancelFn);
 
 		try {
 			const response = await Promise.race([
@@ -1712,7 +1732,7 @@ export class AntigravityAcpClient {
 				this.sendResponse(id, { action: finalAction });
 			}
 		} finally {
-			this.activeElicitationCancels.delete(cancelFn);
+			this.activeUserPromptCancels.delete(cancelFn);
 		}
 	}
 
@@ -1733,60 +1753,116 @@ export class AntigravityAcpClient {
 			  }
 			| undefined;
 		const options =
-			(params.options as { optionId: string; kind?: string }[] | undefined) ??
-			[];
+			(params.options as PermissionOption[] | undefined) ?? [];
 
 		const rawName =
 			toolCall?.name ??
 			(toolCall?.toolCallId ? this.activeToolNames.get(toolCall.toolCallId) : undefined) ??
 			toolCall?.title ??
 			'';
-		const isVaultMcpTool = rawName.includes(MCP_SERVER_NAME);
-		const isCompanionMcpTool =
-			!this.mcpToolServer?.isPlanMode() &&
-			Array.from(this.companionMcpServerNames).some(
-				(name) =>
-					rawName.startsWith(`mcp_${name}_`) ||
-					rawName.startsWith(`mcp__${name}__`),
-			);
-		const isSafeBuiltin = SAFE_BUILTIN_TOOLS.has(rawName);
 		const sessionId =
 			(typeof params.sessionId === 'string' ? params.sessionId : null) ??
 			this.getSessionId();
-		const isAllowedRead =
-			rawName === 'read_file' &&
-			isSkillFilePath(
-				toolCall?.rawInput?.Path ?? toolCall?.rawInput?.path,
-				readFileRoots(this.cwd, this.appDataDir, undefined, sessionId),
+		const verdict = classifyToolPermission(rawName, toolCall?.rawInput, {
+			vaultPath: this.cwd,
+			readRoots: readFileRoots(this.cwd, this.appDataDir, undefined, sessionId),
+			planMode: this.mcpToolServer?.isPlanMode() ?? false,
+			mcpServerNames: [...this.companionMcpServerNames],
+		});
+		const toolName = stripMcpPrefix(rawName) || 'unknown tool';
+
+		if (verdict.kind === 'allow') {
+			this.allowPermission(id, options);
+		} else if (verdict.kind === 'deny') {
+			// File access to the vault, file writes, and shell commands never run.
+			this.refusePermission(id, options, { name: toolName, reason: verdict.reason });
+		} else {
+			const asked = this.permissionQueue.then(() =>
+				this.askPermission(id, options, verdict, toolName, toolCall?.rawInput),
 			);
+			this.permissionQueue = asked.catch(() => undefined);
+		}
+	}
 
-		// User-configured MCP servers (mcp_config.json) are trusted, except in
-		// read-only plan mode; vault calls are guarded by the vault server itself.
-		const isMcpCall =
-			rawName === 'call_mcp_tool' &&
-			(isVaultMcpServer(toolCall?.rawInput) || !this.mcpToolServer?.isPlanMode());
-
-		if (
-			isVaultMcpTool ||
-			isCompanionMcpTool ||
-			isSafeBuiltin ||
-			isAllowedRead ||
-			isMcpCall
-		) {
-			const allowOpt =
-				options.find((o) => o.kind === 'allow_once') ??
-				options.find((o) => o.kind === 'allow_always') ??
-				options[0];
-			this.sendResponse(id, {
-				outcome: allowOpt
-					? { outcome: 'selected', optionId: allowOpt.optionId }
-					: { outcome: 'cancelled' },
-			});
+	/** Puts a permission request to the user (one at a time, see `permissionQueue`). */
+	private async askPermission(
+		id: number | string,
+		options: PermissionOption[],
+		verdict: Extract<ToolPermissionVerdict, { kind: 'ask' }>,
+		toolName: string,
+		rawInput: Record<string, unknown> | undefined,
+	): Promise<void> {
+		if (this.turnCancelled) {
+			this.sendResponse(id, { outcome: { outcome: 'cancelled' } });
+			return;
+		}
+		if (this.sessionAllowedTools.has(verdict.sessionKey)) {
+			this.allowPermission(id, options);
+			return;
+		}
+		// agy ends the turn on the refusal already made: asking more would be in vain.
+		if (this.rejectedTools.size > 0) {
+			this.refusePermission(id, options);
+			return;
+		}
+		const handler = this.activeCallbacks?.onPermissionRequest;
+		if (!handler) {
+			this.refusePermission(id, options, { name: toolName, reason: 'unanswered' });
 			return;
 		}
 
-		// Reject direct filesystem/shell mutations so edits go through Obsidian's staged ChangeSets
-		this.rejectedTools.add(stripMcpPrefix(rawName) || 'unknown tool');
+		let cancelPending: (() => void) | null = null;
+		const cancelPromise = new Promise<ToolPermissionDecision>((resolve) => {
+			cancelPending = () => resolve('cancel');
+		});
+		const cancelFn = () => cancelPending?.();
+		this.activeUserPromptCancels.add(cancelFn);
+		try {
+			const decision = await Promise.race([
+				handler({
+					toolName,
+					target: verdict.target,
+					sessionScope: verdict.sessionScope,
+					planMode: this.mcpToolServer?.isPlanMode() ?? false,
+					rawInput,
+				}).catch((): ToolPermissionDecision => 'deny'),
+				cancelPromise,
+			]);
+			if (this.turnCancelled || decision === 'cancel') {
+				this.sendResponse(id, { outcome: { outcome: 'cancelled' } });
+			} else if (decision === 'deny') {
+				this.refusePermission(id, options, { name: toolName, reason: 'user' });
+			} else {
+				if (decision === 'allow_session') this.sessionAllowedTools.add(verdict.sessionKey);
+				this.allowPermission(id, options);
+			}
+		} finally {
+			this.activeUserPromptCancels.delete(cancelFn);
+		}
+	}
+
+	private allowPermission(id: number | string, options: PermissionOption[]): void {
+		// `allow_once` first: agy may keep `allow_always` past this session.
+		const allowOpt =
+			options.find((o) => o.kind === 'allow_once') ??
+			options.find((o) => o.kind === 'allow_always') ??
+			options[0];
+		this.sendResponse(id, {
+			outcome: allowOpt
+				? { outcome: 'selected', optionId: allowOpt.optionId }
+				: { outcome: 'cancelled' },
+		});
+	}
+
+	/** Refuses a permission request, recording why for the turn's result. */
+	private refusePermission(
+		id: number | string,
+		options: PermissionOption[],
+		blocked?: BlockedTool,
+	): void {
+		if (blocked && !this.rejectedTools.has(blocked.name)) {
+			this.rejectedTools.set(blocked.name, blocked);
+		}
 		const rejectOpt =
 			options.find((o) => o.kind === 'reject_once') ??
 			options.find((o) => o.kind === 'reject_always');
@@ -1886,8 +1962,9 @@ export class AntigravityAcpClient {
 			if (this.turnCancelled) return;
 			const rawName = update.name ?? '';
 			const displayName = stripMcpPrefix(rawName);
-			if (update.toolCallId) {
-				this.activeToolNames.set(update.toolCallId, displayName);
+			if (update.toolCallId && rawName) {
+				// The raw name: permission requests may name the tool only by this id.
+				this.activeToolNames.set(update.toolCallId, rawName);
 			}
 			const toolArgs = update.args ?? update.rawInput ?? {};
 			if (displayName === 'update_steps') {
@@ -1921,8 +1998,9 @@ export class AntigravityAcpClient {
 			(update.status === 'completed' || update.status === 'failed')
 		) {
 			const toolCallId = update.toolCallId ?? '';
-			const displayName =
-				this.activeToolNames.get(toolCallId) ?? update.name ?? '';
+			const displayName = stripMcpPrefix(
+				this.activeToolNames.get(toolCallId) ?? update.name ?? '',
+			);
 			const rawName = update.name ?? '';
 			if (PROGRESS_BUILTIN_TOOLS.has(displayName)) {
 				return;
@@ -1942,52 +2020,6 @@ export class AntigravityAcpClient {
 			}
 		}
 	}
-}
-
-/**
- * The only folders the model may read from with agy's built-in `read_file`
- * (only files inside a subfolder of each, see `isSkillFilePath`): the vault and
- * global skill folders, agy's MCP tool schemas (`<appDataDir>/mcp/<server>/<tool>.json`),
- * and the current session's `.system_generated` folder (e.g. offloaded large tool
- * outputs in `steps/<n>/output.txt`). Every other built-in file access is refused;
- * vault access goes through the antidian-vault tools.
- */
-export function readFileRoots(
-	vaultPath: string,
-	appDataDir: string,
-	homeDir: string = os.homedir(),
-	sessionId?: string | null,
-): string[] {
-	const roots = [
-		path.join(vaultPath, '.agents', 'skills'),
-		path.join(homeDir, '.agents', 'skills'),
-		path.join(homeDir, '.gemini', appDataDir, 'mcp'),
-	];
-	if (
-		typeof sessionId === 'string' &&
-		sessionId.length > 0 &&
-		!/[/\\]/.test(sessionId) &&
-		sessionId !== '.' &&
-		sessionId !== '..'
-	) {
-		roots.push(
-			path.join(homeDir, '.gemini', appDataDir, 'brain', sessionId, '.system_generated'),
-		);
-	}
-	return roots;
-}
-
-/** Whether an agy `call_mcp_tool` call targets Antidian's own vault server (pure). */
-export function isVaultMcpServer(rawInput: Record<string, unknown> | undefined): boolean {
-	const server = rawInput?.ServerName ?? rawInput?.serverName ?? rawInput?.server;
-	return typeof server === 'string' && server.includes(MCP_SERVER_NAME);
-}
-
-/** Reply for a turn agy ended after Antidian refused built-in tools (pure; unit-tested). */
-export function blockedToolsReply(toolNames: readonly string[]): string | undefined {
-	if (toolNames.length === 0) return undefined;
-	const names = toolNames.map((n) => `\`${n}\``).join(', ');
-	return `Stopped: Antidian blocked the built-in tool ${names}, so agy ended the turn. Built-in file and shell tools cannot reach the vault; ask again and the model can use the antidian-vault tools instead.`;
 }
 
 /** Merges consecutive chunks of the same role into one replayed message. */

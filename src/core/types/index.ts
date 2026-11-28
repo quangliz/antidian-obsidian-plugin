@@ -6,3 +6,4 @@ export * from './sessions';
 export * from './elicitation';
 export * from './plan';
 export * from './companion-mcp';
+export * from './permissions';

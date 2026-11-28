@@ -2,8 +2,10 @@ import type { ActiveContext, ContextReference } from '../types/context';
 import type { Message, MediaInput } from '../types/model';
 import type { ChangeSet } from '../types/changes';
 import type { ElicitationHandler } from '../types/elicitation';
+import type { BlockedTool, ToolPermissionHandler } from '../types/permissions';
 import type { PlanStep } from '../types/plan';
 import { parseFocusText } from '../models/plan';
+import { blockedToolsReply } from '../models/tool-permissions';
 import { type HarnessPermissionMode, type Tool, ToolRegistry } from '../tools';
 import type { ApprovalHandler, ChangeStagingManager, MutationGate } from '../transactions';
 import {
@@ -56,6 +58,8 @@ export type AgentStepEvent =
 export interface AgentRunResult {
 	answer: string;
 	cancelled?: boolean;
+	/** Tool calls refused this turn: agy ends the turn on a refusal. */
+	blockedTools?: BlockedTool[];
 	updatedHistory: Message[];
 	contextUsed: ContextReference[];
 	changeSet?: ChangeSet;
@@ -73,8 +77,8 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = `You are Antidian, an intelligent not
 
 Tool rules (strict):
 - ALWAYS use the \`antidian-vault\` MCP tools for every vault operation.
-- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary. The only exceptions, all with \`read_file\`: the exact file a \`read_note\` result says it was offloaded to, a skill's \`SKILL.md\` plus the files it references, and an MCP tool's schema file.
-- Built-in web search (\`search_web\`) may be used when external information is needed.
+- NEVER invoke built-in filesystem, editor, or shell tools (such as read_file, edit_file, write_file, run_command, grep, find) to access or modify vault notes — they are blocked by Obsidian's safety boundary, and a refused tool ends your turn. Built-in file writes and shell commands are always refused. The only exceptions, read-only (\`read_file\`, \`list_dir\`, \`grep_search\`, \`find_by_name\`): the exact file a \`read_note\` result says it was offloaded to (pass it as a plain absolute path), a skill's folder (its \`SKILL.md\` plus the files it references), and an MCP tool's schema file. Reading other files outside the vault asks the user first.
+- Built-in web search (\`search_web\`) and \`read_url_content\` (to open a web page) may be used when external information is needed.
 - Built-in \`ask_question\` may be used to present interactive multiple-choice questions when clarifying requirements, preferences, or options with the user (use plain text for trivial yes/no questions).
 
 Progress tracking (for multi-step work):
@@ -192,6 +196,7 @@ export class Agent {
 		requestApproval?: ApprovalHandler,
 		signal?: AbortSignal,
 		requestElicitation?: ElicitationHandler,
+		requestPermission?: ToolPermissionHandler,
 	): Promise<AgentRunResult> {
 		const rawContextUsed: ContextReference[] = [];
 		const readMtimes: Map<string, number> = new Map();
@@ -318,6 +323,7 @@ export class Agent {
 						});
 					},
 					onElicitation: requestElicitation,
+					onPermissionRequest: requestPermission,
 					onPlanUpdate: (steps) =>
 						onStep?.({ type: 'plan_update', steps }),
 					onFocusUpdate: (focus) =>
@@ -374,7 +380,8 @@ export class Agent {
 
 			currentMessages.push({
 				role: 'assistant',
-				text: result.answer,
+				// A turn agy ended on a refusal may have no text: keep why.
+				text: result.answer || blockedToolsReply(result.blockedTools) || '',
 			});
 
 			return {
@@ -383,6 +390,7 @@ export class Agent {
 				contextUsed,
 				changeSet: finalChangeSet,
 				usage,
+				...(result.blockedTools ? { blockedTools: result.blockedTools } : {}),
 			};
 		} catch (err) {
 			if (turnController.signal.aborted) {
